@@ -55,3 +55,4 @@ nunit-*.xml
 
 # User data
 **/playlists.json
+**/coub_list.json
