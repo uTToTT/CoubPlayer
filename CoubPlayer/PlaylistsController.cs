@@ -60,13 +60,11 @@ namespace CoubPlayer
 
             var pl = data[playlist];
 
-            // Сдвигаем order всех существующих видео на +1
             foreach (var video in pl.videos.Values)
             {
                 video.order += 1;
             }
 
-            // Добавляем новое видео в начало
             pl.videos[req.id] = new VideoMeta
             {
                 title = req.title,
@@ -85,16 +83,26 @@ namespace CoubPlayer
             var data = Load();
 
             if (!data.ContainsKey(playlist))
-                return NotFound($"Playlist '{playlist}' not found");
+                return NotFound();
 
-            if (!data[playlist].videos.ContainsKey(req.Id))
-                return NotFound($"Video '{req.Id}' not found in playlist '{playlist}'");
+            var pl = data[playlist];
 
-            data[playlist].videos.Remove(req.Id);
+            if (!pl.videos.ContainsKey(req.Id))
+                return NotFound();
+
+            var removedOrder = pl.videos[req.Id].order;
+
+            pl.videos.Remove(req.Id);
+
+            foreach (var video in pl.videos.Values)
+            {
+                if (video.order > removedOrder)
+                    video.order -= 1;
+            }
+
             Save(data);
 
             return Ok();
         }
-
     }
 }
