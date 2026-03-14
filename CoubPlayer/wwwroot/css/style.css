@@ -1,0 +1,94 @@
+#bgVideo {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  min-width: 100%;
+  min-height: 100%;
+  width: auto;
+  height: auto;
+  transform: translate(-50%, -50%);
+  object-fit: cover;
+  z-index: 0;
+  filter: blur(20px) brightness(0.5);
+}
+
+video#playerA,
+video#playerB {
+  position: relative;
+  z-index: 1;
+}
+
+body {
+  background: #000;
+  margin: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  overflow: hidden;
+  font-family: sans-serif;
+}
+
+video {
+  position: absolute;
+  width: 80%;
+  max-height: 80%;
+}
+
+#playerB {
+  display: none;
+}
+
+.button {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 40px;
+  color: rgba(255, 255, 255, 0.5);
+  background: rgba(150, 40, 40, 0);
+  border: none;
+  padding: 25px 25px;
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.5s ease;
+}
+
+.button:hover {
+  background: rgba(0, 0, 0, 0);
+  color: white;
+}
+
+.fullscreen-btn {
+  position: absolute;
+  top: 10px;
+  right: 15px;
+  font-size: 50px;
+  color: rgba(255, 255, 255, 0.5);
+  background: rgba(0, 0, 0, 0);
+  border: none;
+  border-radius: 5px;
+  padding: 5px 10px;
+  cursor: pointer;
+  z-index: 2;
+  width: auto;
+  height: auto;
+  user-select: none;
+  transition: color 0.5s ease;
+}
+
+.fullscreen-btn:hover {
+  background: rgba(0, 0, 0, 0);
+  color: white;
+}
+
+#prev {
+  left: 0%;
+  height: 100%;
+  width: 150px;
+}
+
+#next {
+  right: 0%;
+  height: 100%;
+  width: 150px;
+}

@@ -1,0 +1,42 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Coub Player</title>
+
+    <link rel="stylesheet" href="style.css" />
+  </head>
+
+  <body>
+    <video id="bgVideo" autoplay muted loop></video>
+    <video id="playerA" muted loop></video>
+    <video id="playerB" muted loop></video>
+
+    <audio id="audio"></audio>
+
+    <button id="prev" class="button">◀</button>
+    <button id="next" class="button">▶</button>
+    <button
+      id="restart"
+      class="button"
+      style="top: 95%; left: 50%; transform: translate(-50%, -50%); z-index: 2"
+    >
+      ↺
+    </button>
+    <button id="fullscreen" class="fullscreen-btn">⛶</button>
+
+    <select
+      id="playlistSelect"
+      style="position: absolute; top: 10px; left: 10px; z-index: 10"
+    >
+      <option value="">Choose playlist</option>
+    </select>
+
+    <div style="position: absolute; top: 50px; left: 10px; z-index: 10">
+      <input type="text" id="newPlaylistName" placeholder="New playlist" />
+      <button id="createPlaylistBtn">Create</button>
+    </div>
+
+    <script type="module" src="js/main.js"></script>
+  </body>
+</html>
