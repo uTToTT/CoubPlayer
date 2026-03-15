@@ -81,7 +81,7 @@ export class Player {
         }
     }
 
-    buildOrderedPlaylist(playlistObj) {
+    buildOrderedPlaylist(playlistObj, order = 'asc') {
         if (!playlistObj || !playlistObj.videos) return [];
 
         const arr = Object.entries(playlistObj.videos).map(([id, meta]) => ({
@@ -90,7 +90,10 @@ export class Player {
             order: meta.order
         }));
 
-        arr.sort((a, b) => a.order - b.order);
+        arr.sort((a, b) => {
+            if (order === 'asc') return a.order - b.order;
+            else return b.order - a.order;
+        });
 
         return arr;
     }

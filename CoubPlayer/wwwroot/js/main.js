@@ -23,6 +23,9 @@ const playlistContainer = document.getElementById("playlistCheckboxesContainer")
 const savePlaylistsBtn = document.getElementById("savePlaylistsBtn");
 const cancelPlaylistsBtn = document.getElementById("cancelPlaylistsBtn");
 
+const sortAscBtn = document.getElementById("sortAscBtn");
+const sortDescBtn = document.getElementById("sortDescBtn");
+
 const player = new Player(players, audio, bgVideo);
 const state = {
     playlists: {},
@@ -30,6 +33,14 @@ const state = {
 };
 
 let started = false;
+
+let currentPlaylistObj = null;
+
+async function reloadPlaylists() {
+    const data = await loadData();
+    state.playlists = data.playlists;
+    state.coubMap = data.coubMap;
+}
 
 async function openPlaylistEditor() {
 
@@ -117,23 +128,37 @@ async function init() {
     renderPlaylistsUI();
     initControls(player, bgVideo, audio);
 
-    playlistSelect.addEventListener("change", () => {
-
+    playlistSelect.addEventListener("change", async () => {
         const selected = playlistSelect.value;
         if (!selected) return;
 
-        const playlist = buildPlaylist(
-            state.playlists,
-            state.coubMap,
-            selected
-        );
+        // подгружаем свежие данные
+        await reloadPlaylists();
 
-        if (!playlist.length) {
+        const playlistObj = state.playlists[selected];
+        if (!playlistObj || !playlistObj.videos) {
             alert("Playlist empty!");
             return;
         }
 
-        player.setPlaylist(playlist);
+        currentPlaylistObj = playlistObj;
+
+        const orderedPlaylist = player.buildOrderedPlaylist(playlistObj).map(item => {
+            const coubData = state.coubMap[item.id] || {};
+            return {
+                id: item.id,
+                title: item.title,
+                video: coubData.video || "",
+                audio: coubData.audio || ""
+            };
+        });
+
+        if (!orderedPlaylist.length) {
+            alert("Playlist empty!");
+            return;
+        }
+
+        player.setPlaylist(orderedPlaylist);
         player.play(0);
 
         started = true;
@@ -202,6 +227,38 @@ async function init() {
 
             player.togglePause(bgVideo, audio);
         }
+    });
+
+    sortAscBtn.addEventListener("click", () => {
+        if (!currentPlaylistObj) return;
+        const ordered = player.buildOrderedPlaylist(currentPlaylistObj, 'asc').map(item => {
+            const coubData = state.coubMap[item.id] || {};
+            return {
+                id: item.id,
+                title: item.title,
+                video: coubData.video || "",
+                audio: coubData.audio || ""
+            };
+        });
+
+        player.setPlaylist(ordered);
+        player.play(0);
+    });
+
+    sortDescBtn.addEventListener("click", () => {
+        if (!currentPlaylistObj) return;
+        const ordered = player.buildOrderedPlaylist(currentPlaylistObj, 'desc').map(item => {
+            const coubData = state.coubMap[item.id] || {};
+            return {
+                id: item.id,
+                title: item.title,
+                video: coubData.video || "",
+                audio: coubData.audio || ""
+            };
+        });
+
+        player.setPlaylist(ordered);
+        player.play(0);
     });
 }
 
