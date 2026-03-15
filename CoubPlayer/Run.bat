@@ -17,6 +17,6 @@ echo Starting server with hot reload...
 echo.
 
 
-dotnet watch run
+dotnet run
 
 pause

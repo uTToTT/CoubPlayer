@@ -37,7 +37,7 @@ export function initControls(player, bgVideo, audio) {
 
         wheelLock = true;
 
-        setTimeout(() => wheelLock = false, 50);
+        setTimeout(() => wheelLock = false, 25);
 
         if (e.deltaY > 0) {
             player.nextVideo();

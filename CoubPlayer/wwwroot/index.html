@@ -23,7 +23,7 @@
     >
       ↺
     </button>
-    <button id="fullscreen" class="fullscreen-btn">⛶</button>
+    <button id="fullscreen" class="fullscreen-btn" type="button">⛶</button>
 
     <select
       id="playlistSelect"
@@ -34,11 +34,13 @@
 
     <div style="position: absolute; top: 50px; left: 10px; z-index: 10">
       <input type="text" id="newPlaylistName" placeholder="New playlist" />
-      <button id="createPlaylistBtn">Create</button>
+      <button id="createPlaylistBtn" type="button">Create</button>
     </div>
 
     <div style="position: absolute; top: 100px; left: 10px; z-index: 10">
-      <button id="editPlaylistsBtn">Добавить / Удалить из плейлиста</button>
+      <button id="editPlaylistsBtn" type="button">
+        Добавить / Удалить из плейлиста
+      </button>
       <div
         id="playlistCheckboxesContainer"
         style="
@@ -51,8 +53,13 @@
         "
       >
         <div id="playlistCheckboxes"></div>
-        <button id="savePlaylistsBtn" style="margin-top: 5px">Сохранить</button>
-        <button id="cancelPlaylistsBtn" style="margin-top: 5px">Отмена</button>
+        <button id="savePlaylistsBtn" type="button" style="margin-top: 5px">
+          Сохранить
+        </button>
+
+        <button id="cancelPlaylistsBtn" type="button" style="margin-top: 5px">
+          Отмена
+        </button>
       </div>
     </div>
 

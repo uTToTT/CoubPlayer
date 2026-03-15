@@ -80,4 +80,18 @@ export class Player {
             audio.pause();
         }
     }
+
+    buildOrderedPlaylist(playlistObj) {
+        if (!playlistObj || !playlistObj.videos) return [];
+
+        const arr = Object.entries(playlistObj.videos).map(([id, meta]) => ({
+            id,
+            title: meta.title,
+            order: meta.order
+        }));
+
+        arr.sort((a, b) => a.order - b.order);
+
+        return arr;
+    }
 }
