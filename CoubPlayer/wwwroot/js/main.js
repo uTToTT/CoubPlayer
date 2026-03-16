@@ -14,8 +14,6 @@ const audio = document.getElementById("audio");
 const bgVideo = document.getElementById("bgVideo");
 
 const playlistSelect = document.getElementById("playlistSelect");
-const newPlaylistInput = document.getElementById("newPlaylistName");
-const createPlaylistBtn = document.getElementById("createPlaylistBtn");
 const playlistCheckboxes = document.getElementById("playlistCheckboxes");
 
 const editPlaylistsBtn = document.getElementById("editPlaylistsBtn");
@@ -58,7 +56,6 @@ async function applySorting() {
 
     if (!playlistSelect.value) return;
 
-    // Загружаем актуальные данные
     await reloadPlaylists();
 
     const playlistName = playlistSelect.value;
@@ -114,14 +111,12 @@ async function reloadPlaylists() {
 }
 
 async function openPlaylistEditor() {
-
     const currentVideo = player.playlist[player.index];
     if (!currentVideo) return alert("Нет текущего видео!");
 
     playlistCheckboxes.innerHTML = "";
 
     for (const name of Object.keys(state.playlists)) {
-
         const label = document.createElement("label");
         label.style.display = "block";
 
@@ -129,9 +124,7 @@ async function openPlaylistEditor() {
         checkbox.type = "checkbox";
         checkbox.value = name;
 
-        if (state.playlists[name].videos[currentVideo.id]) {
-            checkbox.checked = true;
-        }
+        checkbox.checked = !!state.playlists[name].videos[currentVideo.id];
 
         label.appendChild(checkbox);
         label.appendChild(document.createTextNode(" " + name));
@@ -140,6 +133,26 @@ async function openPlaylistEditor() {
     }
 
     playlistContainer.style.display = "block";
+}
+
+
+async function saveCurrentVideoPlaylists() {
+    const currentVideo = player.playlist[player.index];
+    if (!currentVideo) return;
+
+    const checkboxes = playlistCheckboxes.querySelectorAll("input[type=checkbox]");
+
+    for (const ch of checkboxes) {
+        const exists = state.playlists[ch.value].videos[currentVideo.id];
+
+        if (ch.checked && !exists) {
+            await addVideoReactive(ch.value, currentVideo);
+        } else if (!ch.checked && exists) {
+            await removeVideoReactive(ch.value, currentVideo.id);
+        }
+    }
+
+    playlistContainer.style.display = "none";
 }
 
 async function removeVideoReactive(playlist, videoId) {
@@ -178,8 +191,7 @@ function renderPlaylistsUI() {
         playlistCheckboxes.appendChild(label);
     }
 
-    // Сброс и добавление базового пункта
-    playlistSelect.innerHTML = '<option value="">Choose playlist</option>';
+    playlistSelect.innerHTML = "";
 
     for (const name of Object.keys(state.playlists)) {
         const option = document.createElement("option");
@@ -188,7 +200,6 @@ function renderPlaylistsUI() {
         playlistSelect.appendChild(option);
     }
 
-    // Добавляем опцию создания плейлиста **после всех существующих**
     const newOption = document.createElement("option");
     newOption.value = "__new__";
     newOption.textContent = "+ Create new playlist";
@@ -204,32 +215,60 @@ async function init() {
     renderPlaylistsUI();
     initControls(player, bgVideo, audio);
 
+    let defaultPlaylist = null;
+    if (state.playlists["bookmarks"]) {
+        defaultPlaylist = "bookmarks";
+    } else if (state.playlists["liked"]) {
+        defaultPlaylist = "liked";
+    } else {
+        const keys = Object.keys(state.playlists);
+        if (keys.length > 0) defaultPlaylist = keys[0];
+    }
+
+    if (defaultPlaylist) {
+        playlistSelect.value = defaultPlaylist;
+        playlistSelect.dataset.prevSelection = defaultPlaylist;
+
+        currentPlaylistObj = state.playlists[defaultPlaylist];
+        const orderedPlaylist = player.buildOrderedPlaylistByOrder(currentPlaylistObj).map(item => {
+            const coubData = state.coubMap[item.id] || {};
+            return {
+                id: item.id,
+                title: item.title,
+                video: coubData.video || "",
+                audio: coubData.audio || ""
+            };
+        });
+
+        if (orderedPlaylist.length) {
+            player.setPlaylist(orderedPlaylist, defaultPlaylist);
+            player.play(0);
+            player.pauseCurrent();
+            started = true;
+        }
+    }
+
     playlistSelect.addEventListener("change", async () => {
         const selected = playlistSelect.value;
 
         if (selected === "__new__") {
             const name = prompt("Enter new playlist name:");
             if (!name) {
-                playlistSelect.value = ""; // сброс выбора
+                playlistSelect.value = playlistSelect.dataset.prevSelection || "";
                 return;
             }
 
-            // Создаем плейлист на сервере
             await api.createPlaylist({ name });
 
-            // Добавляем в локальный state
             state.playlists[name] = {
                 title: name,
                 videos: {}
             };
 
-            // Сохраняем текущий выбор, чтобы не менять
             const prevSelection = playlistSelect.dataset.prevSelection || "";
 
-            // Перерисовываем UI
             renderPlaylistsUI();
 
-            // Восстанавливаем предыдущий выбор
             playlistSelect.value = prevSelection;
 
             return;
@@ -237,7 +276,6 @@ async function init() {
 
         if (!selected) return;
 
-        // Сохраняем текущий выбор для восстановления при новом плейлисте
         playlistSelect.dataset.prevSelection = selected;
 
         await reloadPlaylists();
@@ -270,40 +308,40 @@ async function init() {
         started = true;
     });
 
-    // сохранить изменения
     savePlaylistsBtn.addEventListener("click", async (e) => {
         e.preventDefault();
         e.stopPropagation();
-
-        const currentVideo = player.playlist[player.index];
-        if (!currentVideo) return alert("Нет текущего видео!");
-
-        const checkboxes =
-            playlistCheckboxes.querySelectorAll("input[type=checkbox]");
-
-        for (const ch of checkboxes) {
-            const exists = state.playlists[ch.value].videos[currentVideo.id];
-
-            if (ch.checked && !exists) {
-                await addVideoReactive(ch.value, currentVideo);
-            } else if (!ch.checked && exists) {
-                await removeVideoReactive(ch.value, currentVideo.id);
-            }
-        }
-
-        playlistContainer.style.display = "none";
+        await saveCurrentVideoPlaylists();
     });
 
     editPlaylistsBtn.addEventListener("click", openPlaylistEditor);
-    cancelPlaylistsBtn.addEventListener("click", () => {
-        playlistContainer.style.display = "none";
+
+    document.addEventListener("click", async (e) => {
+        if (playlistContainer.style.display !== "block") return;
+
+        const isClickInside = e.target.closest("#playlistCheckboxesContainer") ||
+            e.target.closest("#editPlaylistsBtn");
+
+        if (!isClickInside) {
+            await saveCurrentVideoPlaylists();
+        }
     });
+
+    // если переключаем видео — автоматически закрываем и сбрасываем окно
+    player.onVideoChange = () => {
+        if (playlistContainer.style.display === "block") {
+            saveCurrentVideoPlaylists(); // сохраняем изменения предыдущего видео
+        }
+    };
+
     window.addEventListener("beforeunload", () => {
         console.log("PAGE RELOAD");
     });
+
     document.addEventListener("submit", (e) => {
         e.preventDefault();
     });
+
     document.body.addEventListener("click", (e) => {
         if (!started) return;
         if (!e.target.closest(".button") &&
@@ -342,6 +380,17 @@ async function init() {
             player.goToIndex(videoIndexInput.value);
         }
     });
+
+    player.onVideoChange = () => {
+        const currentVideo = player.playlist[player.index];
+        if (!currentVideo) return;
+
+        // Обновляем чекбоксы без закрытия
+        const checkboxes = playlistCheckboxes.querySelectorAll("input[type=checkbox]");
+        checkboxes.forEach(ch => {
+            ch.checked = !!state.playlists[ch.value].videos[currentVideo.id];
+        });
+    };
 }
 
 init();

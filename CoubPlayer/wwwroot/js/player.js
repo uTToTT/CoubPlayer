@@ -136,6 +136,32 @@ export class Player {
         this.switchVideo(index);
     }
 
+    // Внутри класса Player
+
+    // Воспроизвести текущее видео
+    async playCurrent() {
+        const video = this.players[this.active];
+        if (!video.src) return;
+
+        try {
+            await video.play();
+            await this.bgVideo.play().catch(() => { });
+            await this.audio.play().catch(() => { });
+        } catch (err) {
+            console.warn("Не удалось воспроизвести видео:", err);
+        }
+    }
+
+    // Поставить текущее видео на паузу
+    pauseCurrent() {
+        const video = this.players[this.active];
+        if (!video.src) return;
+
+        video.pause();
+        this.bgVideo.pause();
+        this.audio.pause();
+    }
+
     // --------------------------
     // сортировка по полю order
     buildOrderedPlaylistByOrder(playlistObj, order = 'asc') {

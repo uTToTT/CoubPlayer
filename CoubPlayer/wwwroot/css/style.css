@@ -139,3 +139,20 @@ video {
   transform: translate(-50%, -50%);
   z-index: 2;
 }
+
+#playlistCheckboxesContainer {
+  display: none;
+  margin-top: 5px;
+  background: rgba(0, 0, 0, 0.7);
+  color: rgba(255, 255, 255, 0.7);
+  padding: 10px;
+  border-radius: 5px;
+}
+
+#playlistCheckboxes {
+  margin-top: 5px;
+}
+
+#cancelPlaylistsBtn {
+  margin-top: 5px;
+}

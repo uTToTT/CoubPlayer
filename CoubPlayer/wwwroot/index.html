@@ -24,7 +24,7 @@
     <button id="goToVideoBtn">Go</button>
 
     <select id="playlistSelect">
-      <option value="">Choose playlist</option>
+      <!-- <option value="">Choose playlist</option> -->
       <option value="__new__">+ Create new playlist</option>
     </select>
 
@@ -45,25 +45,9 @@
       <button id="editPlaylistsBtn" type="button">
         Добавить / Удалить из плейлиста
       </button>
-      <div
-        id="playlistCheckboxesContainer"
-        style="
-          display: none;
-          margin-top: 5px;
-          background: rgba(0, 0, 0, 0.7);
-          color: rgba(255, 255, 255, 0.7);
-          padding: 10px;
-          border-radius: 5px;
-        "
-      >
+      <div id="playlistCheckboxesContainer">
         <div id="playlistCheckboxes"></div>
-        <button id="savePlaylistsBtn" type="button" style="margin-top: 5px">
-          Сохранить
-        </button>
-
-        <button id="cancelPlaylistsBtn" type="button" style="margin-top: 5px">
-          Отмена
-        </button>
+        <button id="savePlaylistsBtn" type="button">Сохранить</button>
       </div>
     </div>
 
