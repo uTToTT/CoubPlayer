@@ -1,4 +1,4 @@
-﻿namespace CoubPlayer.Meta
+﻿namespace CoubPlayer.Requests
 {
     public class CreatePlaylistRequest
     {

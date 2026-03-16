@@ -1,4 +1,5 @@
 ﻿using CoubPlayer.Meta;
+using CoubPlayer.Requests;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
 
@@ -99,6 +100,26 @@ namespace CoubPlayer
                 if (video.order > removedOrder)
                     video.order -= 1;
             }
+
+            Save(data);
+
+            return Ok();
+        }
+
+        [HttpPost("{playlist}/viewed")]
+        public IActionResult MarkViewed([FromRoute] string playlist, [FromBody] ViewVideoRequest req)
+        {
+            var data = Load();
+
+            if (!data.ContainsKey(playlist))
+                return NotFound();
+
+            var pl = data[playlist];
+
+            if (!pl.videos.ContainsKey(req.id))
+                return NotFound();
+
+            pl.videos[req.id].lastViewed = DateTime.UtcNow;
 
             Save(data);
 

@@ -25,8 +25,26 @@ const cancelPlaylistsBtn = document.getElementById("cancelPlaylistsBtn");
 
 const sortAscBtn = document.getElementById("sortAscBtn");
 const sortDescBtn = document.getElementById("sortDescBtn");
+const sortTypeSelect = document.getElementById("sortTypeSelect");
 
-const player = new Player(players, audio, bgVideo);
+const seedInput = document.getElementById("seedInput");
+
+const videoTitle = document.getElementById("videoTitle");
+
+const videoIndexInput = document.getElementById("videoIndexInput");
+const goToVideoBtn = document.getElementById("goToVideoBtn");
+
+let sortType = "order";  // order или lastViewed
+let sortDirection = "asc"; // asc или desc
+
+const player = new Player(players, audio, bgVideo, (videoItem) => {
+    if (videoItem && videoItem.title) {
+        videoTitle.textContent = videoItem.title;
+    } else {
+        videoTitle.textContent = "";
+    }
+});
+
 const state = {
     playlists: {},
     coubMap: {}
@@ -35,6 +53,68 @@ const state = {
 let started = false;
 
 let currentPlaylistObj = null;
+
+function updateVideoTitle() {
+    const current = player.playlist[player.index];
+    if (current && current.title) {
+        videoTitle.textContent = current.title;
+    } else {
+        videoTitle.textContent = "";
+    }
+}
+
+async function applySorting() {
+
+    if (!playlistSelect.value) return;
+
+    // Загружаем актуальные данные
+    await reloadPlaylists();
+
+    const playlistName = playlistSelect.value;
+    currentPlaylistObj = state.playlists[playlistName];
+
+    if (!currentPlaylistObj) return;
+
+    let ordered = [];
+
+    console.log("Sort:", sortType, sortDirection);
+
+    if (sortType === "order") {
+        ordered = player.buildOrderedPlaylistByOrder(
+            currentPlaylistObj,
+            sortDirection
+        );
+    }
+    else if (sortType === "lastViewed") {
+        ordered = player.buildOrderedPlaylistByDate(
+            currentPlaylistObj,
+            sortDirection
+        );
+    }
+    else if (sortType === "random") {
+
+        const seed = parseInt(seedInput.value) || 1;
+
+        ordered = player.buildRandomPlaylist(
+            currentPlaylistObj,
+            seed
+        );
+    }
+
+    ordered = ordered.map(item => {
+        const coubData = state.coubMap[item.id] || {};
+        return {
+            id: item.id,
+            title: item.title,
+            video: coubData.video || "",
+            audio: coubData.audio || "",
+            lastViewed: item.lastViewed || null
+        };
+    });
+
+    player.setPlaylist(ordered, playlistName);
+    player.play(0);
+}
 
 async function reloadPlaylists() {
     const data = await loadData();
@@ -143,7 +223,7 @@ async function init() {
 
         currentPlaylistObj = playlistObj;
 
-        const orderedPlaylist = player.buildOrderedPlaylist(playlistObj).map(item => {
+        const orderedPlaylist = player.buildOrderedPlaylistByOrder(playlistObj).map(item => {
             const coubData = state.coubMap[item.id] || {};
             return {
                 id: item.id,
@@ -158,7 +238,7 @@ async function init() {
             return;
         }
 
-        player.setPlaylist(orderedPlaylist);
+        player.setPlaylist(orderedPlaylist, selected);
         player.play(0);
 
         started = true;
@@ -229,36 +309,30 @@ async function init() {
         }
     });
 
-    sortAscBtn.addEventListener("click", () => {
-        if (!currentPlaylistObj) return;
-        const ordered = player.buildOrderedPlaylist(currentPlaylistObj, 'asc').map(item => {
-            const coubData = state.coubMap[item.id] || {};
-            return {
-                id: item.id,
-                title: item.title,
-                video: coubData.video || "",
-                audio: coubData.audio || ""
-            };
-        });
+    sortTypeSelect.addEventListener("change", (e) => {
+        sortType = e.target.value;
+        applySorting();
+    });
 
-        player.setPlaylist(ordered);
-        player.play(0);
+    sortAscBtn.addEventListener("click", () => {
+        sortDirection = "asc";
+        applySorting();
     });
 
     sortDescBtn.addEventListener("click", () => {
-        if (!currentPlaylistObj) return;
-        const ordered = player.buildOrderedPlaylist(currentPlaylistObj, 'desc').map(item => {
-            const coubData = state.coubMap[item.id] || {};
-            return {
-                id: item.id,
-                title: item.title,
-                video: coubData.video || "",
-                audio: coubData.audio || ""
-            };
-        });
+        sortDirection = "desc";
+        applySorting();
+    });
 
-        player.setPlaylist(ordered);
-        player.play(0);
+    goToVideoBtn.addEventListener("click", () => {
+        const value = videoIndexInput.value;
+        player.goToIndex(value);
+    });
+
+    videoIndexInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+            player.goToIndex(videoIndexInput.value);
+        }
     });
 }
 

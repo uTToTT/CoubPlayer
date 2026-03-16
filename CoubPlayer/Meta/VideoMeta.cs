@@ -4,5 +4,6 @@
     {
         public string title { get; set; }
         public int order { get; set; }
+        public DateTime? lastViewed { get; set; } = null;
     }
 }

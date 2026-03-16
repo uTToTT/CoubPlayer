@@ -5,7 +5,6 @@ echo ===============================
 echo Starting Coub Player Dev Server
 echo ===============================
 
-REM Переход в папку проекта
 cd /d "%~dp0"
 
 echo.
@@ -16,6 +15,7 @@ echo.
 echo Starting server with hot reload...
 echo.
 
+start http://localhost:5000/index.html
 
 dotnet run
 
