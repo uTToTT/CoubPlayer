@@ -92,3 +92,50 @@ video {
   height: 100%;
   width: 150px;
 }
+
+#seedInput {
+  position: absolute;
+  top: 10px;
+  left: 500px;
+  z-index: 10;
+}
+
+#videoIndexInput {
+  position: absolute;
+  top: 50px;
+  left: 550px;
+  z-index: 10;
+}
+
+#goToVideoBtn {
+  position: absolute;
+  top: 50px;
+  left: 500px;
+  z-index: 10;
+}
+
+#videoTitle {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: white;
+  font-size: 18px;
+  text-align: center;
+  z-index: 10;
+  text-shadow: 1px 1px 3px black;
+}
+
+#playlistSelect {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 10;
+}
+
+#restart {
+  top: 95%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+}
