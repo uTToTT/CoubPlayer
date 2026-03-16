@@ -54,15 +54,6 @@ let started = false;
 
 let currentPlaylistObj = null;
 
-function updateVideoTitle() {
-    const current = player.playlist[player.index];
-    if (current && current.title) {
-        videoTitle.textContent = current.title;
-    } else {
-        videoTitle.textContent = "";
-    }
-}
-
 async function applySorting() {
 
     if (!playlistSelect.value) return;
@@ -172,10 +163,8 @@ async function addVideoReactive(playlist, video) {
 }
 
 function renderPlaylistsUI() {
-
     playlistCheckboxes.innerHTML = "";
     for (const name of Object.keys(state.playlists)) {
-
         const label = document.createElement("label");
         label.style.display = "block";
 
@@ -189,6 +178,7 @@ function renderPlaylistsUI() {
         playlistCheckboxes.appendChild(label);
     }
 
+    // Сброс и добавление базового пункта
     playlistSelect.innerHTML = '<option value="">Choose playlist</option>';
 
     for (const name of Object.keys(state.playlists)) {
@@ -197,6 +187,12 @@ function renderPlaylistsUI() {
         option.textContent = name;
         playlistSelect.appendChild(option);
     }
+
+    // Добавляем опцию создания плейлиста **после всех существующих**
+    const newOption = document.createElement("option");
+    newOption.value = "__new__";
+    newOption.textContent = "+ Create new playlist";
+    playlistSelect.appendChild(newOption);
 }
 
 async function init() {
@@ -210,9 +206,40 @@ async function init() {
 
     playlistSelect.addEventListener("change", async () => {
         const selected = playlistSelect.value;
+
+        if (selected === "__new__") {
+            const name = prompt("Enter new playlist name:");
+            if (!name) {
+                playlistSelect.value = ""; // сброс выбора
+                return;
+            }
+
+            // Создаем плейлист на сервере
+            await api.createPlaylist({ name });
+
+            // Добавляем в локальный state
+            state.playlists[name] = {
+                title: name,
+                videos: {}
+            };
+
+            // Сохраняем текущий выбор, чтобы не менять
+            const prevSelection = playlistSelect.dataset.prevSelection || "";
+
+            // Перерисовываем UI
+            renderPlaylistsUI();
+
+            // Восстанавливаем предыдущий выбор
+            playlistSelect.value = prevSelection;
+
+            return;
+        }
+
         if (!selected) return;
 
-        // подгружаем свежие данные
+        // Сохраняем текущий выбор для восстановления при новом плейлисте
+        playlistSelect.dataset.prevSelection = selected;
+
         await reloadPlaylists();
 
         const playlistObj = state.playlists[selected];
@@ -240,26 +267,7 @@ async function init() {
 
         player.setPlaylist(orderedPlaylist, selected);
         player.play(0);
-
         started = true;
-    });
-
-
-    createPlaylistBtn.addEventListener("click", async () => {
-
-        const name = newPlaylistInput.value.trim();
-        if (!name) return;
-
-        await api.createPlaylist({ name });
-
-        state.playlists[name] = {
-            title: name,
-            videos: {}
-        };
-
-        renderPlaylistsUI();
-
-        newPlaylistInput.value = "";
     });
 
     // сохранить изменения
