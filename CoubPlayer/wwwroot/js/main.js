@@ -25,11 +25,7 @@ const sortDirectionBtn = document.getElementById("sortDirectionBtn");
 
 const seedInput = document.getElementById("seedInput");
 
-const videoSlider = document.getElementById("videoSlider");
-
-const videoIndexLabel = document.getElementById("videoIndexLabel");
 const videoTitleLabel = document.getElementById("videoTitleLabel");
-const videoIdLabel = document.getElementById("videoIdLabel");
 const copyLinkBtn = document.getElementById("copyLinkBtn");
 
 let sortType = "order";  // order или lastViewed
@@ -195,8 +191,9 @@ function renderPlaylistsUI() {
 
     for (const name of Object.keys(state.playlists)) {
         const option = document.createElement("option");
+        const videoCount = Object.keys(state.playlists[name].videos || {}).length;
         option.value = name;
-        option.textContent = name;
+        option.textContent = `${name}  (${videoCount})`;
         playlistSelect.appendChild(option);
     }
 
@@ -345,6 +342,7 @@ async function init() {
             !e.target.closest("#createPlaylistBtn")) {
 
             player.togglePause(bgVideo, audio);
+
         }
     });
 
@@ -380,12 +378,8 @@ async function init() {
         const currentVideo = player.playlist[player.index];
         if (!currentVideo) return;
 
-        // 2. Обновление инфо-блока
-        videoIndexLabel.textContent = player.index + 1;
-        videoTitleLabel.textContent = currentVideo.title || "-";
-        videoIdLabel.textContent = currentVideo.id || "-";
+        videoTitleLabel.textContent = player.index + 1 + ". " + currentVideo.title || "-";
 
-        // 3. Обновление чекбоксов
         const checkboxes = playlistCheckboxes.querySelectorAll("input[type=checkbox]");
         checkboxes.forEach(ch => {
             ch.checked = !!state.playlists[ch.value].videos[currentVideo.id];
@@ -408,6 +402,14 @@ async function init() {
             console.error("Clipboard error:", e);
         }
     });
+
+    players.forEach((video, i) => {
+        video.addEventListener("play", () => console.log(`VIDEO ${i} play`));
+        video.addEventListener("pause", () => console.log(`VIDEO ${i} pause`));
+    });
+
+    bgVideo.addEventListener("play", () => console.log("BG play"));
+    bgVideo.addEventListener("pause", () => console.log("BG pause"));
 }
 
 init();

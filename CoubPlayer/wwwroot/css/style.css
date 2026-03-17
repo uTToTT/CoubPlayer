@@ -1,207 +1,183 @@
+/* ---------- Общие стили ---------- */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: "Inter", "Roboto", sans-serif;
+}
+
+body {
+  background: #111;
+  color: #fff;
+  overflow: hidden;
+}
+
+/* ---------- Фон видео ---------- */
 #bgVideo {
   position: fixed;
   top: 50%;
   left: 50%;
   min-width: 100%;
   min-height: 100%;
-  width: auto;
-  height: auto;
   transform: translate(-50%, -50%);
   object-fit: cover;
+  filter: blur(15px) brightness(0.4);
   z-index: 0;
-  filter: blur(20px) brightness(0.5);
 }
 
-video#playerA,
-video#playerB {
-  position: relative;
-  z-index: 1;
-}
-
-body {
-  background: #000;
-  margin: 0;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100vh;
-  overflow: hidden;
-  font-family: sans-serif;
-}
-
-video {
-  position: absolute;
-  width: 80%;
-  max-height: 80%;
-}
-
-#playerB {
-  display: none;
-}
-
-.button {
+/* ---------- Видео игроки ---------- */
+.video-wrapper {
   position: absolute;
   top: 50%;
-  transform: translateY(-50%);
-  font-size: 40px;
-  color: rgba(255, 255, 255, 0.5);
-  background: rgba(150, 40, 40, 0);
-  border: none;
-  padding: 25px 25px;
-  cursor: pointer;
-  user-select: none;
-  transition: color 0.5s ease;
-}
-
-.button:hover {
-  background: rgba(0, 0, 0, 0);
-  color: white;
-}
-
-.fullscreen-btn {
-  position: absolute;
-  top: 10px;
-  right: 15px;
-  font-size: 50px;
-  color: rgba(255, 255, 255, 0.5);
-  background: rgba(0, 0, 0, 0);
-  border: none;
-  border-radius: 5px;
-  padding: 5px 10px;
-  cursor: pointer;
+  left: 50%;
+  width: 85%;
+  height: 85%;
+  transform: translate(-50%, -50%);
+  overflow: hidden;
+  filter: drop-shadow(0 8px 25px rgba(0, 0, 0, 0.6));
   z-index: 2;
-  width: auto;
-  height: auto;
-  user-select: none;
-  transition: color 0.5s ease;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.fullscreen-btn:hover {
+.video-wrapper video {
+  height: 100%; /* всегда заполняет высоту контейнера */
+  width: auto; /* ширина считается автоматически */
+
+  border-radius: 24px;
+  object-fit: contain; /* гарантирует, что не обрежется */
+  display: block;
+}
+
+/* ---------- Кнопки управления (вертикальные полосы) ---------- */
+#prev,
+#next {
+  position: fixed;
+  top: 0;
+  width: 120px;
+  height: 100%;
   background: rgba(0, 0, 0, 0);
-  color: white;
+  border: none;
+  cursor: pointer;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  color: #fff;
+  transition: 0.2s ease;
+}
+
+#prev:hover,
+#next:hover {
+  background: rgba(255, 90, 95, 0.4);
 }
 
 #prev {
-  left: 0%;
-  height: 100%;
-  width: 150px;
+  left: 0;
 }
 
 #next {
-  right: 0%;
-  height: 100%;
-  width: 150px;
+  right: 0;
 }
 
-#goToVideoBtn {
-  position: absolute;
-  top: 50px;
-  left: 500px;
-  z-index: 10;
-}
-
-#videoTitle {
-  position: absolute;
-  bottom: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  color: white;
-  font-size: 18px;
-  text-align: center;
-  z-index: 10;
-  text-shadow: 1px 1px 3px black;
-}
-
-#playlistSelect {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  z-index: 10;
-}
-
-#restart {
-  top: 95%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 2;
-}
-
-#playlistCheckboxesContainer {
-  display: none;
-  margin-top: 5px;
-  background: rgba(0, 0, 0, 0.7);
-  color: rgba(255, 255, 255, 0.7);
-  padding: 10px;
-  border-radius: 5px;
-}
-
-#playlistCheckboxes {
-  margin-top: 5px;
-}
-
-#cancelPlaylistsBtn {
-  margin-top: 5px;
-}
-
-.video-info {
-  position: absolute;
-  bottom: 40px;
-  left: 10px;
-  z-index: 10;
-  color: white;
-  font-size: 14px;
-  text-shadow: 1px 1px 3px black;
-  background: rgba(0, 0, 0, 0.4);
-  padding: 8px 12px;
+/* ---------- Кнопка на весь экран ---------- */
+#fullscreen {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  width: 60px;
+  height: 60px;
   border-radius: 8px;
-}
-
-.video-info button {
-  margin-top: 5px;
-  cursor: pointer;
-}
-
-.sort-bar {
-  position: absolute;
-  top: 10px;
-  left: 200px;
-  z-index: 10;
-
+  background: rgba(0, 0, 0, 0.55);
+  color: rgb(255, 255, 255);
   display: flex;
   align-items: center;
-  gap: 8px;
-
-  background: rgba(0, 0, 0, 0.5);
-  padding: 6px 10px;
-  border-radius: 12px;
-  backdrop-filter: blur(6px);
+  justify-content: center;
+  font-size: 36px;
+  cursor: pointer;
+  z-index: 10;
 }
 
-.sort-group {
+#fullscreen:hover {
+  background: rgba(255, 90, 95, 0.7);
+}
+
+/* ---------- Индекс видео ---------- */
+#videoIndexWrapper {
+  position: absolute;
+  bottom: 12px;
+  right: 80px;
   display: flex;
-  gap: 4px;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  font-size: 14px;
+  color: #fff;
+  z-index: 10;
+}
+
+#videoIndexInput {
+  width: 50px;
+  border-radius: 6px;
+  border: none;
+  padding: 3px 6px;
+  text-align: center;
+}
+
+/* ---------- Плейлист ---------- */
+#playlistSelect {
+  position: absolute;
+  top: 12px;
+  left: 10px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: none;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 14px;
+  z-index: 10;
+}
+
+/* ---------- Сортировка ---------- */
+.sort-bar {
+  position: absolute;
+  top: 12px;
+  left: 200px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  z-index: 10;
 }
 
 .sort-group button {
-  background: transparent;
   border: none;
-  color: #aaa;
-  padding: 4px 8px;
+  border-radius: 6px;
+  padding: 5px 10px;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
   cursor: pointer;
-  border-radius: 8px;
+  transition: 0.2s;
 }
 
-.sort-group button.active {
-  background: rgba(255, 255, 255, 0.2);
-  color: white;
+.sort-group button.active,
+.sort-group button:hover {
+  background: #ff5a5f;
+  color: #fff;
 }
 
 #sortDirectionBtn {
-  background: transparent;
-  border: none;
-  color: white;
+  border-radius: 6px;
+  padding: 5px 10px;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
   cursor: pointer;
-  font-size: 16px;
+  transition: 0.2s;
 }
 
 #seedInput {
@@ -209,57 +185,98 @@ video {
   border-radius: 6px;
   border: none;
   padding: 3px 6px;
-}
-
-.hidden {
   display: none;
 }
-#videoIndexWrapper {
-  position: absolute;
+
+/* ---------- Редактор плейлистов ---------- */
+#editPlaylistsBtn {
+  position: fixed;
   bottom: 12px;
-  right: 12px;
-
-  display: flex;
-  align-items: center;
-  gap: 6px;
-
-  padding: 4px 8px;
+  left: 50%;
+  transform: translateX(80px); /* смещаем вправо от рестарта */
+  background: rgba(0, 0, 0, 0.55);
+  padding: 6px 12px;
   border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  color: #fff;
+  font-size: 18px;
+  z-index: 10;
+  transition: 0.2s ease;
+}
 
+#editPlaylistsBtn:hover {
+  background: rgba(255, 90, 95, 0.7);
+}
+
+#playlistCheckboxesContainer {
+  display: none;
+  margin-top: 6px;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 8px;
+  border-radius: 8px;
+}
+
+#playlistCheckboxes input {
+  margin-right: 6px;
+}
+
+#savePlaylistsBtn {
+  margin-top: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #ff5a5f;
+  border: none;
+  cursor: pointer;
+  color: #fff;
+}
+
+/* ---------- Информация о видео (слева снизу) ---------- */
+.video-info {
+  position: fixed;
+  bottom: 12px;
+  left: 12px;
   background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(6px);
-
+  padding: 10px;
+  border-radius: 10px;
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.85);
-
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   z-index: 10;
 }
 
-#videoIndexInput {
-  width: 42px;
-
-  background: transparent;
+.video-info button {
+  margin-top: 4px;
   border: none;
-  outline: none;
-
-  color: white;
-  text-align: center;
-
-  font-size: 13px;
+  border-radius: 6px;
+  padding: 4px 8px;
+  background: #ff5a5f;
+  color: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  transition: 0.2s;
 }
 
-/* убираем стрелки (делает UI чище) */
-#videoIndexInput::-webkit-inner-spin-button,
-#videoIndexInput::-webkit-outer-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
+.video-info button:hover {
+  background: #ff787b;
 }
 
-/* Firefox */
-#videoIndexInput[type="number"] {
-  -moz-appearance: textfield;
+/* ---------- Остальные кнопки остаются как есть ---------- */
+#restart {
+  position: fixed;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 8px;
+  padding: 6px 12px;
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+  z-index: 10;
 }
 
-#videoTotal {
-  opacity: 0.6;
+#restart:hover {
+  background: rgba(255, 90, 95, 0.7);
 }

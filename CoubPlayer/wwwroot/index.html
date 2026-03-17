@@ -9,8 +9,12 @@
 
   <body>
     <video id="bgVideo" autoplay muted loop></video>
-    <video id="playerA" muted loop></video>
-    <video id="playerB" muted loop></video>
+    <div class="video-wrapper">
+      <video id="playerA" autoplay muted></video>
+    </div>
+    <div class="video-wrapper">
+      <video id="playerB" autoplay muted></video>
+    </div>
 
     <audio id="audio"></audio>
 
@@ -40,8 +44,13 @@
     </div>
 
     <div style="position: absolute; top: 100px; left: 10px; z-index: 10">
-      <button id="editPlaylistsBtn" type="button">
-        Добавить / Удалить из плейлиста
+      <button
+        id="editPlaylistsBtn"
+        type="button"
+        title="Редактировать плейлисты"
+        type="button"
+      >
+        ✎
       </button>
       <div id="playlistCheckboxesContainer">
         <div id="playlistCheckboxes"></div>
@@ -50,10 +59,8 @@
     </div>
 
     <div id="videoInfo" class="video-info">
-      <div>Index: <span id="videoIndexLabel">-</span></div>
-      <div>Title: <span id="videoTitleLabel">-</span></div>
-      <div>ID: <span id="videoIdLabel">-</span></div>
-      <button id="copyLinkBtn">Copy link</button>
+      <div><span id="videoTitleLabel">-</span></div>
+      <button id="copyLinkBtn" type="button">Copy link</button>
     </div>
 
     <script type="module" src="js/main.js"></script>

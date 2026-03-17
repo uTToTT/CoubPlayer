@@ -15,6 +15,8 @@ export class Player {
 
         this.currentPlaylistName = null;
         this.onVideoChange = onVideoChange;
+
+
     }
 
     seededRandom(seed) {
@@ -80,33 +82,30 @@ export class Player {
         const newItem = this.playlist[newIndex];
         const player = this.players[this.next];
 
+        // 1. стоп старого
+        const current = this.players[this.active];
+        current.pause();
+
+        // 2. подготовка нового
         player.src = newItem.video;
         this.audio.src = newItem.audio;
-
-        this.players[this.active].pause();
-        this.players[this.active].style.display = "none";
+        this.bgVideo.src = newItem.video;
 
         player.style.display = "block";
+        current.style.display = "none";
 
-        player.play();
-        this.audio.play().catch(() => { });
-        this.bgVideo.src = newItem.video;
-        this.bgVideo.play().catch(() => { });
+        try {
+            await player.play();
+            await this.bgVideo.play();
+            await this.audio.play();
+        } catch (err) {
+            console.warn("Playback error:", err);
+        }
 
         [this.active, this.next] = [this.next, this.active];
         this.index = newIndex;
 
         if (this.onVideoChange) this.onVideoChange(newItem);
-
-        // console.log("Marking viewed:", this.currentPlaylistName, newItem.id);
-        if (this.currentPlaylistName && newItem.id) {
-            try {
-                await markVideoViewed(this.currentPlaylistName, newItem.id);
-                newItem.lastViewed = new Date().toISOString();
-            } catch (err) {
-                console.warn("Не удалось обновить время просмотра:", err);
-            }
-        }
     }
 
     togglePause(bgVideo, audio) {
@@ -120,6 +119,7 @@ export class Player {
             bgVideo.pause();
             audio.pause();
         }
+        console.log("TOGGLE TRIGGERED");
     }
 
     goToIndex(userIndex) {
