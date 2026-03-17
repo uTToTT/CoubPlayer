@@ -15,8 +15,6 @@ export class Player {
 
         this.currentPlaylistName = null;
         this.onVideoChange = onVideoChange;
-
-
     }
 
     seededRandom(seed) {
@@ -50,9 +48,13 @@ export class Player {
         this.bgVideo.src = item.video;
 
         try {
+            player.muted = true;
+            this.bgVideo.muted = true;
+
             await player.play();
-            await this.audio.play().catch(() => { });
-            await this.bgVideo.play().catch(() => { });
+
+            this.audio.play().catch(() => { });
+            this.bgVideo.play().catch(() => { });
         } catch { }
 
         if (this.onVideoChange) this.onVideoChange(item);
@@ -95,9 +97,13 @@ export class Player {
         current.style.display = "none";
 
         try {
+            player.muted = true;
+            this.bgVideo.muted = true;
+
             await player.play();
-            await this.bgVideo.play();
-            await this.audio.play();
+
+            this.audio.play().catch(() => { });
+            this.bgVideo.play().catch(() => { });
         } catch (err) {
             console.warn("Playback error:", err);
         }
@@ -110,7 +116,11 @@ export class Player {
 
     togglePause(bgVideo, audio) {
         const video = this.players[this.active];
+        console.log("TOGGLE TRIGGERED");
+
         if (video.paused) {
+            video.muted = true;
+            this.bgVideo.muted = true;
             video.play();
             bgVideo.play();
             audio.play().catch(() => { });
@@ -119,7 +129,6 @@ export class Player {
             bgVideo.pause();
             audio.pause();
         }
-        console.log("TOGGLE TRIGGERED");
     }
 
     goToIndex(userIndex) {
