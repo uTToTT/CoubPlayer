@@ -19,18 +19,13 @@ const playlistCheckboxes = document.getElementById("playlistCheckboxes");
 const editPlaylistsBtn = document.getElementById("editPlaylistsBtn");
 const playlistContainer = document.getElementById("playlistCheckboxesContainer");
 const savePlaylistsBtn = document.getElementById("savePlaylistsBtn");
-const cancelPlaylistsBtn = document.getElementById("cancelPlaylistsBtn");
 
-const sortAscBtn = document.getElementById("sortAscBtn");
-const sortDescBtn = document.getElementById("sortDescBtn");
-const sortTypeSelect = document.getElementById("sortTypeSelect");
+const sortTypeGroup = document.getElementById("sortTypeGroup");
+const sortDirectionBtn = document.getElementById("sortDirectionBtn");
 
 const seedInput = document.getElementById("seedInput");
 
-const videoTitle = document.getElementById("videoTitle");
-
-const videoIndexInput = document.getElementById("videoIndexInput");
-const goToVideoBtn = document.getElementById("goToVideoBtn");
+const videoSlider = document.getElementById("videoSlider");
 
 const videoIndexLabel = document.getElementById("videoIndexLabel");
 const videoTitleLabel = document.getElementById("videoTitleLabel");
@@ -353,38 +348,37 @@ async function init() {
         }
     });
 
-    sortTypeSelect.addEventListener("change", (e) => {
-        sortType = e.target.value;
+    sortTypeGroup.addEventListener("click", (e) => {
+        const btn = e.target.closest("button");
+        if (!btn) return;
+
+        // UI
+        [...sortTypeGroup.children].forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+
+        sortType = btn.dataset.type;
+
+        // UX: seed только для random
+        seedInput.classList.toggle("hidden", sortType !== "random");
+
         applySorting();
     });
 
-    sortAscBtn.addEventListener("click", () => {
-        sortDirection = "asc";
+    sortDirectionBtn.addEventListener("click", () => {
+        sortDirection = sortDirection === "asc" ? "desc" : "asc";
+
+        sortDirectionBtn.textContent = sortDirection === "asc" ? "↑" : "↓";
+
         applySorting();
     });
 
-    sortDescBtn.addEventListener("click", () => {
-        sortDirection = "desc";
-        applySorting();
-    });
-
-    goToVideoBtn.addEventListener("click", () => {
-        const value = videoIndexInput.value;
-        player.goToIndex(value);
-    });
-
-    videoIndexInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-            player.goToIndex(videoIndexInput.value);
-        }
+    videoIndexInput.addEventListener("input", () => {
+        player.goToIndex(videoIndexInput.value);
     });
 
     player.onVideoChange = () => {
         const currentVideo = player.playlist[player.index];
         if (!currentVideo) return;
-
-        // 1. Обновление title сверху
-        videoTitle.textContent = currentVideo.title || "";
 
         // 2. Обновление инфо-блока
         videoIndexLabel.textContent = player.index + 1;

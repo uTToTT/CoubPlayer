@@ -18,26 +18,25 @@
     <button id="next" class="button">▶</button>
     <button id="restart" class="button">↺</button>
     <button id="fullscreen" class="fullscreen-btn" type="button">⛶</button>
-    <div id="videoTitle"></div>
-    <input id="seedInput" type="number" placeholder="Seed" />
-    <input id="videoIndexInput" type="number" placeholder="Video #" />
-    <button id="goToVideoBtn">Go</button>
+    <div id="videoIndexWrapper">
+      <input id="videoIndexInput" type="number" min="1" />
+      <span id="videoTotal"></span>
+    </div>
 
     <select id="playlistSelect">
       <option value="__new__">+ Create new playlist</option>
     </select>
 
-    <div style="position: absolute; top: 10px; left: 200px; z-index: 10">
-      <label>
-        Сортировка:
-        <select id="sortTypeSelect">
-          <option value="order">По порядку</option>
-          <option value="lastViewed">По дате просмотра</option>
-          <option value="random">Случайный</option>
-        </select>
-      </label>
-      <button id="sortAscBtn">↑</button>
-      <button id="sortDescBtn">↓</button>
+    <div class="sort-bar">
+      <div class="sort-group" id="sortTypeGroup">
+        <button data-type="order" class="active">Order</button>
+        <button data-type="lastViewed">Last viewed</button>
+        <button data-type="random">Random</button>
+      </div>
+
+      <button id="sortDirectionBtn" title="Toggle direction">↑</button>
+
+      <input id="seedInput" type="number" placeholder="Seed" class="hidden" />
     </div>
 
     <div style="position: absolute; top: 100px; left: 10px; z-index: 10">

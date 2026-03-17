@@ -93,20 +93,6 @@ video {
   width: 150px;
 }
 
-#seedInput {
-  position: absolute;
-  top: 10px;
-  left: 500px;
-  z-index: 10;
-}
-
-#videoIndexInput {
-  position: absolute;
-  top: 50px;
-  left: 550px;
-  z-index: 10;
-}
-
 #goToVideoBtn {
   position: absolute;
   top: 50px;
@@ -173,4 +159,107 @@ video {
 .video-info button {
   margin-top: 5px;
   cursor: pointer;
+}
+
+.sort-bar {
+  position: absolute;
+  top: 10px;
+  left: 200px;
+  z-index: 10;
+
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  background: rgba(0, 0, 0, 0.5);
+  padding: 6px 10px;
+  border-radius: 12px;
+  backdrop-filter: blur(6px);
+}
+
+.sort-group {
+  display: flex;
+  gap: 4px;
+}
+
+.sort-group button {
+  background: transparent;
+  border: none;
+  color: #aaa;
+  padding: 4px 8px;
+  cursor: pointer;
+  border-radius: 8px;
+}
+
+.sort-group button.active {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+#sortDirectionBtn {
+  background: transparent;
+  border: none;
+  color: white;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+#seedInput {
+  width: 70px;
+  border-radius: 6px;
+  border: none;
+  padding: 3px 6px;
+}
+
+.hidden {
+  display: none;
+}
+#videoIndexWrapper {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+
+  display: flex;
+  align-items: center;
+  gap: 6px;
+
+  padding: 4px 8px;
+  border-radius: 8px;
+
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+
+  z-index: 10;
+}
+
+#videoIndexInput {
+  width: 42px;
+
+  background: transparent;
+  border: none;
+  outline: none;
+
+  color: white;
+  text-align: center;
+
+  font-size: 13px;
+}
+
+/* убираем стрелки (делает UI чище) */
+#videoIndexInput::-webkit-inner-spin-button,
+#videoIndexInput::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Firefox */
+#videoIndexInput[type="number"] {
+  -moz-appearance: textfield;
+}
+
+#videoTotal {
+  opacity: 0.6;
 }
