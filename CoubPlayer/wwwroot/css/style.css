@@ -156,3 +156,21 @@ video {
 #cancelPlaylistsBtn {
   margin-top: 5px;
 }
+
+.video-info {
+  position: absolute;
+  bottom: 40px;
+  left: 10px;
+  z-index: 10;
+  color: white;
+  font-size: 14px;
+  text-shadow: 1px 1px 3px black;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 8px 12px;
+  border-radius: 8px;
+}
+
+.video-info button {
+  margin-top: 5px;
+  cursor: pointer;
+}

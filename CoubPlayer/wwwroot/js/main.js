@@ -32,6 +32,11 @@ const videoTitle = document.getElementById("videoTitle");
 const videoIndexInput = document.getElementById("videoIndexInput");
 const goToVideoBtn = document.getElementById("goToVideoBtn");
 
+const videoIndexLabel = document.getElementById("videoIndexLabel");
+const videoTitleLabel = document.getElementById("videoTitleLabel");
+const videoIdLabel = document.getElementById("videoIdLabel");
+const copyLinkBtn = document.getElementById("copyLinkBtn");
+
 let sortType = "order";  // order или lastViewed
 let sortDirection = "asc"; // asc или desc
 
@@ -327,13 +332,6 @@ async function init() {
         }
     });
 
-    // если переключаем видео — автоматически закрываем и сбрасываем окно
-    player.onVideoChange = () => {
-        if (playlistContainer.style.display === "block") {
-            saveCurrentVideoPlaylists(); // сохраняем изменения предыдущего видео
-        }
-    };
-
     window.addEventListener("beforeunload", () => {
         console.log("PAGE RELOAD");
     });
@@ -385,12 +383,37 @@ async function init() {
         const currentVideo = player.playlist[player.index];
         if (!currentVideo) return;
 
-        // Обновляем чекбоксы без закрытия
+        // 1. Обновление title сверху
+        videoTitle.textContent = currentVideo.title || "";
+
+        // 2. Обновление инфо-блока
+        videoIndexLabel.textContent = player.index + 1;
+        videoTitleLabel.textContent = currentVideo.title || "-";
+        videoIdLabel.textContent = currentVideo.id || "-";
+
+        // 3. Обновление чекбоксов
         const checkboxes = playlistCheckboxes.querySelectorAll("input[type=checkbox]");
         checkboxes.forEach(ch => {
             ch.checked = !!state.playlists[ch.value].videos[currentVideo.id];
         });
     };
+
+    copyLinkBtn.addEventListener("click", async () => {
+        const currentVideo = player.playlist[player.index];
+        if (!currentVideo) return;
+
+        const url = `https://coub.com/view/${currentVideo.id}`;
+
+        try {
+            await navigator.clipboard.writeText(url);
+            copyLinkBtn.textContent = "Copied!";
+            setTimeout(() => {
+                copyLinkBtn.textContent = "Copy link";
+            }, 1000);
+        } catch (e) {
+            console.error("Clipboard error:", e);
+        }
+    });
 }
 
 init();

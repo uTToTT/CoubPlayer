@@ -24,7 +24,6 @@
     <button id="goToVideoBtn">Go</button>
 
     <select id="playlistSelect">
-      <!-- <option value="">Choose playlist</option> -->
       <option value="__new__">+ Create new playlist</option>
     </select>
 
@@ -49,6 +48,13 @@
         <div id="playlistCheckboxes"></div>
         <button id="savePlaylistsBtn" type="button">Сохранить</button>
       </div>
+    </div>
+
+    <div id="videoInfo" class="video-info">
+      <div>Index: <span id="videoIndexLabel">-</span></div>
+      <div>Title: <span id="videoTitleLabel">-</span></div>
+      <div>ID: <span id="videoIdLabel">-</span></div>
+      <button id="copyLinkBtn">Copy link</button>
     </div>
 
     <script type="module" src="js/main.js"></script>
