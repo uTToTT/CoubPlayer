@@ -13,7 +13,12 @@ const players = [
 const audio = document.getElementById("audio");
 const bgVideo = document.getElementById("bgVideo");
 
-const playlistSelect = document.getElementById("playlistSelect");
+const playlistDropdown = document.getElementById("playlistDropdown");
+const playlistMenu = document.getElementById("playlistMenu");
+const playlistTrigger = playlistDropdown.querySelector(".select-trigger");
+const slider = document.getElementById("volumeSlider");
+const editFrame = document.querySelector(".edit-playlist-frame");
+
 const playlistCheckboxes = document.getElementById("playlistCheckboxes");
 
 const editPlaylistsBtn = document.getElementById("editPlaylistsBtn");
@@ -27,6 +32,8 @@ const seedInput = document.getElementById("seedInput");
 
 const videoTitleLabel = document.getElementById("videoTitleLabel");
 const copyLinkBtn = document.getElementById("copyLinkBtn");
+
+const volumeSlider = document.getElementById("volumeSlider");
 
 let sortType = "order";  // order или lastViewed
 let sortDirection = "asc"; // asc или desc
@@ -45,44 +52,42 @@ const state = {
 };
 
 let started = false;
-
+let selectedPlaylist = null;
 let currentPlaylistObj = null;
+
+function setVolume(value) {
+    const vol = value / 100; // переводим 0-100 в 0-1
+    audio.volume = vol;
+    bgVideo.volume = vol;
+    players.forEach(p => p.volume = vol);
+}
+
+function updateSlider() {
+    const value = slider.value;
+    slider.style.setProperty("--value", value + "%");
+}
+
 
 async function applySorting() {
 
-    if (!playlistSelect.value) return;
+    if (!selectedPlaylist) return;
 
     await reloadPlaylists();
 
-    const playlistName = playlistSelect.value;
-    currentPlaylistObj = state.playlists[playlistName];
-
+    currentPlaylistObj = state.playlists[selectedPlaylist];
     if (!currentPlaylistObj) return;
 
     let ordered = [];
 
-    console.log("Sort:", sortType, sortDirection);
-
     if (sortType === "order") {
-        ordered = player.buildOrderedPlaylistByOrder(
-            currentPlaylistObj,
-            sortDirection
-        );
+        ordered = player.buildOrderedPlaylistByOrder(currentPlaylistObj, sortDirection);
     }
     else if (sortType === "lastViewed") {
-        ordered = player.buildOrderedPlaylistByDate(
-            currentPlaylistObj,
-            sortDirection
-        );
+        ordered = player.buildOrderedPlaylistByDate(currentPlaylistObj, sortDirection);
     }
     else if (sortType === "random") {
-
         const seed = parseInt(seedInput.value) || 1;
-
-        ordered = player.buildRandomPlaylist(
-            currentPlaylistObj,
-            seed
-        );
+        ordered = player.buildRandomPlaylist(currentPlaylistObj, seed);
     }
 
     ordered = ordered.map(item => {
@@ -96,7 +101,7 @@ async function applySorting() {
         };
     });
 
-    player.setPlaylist(ordered, playlistName);
+    player.setPlaylist(ordered, selectedPlaylist);
     player.play(0);
 }
 
@@ -110,6 +115,8 @@ async function openPlaylistEditor() {
     const currentVideo = player.playlist[player.index];
     if (!currentVideo) return alert("Нет текущего видео!");
 
+    editFrame.classList.toggle("show");
+
     playlistCheckboxes.innerHTML = "";
 
     for (const name of Object.keys(state.playlists)) {
@@ -121,6 +128,12 @@ async function openPlaylistEditor() {
         checkbox.value = name;
 
         checkbox.checked = !!state.playlists[name].videos[currentVideo.id];
+
+        if (name === "bookmarks" || name === "liked") {
+            checkbox.disabled = true;
+            label.style.color = "#3700ff"; // оранжевый цвет для выделения
+            label.style.fontWeight = "bold"; // жирный шрифт
+        }
 
         label.appendChild(checkbox);
         label.appendChild(document.createTextNode(" " + name));
@@ -172,35 +185,97 @@ async function addVideoReactive(playlist, video) {
 }
 
 function renderPlaylistsUI() {
-    playlistCheckboxes.innerHTML = "";
+    // чекбоксы оставляем как есть
+    // playlistCheckboxes.innerHTML = "";
+    // for (const name of Object.keys(state.playlists)) {
+    //     const label = document.createElement("label");
+    //     label.style.display = "block";
+
+    //     const checkbox = document.createElement("input");
+    //     checkbox.type = "checkbox";
+    //     // checkbox.value = name;
+
+    //     label.appendChild(checkbox);
+    //     label.appendChild(document.createTextNode(" " + name));
+
+    //     playlistCheckboxes.appendChild(label);
+    // }
+
+    // ▼ НОВОЕ: dropdown
+    playlistMenu.innerHTML = "";
+
     for (const name of Object.keys(state.playlists)) {
-        const label = document.createElement("label");
-        label.style.display = "block";
+        const el = document.createElement("div");
+        el.className = "select-option";
 
-        const checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.value = name;
-
-        label.appendChild(checkbox);
-        label.appendChild(document.createTextNode(" " + name));
-
-        playlistCheckboxes.appendChild(label);
-    }
-
-    playlistSelect.innerHTML = "";
-
-    for (const name of Object.keys(state.playlists)) {
-        const option = document.createElement("option");
         const videoCount = Object.keys(state.playlists[name].videos || {}).length;
-        option.value = name;
-        option.textContent = `${name}  (${videoCount})`;
-        playlistSelect.appendChild(option);
+        el.textContent = `${name} (${videoCount})`;
+
+        el.onclick = () => selectPlaylist(name);
+
+        playlistMenu.appendChild(el);
     }
 
-    const newOption = document.createElement("option");
-    newOption.value = "__new__";
-    newOption.textContent = "+ Create new playlist";
-    playlistSelect.appendChild(newOption);
+    // "+ создать"
+    const newEl = document.createElement("div");
+    newEl.className = "select-option";
+    newEl.textContent = "+ Create new playlist";
+
+    newEl.onclick = async () => {
+        const name = prompt("Enter new playlist name:");
+        if (!name) return;
+
+        await api.createPlaylist({ name });
+
+        state.playlists[name] = {
+            title: name,
+            videos: {}
+        };
+
+        renderPlaylistsUI();
+    };
+
+    playlistMenu.appendChild(newEl);
+}
+
+async function selectPlaylist(name) {
+    selectedPlaylist = name;
+    playlistTrigger.textContent = name;
+
+    playlistMenu.classList.add("hidden");
+
+    await reloadPlaylists();
+
+    const playlistObj = state.playlists[name];
+    if (!playlistObj || !playlistObj.videos) {
+        alert("Playlist empty!");
+        return;
+    }
+
+    currentPlaylistObj = playlistObj;
+
+    const orderedPlaylist = player.buildOrderedPlaylistByOrder(playlistObj).map(item => {
+        const coubData = state.coubMap[item.id] || {};
+        return {
+            id: item.id,
+            title: item.title,
+            video: coubData.video || "",
+            audio: coubData.audio || ""
+        };
+    });
+
+    if (!orderedPlaylist.length) {
+        alert("Playlist empty!");
+        return;
+    }
+
+    // document.querySelectorAll(".select-option")
+    //     .forEach(el => el.classList.remove("active"));
+
+    // clickedElement.classList.add("active");
+
+    player.setPlaylist(orderedPlaylist, name);
+    player.play(0);
 }
 
 async function init() {
@@ -209,6 +284,7 @@ async function init() {
     state.playlists = data.playlists;
     state.coubMap = data.coubMap;
 
+    setVolume(volumeSlider.value);
     renderPlaylistsUI();
     initControls(player, bgVideo, audio);
 
@@ -223,105 +299,43 @@ async function init() {
     }
 
     if (defaultPlaylist) {
-        playlistSelect.value = defaultPlaylist;
-        playlistSelect.dataset.prevSelection = defaultPlaylist;
-
-        currentPlaylistObj = state.playlists[defaultPlaylist];
-        const orderedPlaylist = player.buildOrderedPlaylistByOrder(currentPlaylistObj).map(item => {
-            const coubData = state.coubMap[item.id] || {};
-            return {
-                id: item.id,
-                title: item.title,
-                video: coubData.video || "",
-                audio: coubData.audio || ""
-            };
-        });
-
-        if (orderedPlaylist.length) {
-            player.setPlaylist(orderedPlaylist, defaultPlaylist);
-            player.play(0);
-            player.pauseCurrent();
-            started = true;
-        }
+        await selectPlaylist(defaultPlaylist);
     }
 
-    playlistSelect.addEventListener("change", async () => {
-        const selected = playlistSelect.value;
 
-        if (selected === "__new__") {
-            const name = prompt("Enter new playlist name:");
-            if (!name) {
-                playlistSelect.value = playlistSelect.dataset.prevSelection || "";
-                return;
-            }
+    currentPlaylistObj = state.playlists[defaultPlaylist];
+    const orderedPlaylist = player.buildOrderedPlaylistByOrder(currentPlaylistObj).map(item => {
+        const coubData = state.coubMap[item.id] || {};
+        return {
+            id: item.id,
+            title: item.title,
+            video: coubData.video || "",
+            audio: coubData.audio || ""
+        };
+    });
 
-            await api.createPlaylist({ name });
-
-            state.playlists[name] = {
-                title: name,
-                videos: {}
-            };
-
-            const prevSelection = playlistSelect.dataset.prevSelection || "";
-
-            renderPlaylistsUI();
-
-            playlistSelect.value = prevSelection;
-
-            return;
-        }
-
-        if (!selected) return;
-
-        playlistSelect.dataset.prevSelection = selected;
-
-        await reloadPlaylists();
-
-        const playlistObj = state.playlists[selected];
-        if (!playlistObj || !playlistObj.videos) {
-            alert("Playlist empty!");
-            return;
-        }
-
-        currentPlaylistObj = playlistObj;
-
-        const orderedPlaylist = player.buildOrderedPlaylistByOrder(playlistObj).map(item => {
-            const coubData = state.coubMap[item.id] || {};
-            return {
-                id: item.id,
-                title: item.title,
-                video: coubData.video || "",
-                audio: coubData.audio || ""
-            };
-        });
-
-        if (!orderedPlaylist.length) {
-            alert("Playlist empty!");
-            return;
-        }
-
-        player.setPlaylist(orderedPlaylist, selected);
+    if (orderedPlaylist.length) {
+        player.setPlaylist(orderedPlaylist, defaultPlaylist);
         player.play(0);
+        player.pauseCurrent();
         started = true;
+    }
+
+    volumeSlider.addEventListener("input", (e) => {
+        setVolume(e.target.value);
+        updateSlider(e.target.value);
     });
 
     savePlaylistsBtn.addEventListener("click", async (e) => {
         e.preventDefault();
         e.stopPropagation();
+        editFrame.classList.remove("show");
         await saveCurrentVideoPlaylists();
     });
 
-    editPlaylistsBtn.addEventListener("click", openPlaylistEditor);
-
-    document.addEventListener("click", async (e) => {
-        if (playlistContainer.style.display !== "block") return;
-
-        const isClickInside = e.target.closest("#playlistCheckboxesContainer") ||
-            e.target.closest("#editPlaylistsBtn");
-
-        if (!isClickInside) {
-            await saveCurrentVideoPlaylists();
-        }
+    editPlaylistsBtn.addEventListener("click", (e) => {
+        e.stopPropagation(); // чтобы клик не закрывал сразу
+        openPlaylistEditor();
     });
 
     window.addEventListener("beforeunload", () => {
@@ -334,15 +348,16 @@ async function init() {
 
     document.body.addEventListener("click", (e) => {
         if (!started) return;
+
         if (!e.target.closest(".button") &&
             !e.target.closest(".fullscreen-btn") &&
-            !e.target.closest("#playlistSelect") &&
-            !e.target.closest("#playlistCheckboxesContainer") &&
-            !e.target.closest("#newPlaylistName") &&
-            !e.target.closest("#createPlaylistBtn")) {
+            !e.target.closest(".bottom-controls") &&
+            !e.target.closest("#videoIndexWrapper") &&
+            !e.target.closest(".top-controls") &&
+            !editFrame.contains(e.target) &&
+            e.target !== editPlaylistsBtn) {
 
             player.togglePause(bgVideo, audio);
-
         }
     });
 
@@ -394,9 +409,9 @@ async function init() {
 
         try {
             await navigator.clipboard.writeText(url);
-            copyLinkBtn.textContent = "Copied!";
+            copyLinkBtn.textContent = "✓";
             setTimeout(() => {
-                copyLinkBtn.textContent = "Copy link";
+                copyLinkBtn.textContent = "🔗";
             }, 1000);
         } catch (e) {
             console.error("Clipboard error:", e);
@@ -410,6 +425,18 @@ async function init() {
 
     bgVideo.addEventListener("play", () => console.log("BG play"));
     bgVideo.addEventListener("pause", () => console.log("BG pause"));
+
+    playlistTrigger.addEventListener("click", (e) => {
+        e.stopPropagation();
+        playlistMenu.classList.toggle("hidden");
+        renderPlaylistsUI();
+    });
+
+    document.addEventListener("click", (e) => {
+        if (!e.target.closest("#playlistDropdown")) {
+            playlistMenu.classList.add("hidden");
+        }
+    });
 }
 
 init();

@@ -10,57 +10,64 @@
   <body>
     <video id="bgVideo" autoplay muted loop></video>
     <div class="video-wrapper">
-      <video id="playerA" autoplay muted loop></video>
+      <video id="playerA" src="video" autoplay muted loop></video>
     </div>
     <div class="video-wrapper">
-      <video id="playerB" autoplay muted loop></video>
+      <video id="playerB" src="video" autoplay muted loop></video>
     </div>
 
     <audio id="audio"></audio>
 
     <button id="prev" class="button">◀</button>
     <button id="next" class="button">▶</button>
-    <button id="restart" class="button">↺</button>
     <button id="fullscreen" class="fullscreen-btn" type="button">⛶</button>
     <div id="videoIndexWrapper">
       <input id="videoIndexInput" type="number" min="1" />
       <span id="videoTotal"></span>
     </div>
 
-    <select id="playlistSelect">
-      <option value="__new__">+ Create new playlist</option>
-    </select>
+    <div class="bottom-controls">
+      <input
+        id="volumeSlider"
+        type="range"
+        min="0"
+        max="100"
+        value="50"
+        class="volume-slider"
+      />
 
-    <div class="sort-bar">
-      <div class="sort-group" id="sortTypeGroup">
-        <button data-type="order" class="active">Order</button>
-        <button data-type="lastViewed">Last viewed</button>
-        <button data-type="random">Random</button>
+      <button id="copyLinkBtn" class="control-btn">🔗</button>
+      <button id="restart" class="control-btn">↺</button>
+      <button id="editPlaylistsBtn" class="control-btn">✎</button>
+
+      <div class="edit-playlist-frame">
+        <div id="playlistCheckboxesContainer">
+          <div id="playlistCheckboxes"></div>
+          <button id="savePlaylistsBtn" type="button">Сохранить</button>
+        </div>
       </div>
-
-      <button id="sortDirectionBtn" title="Toggle direction">↑</button>
-
-      <input id="seedInput" type="number" placeholder="Seed" class="hidden" />
     </div>
 
-    <div style="position: absolute; top: 100px; left: 10px; z-index: 10">
-      <button
-        id="editPlaylistsBtn"
-        type="button"
-        title="Редактировать плейлисты"
-        type="button"
-      >
-        ✎
-      </button>
-      <div id="playlistCheckboxesContainer">
-        <div id="playlistCheckboxes"></div>
-        <button id="savePlaylistsBtn" type="button">Сохранить</button>
+    <div class="top-controls">
+      <div class="custom-select" id="playlistDropdown">
+        <div class="select-trigger">Playlist ▼</div>
+        <div class="select-menu hidden" id="playlistMenu"></div>
+      </div>
+
+      <div class="sort-bar">
+        <div class="sort-group" id="sortTypeGroup">
+          <button data-type="order" class="active">Order</button>
+          <button data-type="lastViewed">Last viewed</button>
+          <button data-type="random">Random</button>
+        </div>
+
+        <button id="sortDirectionBtn">↑</button>
+        <input id="seedInput" type="number" placeholder="Seed" class="hidden" />
       </div>
     </div>
 
     <div id="videoInfo" class="video-info">
       <div><span id="videoTitleLabel">-</span></div>
-      <button id="copyLinkBtn" type="button">Copy link</button>
     </div>
 
     <script type="module" src="js/main.js"></script>

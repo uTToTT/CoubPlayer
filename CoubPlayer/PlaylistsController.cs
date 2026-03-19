@@ -12,6 +12,25 @@ namespace CoubPlayer
         private readonly string _path = Path.Combine(
             Directory.GetCurrentDirectory(), "wwwroot", "Data", "playlists.json");
 
+        private static readonly object _lock = new();
+
+        private IActionResult ExecuteLocked(Func<Dictionary<string, Playlist>, IActionResult> action)
+        {
+            lock (_lock)
+            {
+                var json = System.IO.File.ReadAllText(_path);
+                var data = JsonConvert.DeserializeObject<Dictionary<string, Playlist>>(json);
+
+                var result = action(data);
+
+                var newJson = JsonConvert.SerializeObject(data, Formatting.Indented);
+                var tempPath = _path + ".tmp";
+                System.IO.File.WriteAllText(tempPath, newJson);
+                System.IO.File.Replace(tempPath, _path, null);
+
+                return result;
+            }
+        }
 
         private Dictionary<string, Playlist> Load()
         {
@@ -28,102 +47,103 @@ namespace CoubPlayer
         [HttpGet]
         public IActionResult Get()
         {
-            return Ok(Load());
+            lock (_lock)
+            {
+                var json = System.IO.File.ReadAllText(_path);
+                return Content(json, "application/json");
+            }
         }
 
         [HttpPost]
         public IActionResult Create([FromBody] CreatePlaylistRequest req)
         {
-            var name = req.Name;
-            var data = Load();
-
-            if (data.ContainsKey(name))
-                return BadRequest("Playlist exists");
-
-            data[name] = new Playlist
+            return ExecuteLocked(data =>
             {
-                title = name,
-                videos = new Dictionary<string, VideoMeta>()
-            };
+                var name = req.Name;
 
-            Save(data);
+                if (data.ContainsKey(name))
+                    return BadRequest("Playlist exists");
 
-            return Ok();
+                data[name] = new Playlist
+                {
+                    title = name,
+                    videos = new Dictionary<string, VideoMeta>()
+                };
+
+                return Ok();
+            });
         }
 
         [HttpPost("{playlist}/add")]
         public IActionResult AddVideo([FromRoute] string playlist, [FromBody] AddVideoRequest req)
         {
-            var data = Load();
-
-            if (!data.ContainsKey(playlist))
-                return NotFound();
-
-            var pl = data[playlist];
-
-            foreach (var video in pl.videos.Values)
+            return ExecuteLocked(data =>
             {
-                video.order += 1;
-            }
+                if (!data.ContainsKey(playlist))
+                    return NotFound();
 
-            pl.videos[req.id] = new VideoMeta
-            {
-                title = req.title,
-                order = 0
-            };
+                var pl = data[playlist];
 
-            Save(data);
+                foreach (var video in pl.videos.Values)
+                {
+                    video.order += 1;
+                }
 
-            return Ok();
+                pl.videos[req.id] = new VideoMeta
+                {
+                    title = req.title,
+                    order = 0
+                };
+
+                return Ok();
+            });
         }
 
 
         [HttpPost("{playlist}/remove")]
         public IActionResult RemoveVideo([FromRoute] string playlist, [FromBody] RemoveVideoRequest req)
         {
-            var data = Load();
-
-            if (!data.ContainsKey(playlist))
-                return NotFound();
-
-            var pl = data[playlist];
-
-            if (!pl.videos.ContainsKey(req.Id))
-                return NotFound();
-
-            var removedOrder = pl.videos[req.Id].order;
-
-            pl.videos.Remove(req.Id);
-
-            foreach (var video in pl.videos.Values)
+            return ExecuteLocked(data =>
             {
-                if (video.order > removedOrder)
-                    video.order -= 1;
-            }
+                if (!data.ContainsKey(playlist))
+                    return NotFound();
 
-            Save(data);
+                var pl = data[playlist];
 
-            return Ok();
+                if (!pl.videos.ContainsKey(req.Id))
+                    return NotFound();
+
+                var removedOrder = pl.videos[req.Id].order;
+
+                pl.videos.Remove(req.Id);
+
+                foreach (var video in pl.videos.Values)
+                {
+                    if (video.order > removedOrder)
+                        video.order -= 1;
+                }
+
+                return Ok();
+            });
         }
 
         [HttpPost("{playlist}/viewed")]
         public IActionResult MarkViewed([FromRoute] string playlist, [FromBody] ViewVideoRequest req)
         {
-            var data = Load();
+            return ExecuteLocked(data =>
+            {
+                if (!data.ContainsKey(playlist))
+                    return NotFound();
 
-            if (!data.ContainsKey(playlist))
-                return NotFound();
+                var pl = data[playlist];
 
-            var pl = data[playlist];
+                if (!pl.videos.ContainsKey(req.id))
+                    return NotFound();
 
-            if (!pl.videos.ContainsKey(req.id))
-                return NotFound();
+                pl.videos[req.id].lastViewed = DateTime.UtcNow;
 
-            pl.videos[req.id].lastViewed = DateTime.UtcNow;
-
-            Save(data);
-
-            return Ok();
+                return Ok();
+            });
         }
     }
 }

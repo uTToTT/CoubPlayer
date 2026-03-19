@@ -1,3 +1,10 @@
+.ui-panel {
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 12px;
+  padding: 8px 12px;
+  color: #fff;
+}
+
 /* ---------- Общие стили ---------- */
 * {
   box-sizing: border-box;
@@ -10,6 +17,22 @@ body {
   background: #111;
   color: #fff;
   overflow: hidden;
+}
+
+.top-controls {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  background: rgba(0, 0, 0, 0.45);
+  padding: 10px 12px;
+  border-radius: 12px;
+
+  z-index: 20;
 }
 
 /* ---------- Фон видео ---------- */
@@ -27,27 +50,30 @@ body {
 
 /* ---------- Видео игроки ---------- */
 .video-wrapper {
+  width: clamp(300px, 85%, 85%);
+  height: clamp(200px, 70%, 80%);
+
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 85%;
-  height: 80%;
+  /* width: 85%;
+  max-width: 80%;
+  height: 70%; */
   transform: translate(-50%, -50%);
-  overflow: hidden;
-  filter: drop-shadow(0 8px 25px rgba(0, 0, 0, 0.6));
+  filter: drop-shadow(0 30px 25px rgba(0, 0, 0, 0.6));
   z-index: 2;
-
-  display: flex;
+  display: inline-flex;
+  /* display: flex; */
   align-items: center;
   justify-content: center;
 }
 
 .video-wrapper video {
-  height: 100%; /* всегда заполняет высоту контейнера */
-  width: auto; /* ширина считается автоматически */
+  height: 100%;
+  width: auto;
 
   border-radius: 24px;
-  object-fit: contain; /* гарантирует, что не обрежется */
+  object-fit: contain;
   display: block;
 }
 
@@ -66,13 +92,20 @@ body {
   align-items: center;
   justify-content: center;
   font-size: 24px;
-  color: #fff;
+  color: #ffffff81;
   transition: 0.2s ease;
 }
 
 #prev:hover,
 #next:hover {
-  background: rgba(255, 90, 95, 0.4);
+  color: rgb(255, 255, 255);
+  transform: scale(1.5);
+}
+
+#prev:active,
+#next:active {
+  color: rgb(255, 255, 255);
+  transform: scale(0.95);
 }
 
 #prev {
@@ -88,149 +121,323 @@ body {
   position: fixed;
   top: 12px;
   right: 12px;
-  width: 60px;
-  height: 60px;
-  border-radius: 8px;
+
+  width: 48px;
+  height: 48px;
+  border-radius: 50%; /* ключевое изменение */
+
   background: rgba(0, 0, 0, 0.55);
-  color: rgb(255, 255, 255);
+  color: #fff;
+
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 36px;
+
+  font-size: 24px; /* уменьшили, чтобы выглядело аккуратно */
   cursor: pointer;
-  z-index: 10;
+  z-index: 20;
+
+  transition: 0.2s;
 }
 
 #fullscreen:hover {
-  background: rgba(255, 90, 95, 0.7);
+  background: #ff5a5f;
+  transform: scale(1.3);
+}
+
+#fullscreen:active {
+  transform: scale(0.95);
 }
 
 /* ---------- Индекс видео ---------- */
 #videoIndexWrapper {
-  position: absolute;
-  bottom: 12px;
-  right: 80px;
+  position: fixed; /* лучше fixed, чтобы не зависел от layout */
+  bottom: 16px;
+  right: 16px;
+
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 10px;
+  gap: 10px;
+
+  padding: 8px 12px;
+  border-radius: 12px;
+
   background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(6px);
-  font-size: 14px;
   color: #fff;
-  z-index: 10;
+  font-size: 14px;
+
+  z-index: 20;
 }
 
 #videoIndexInput {
   width: 50px;
-  border-radius: 6px;
+
   border: none;
-  padding: 3px 6px;
+  border-radius: 8px;
+
+  padding: 6px 8px;
+
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+
   text-align: center;
+  font-size: 14px;
+
+  outline: none;
+  transition: 0.2s;
+}
+
+#videoIndexInput:focus {
+  background: rgba(255, 90, 95, 0.2);
+  box-shadow: 0 0 0 1px #ff5a5f;
 }
 
 /* ---------- Плейлист ---------- */
-#playlistSelect {
-  position: absolute;
-  top: 12px;
-  left: 10px;
-  padding: 5px 10px;
-  border-radius: 8px;
-  border: none;
+.custom-select {
+  position: relative;
+}
+
+.select-trigger {
+  padding: 8px 12px;
+  border-radius: 12px;
+
   background: rgba(0, 0, 0, 0.45);
   color: #fff;
-  font-size: 14px;
-  z-index: 10;
+
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.select-trigger:hover {
+  background: #ff5a5f;
+  transform: scale(1.02);
+}
+
+.select-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 12px;
+  padding: 6px;
+
+  max-height: 800px;
+  overflow-y: auto;
+
+  backdrop-filter: blur(8px);
+
+  /* ▼ АНИМАЦИЯ */
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transition:
+    opacity 0.18s ease,
+    transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  transform-origin: top left;
+}
+
+.select-option {
+  padding: 8px 10px;
+  border-radius: 8px;
+
+  color: #fff;
+  cursor: pointer;
+
+  transition: 0.2s;
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.select-option:hover {
+  background: #ff5a5f;
+  transform: translateX(2px);
+}
+
+.select-option.active {
+  background: rgba(255, 90, 95, 0.25);
+}
+
+.hidden {
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-6px) scale(0.98);
 }
 
 /* ---------- Сортировка ---------- */
 .sort-bar {
-  position: absolute;
-  top: 12px;
-  left: 200px;
   display: flex;
   align-items: center;
-  gap: 6px;
-  z-index: 10;
+  gap: 8px;
 }
 
-.sort-group button {
-  border: none;
-  border-radius: 6px;
-  padding: 5px 10px;
-  background: rgba(0, 0, 0, 0.45);
-  color: #fff;
-  cursor: pointer;
-  transition: 0.2s;
-}
-
-.sort-group button.active,
-.sort-group button:hover {
-  background: #ff5a5f;
-  color: #fff;
-}
-
+.sort-group button,
 #sortDirectionBtn {
-  border-radius: 6px;
-  padding: 5px 10px;
-  background: rgba(0, 0, 0, 0.45);
+  border: none;
+  border-radius: 8px;
+
+  padding: 6px 10px;
+
+  background: rgba(0, 0, 0, 0.55);
   color: #fff;
+
   cursor: pointer;
   transition: 0.2s;
+}
+
+.sort-group button:hover,
+.sort-group button.active,
+#sortDirectionBtn:hover {
+  background: #ff5a5f;
 }
 
 #seedInput {
   width: 70px;
-  border-radius: 6px;
+
   border: none;
-  padding: 3px 6px;
-  display: none;
+  border-radius: 8px;
+
+  padding: 6px 8px;
+
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+
+  outline: none;
+  transition: 0.2s;
+}
+
+#seedInput:focus {
+  box-shadow: 0 0 0 1px #ff5a5f;
 }
 
 /* ---------- Редактор плейлистов ---------- */
-#editPlaylistsBtn {
-  position: fixed;
-  bottom: 12px;
+/* Скрыто по умолчанию */
+.edit-playlist-frame {
+  position: absolute;
+  bottom: 80px; /* отступ от нижней панели */
   left: 50%;
-  transform: translateX(80px); /* смещаем вправо от рестарта */
-  background: rgba(0, 0, 0, 0.55);
-  padding: 6px 12px;
-  border-radius: 8px;
-  border: none;
-  cursor: pointer;
-  color: #fff;
-  font-size: 18px;
-  z-index: 10;
-  transition: 0.2s ease;
+  transform: translateX(-50%) translateY(10px);
+  opacity: 0;
+
+  background: rgba(0, 0, 0, 0.45);
+  padding: 12px 16px;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+
+  backdrop-filter: blur(6px);
+
+  pointer-events: none;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+
+  min-width: 200px; /* минимальная ширина */
+  max-width: 350px; /* ограничение */
 }
 
-#editPlaylistsBtn:hover {
-  background: rgba(255, 90, 95, 0.7);
+/* Когда открыто */
+.edit-playlist-frame.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  pointer-events: auto;
+}
+
+#playlistCheckboxes {
+  display: flex;
+  flex-direction: column;
+  gap: 16px; /* расстояние между вариантами */
+}
+
+#playlistCheckboxes label {
+  display: flex;
+  align-items: center;
+  gap: 12px; /* расстояние между чекбоксом и текстом */
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.25);
+  transition: 0.2s;
+}
+
+#playlistCheckboxes label:hover {
+  background: rgba(255, 90, 95, 0.25);
 }
 
 #playlistCheckboxesContainer {
-  display: none;
-  margin-top: 6px;
-  background: rgba(0, 0, 0, 0.5);
-  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px; /* увеличено с 10px до 18px */
+  width: 100%;
+}
+
+#playlistCheckboxesContainer input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  width: 20px;
+  height: 20px;
+  border: 2px solid #fff;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  transition:
+    0.2s,
+    border-color 0.2s;
+  position: relative;
+}
+
+#playlistCheckboxesContainer input[type="checkbox"]:checked::after {
+  content: "✓";
+  color: #fff;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 14px;
+}
+
+#playlistCheckboxesContainer label {
+  display: flex;
+  align-items: center;
+  gap: 25px; /* чуть больше отступ между чекбоксом и текстом */
+  padding: 8px 12px; /* чуть больше внутренних отступов */
   border-radius: 8px;
+  transition: 0.2s;
+  cursor: pointer;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.25);
 }
 
-#playlistCheckboxes input {
-  margin-right: 6px;
+#playlistCheckboxesContainer label:hover {
+  background: rgba(255, 90, 95, 0.25);
 }
 
+/* Кнопка по центру снизу */
 #savePlaylistsBtn {
-  margin-top: 6px;
-  padding: 4px 8px;
-  border-radius: 6px;
+  align-self: center; /* по центру */
+  display: block; /* делает кнопку блочной */
+  margin: 12px auto 0; /* сверху 12px, слева/справа auto для центрирования */
+  padding: 8px 16px;
+  border-radius: 8px;
   background: #ff5a5f;
   border: none;
   cursor: pointer;
   color: #fff;
+  transition: 0.2s;
 }
 
+#savePlaylistsBtn:hover {
+  background: #ff787b;
+}
 /* ---------- Информация о видео (слева снизу) ---------- */
 .video-info {
   position: fixed;
@@ -246,37 +453,108 @@ body {
   z-index: 10;
 }
 
-.video-info button {
-  margin-top: 4px;
+/* ---------- Остальные кнопки остаются как есть ---------- */
+
+.bottom-controls {
+  position: fixed;
+  bottom: 16px;
+  left: 46%;
+  transform: translateX(-50%);
+
+  display: flex;
+  align-items: center;
+  gap: 16px;
+
+  background: rgba(0, 0, 0, 0.45);
+  padding: 10px 14px;
+  border-radius: 12px;
+
+  z-index: 20;
+}
+
+.control-btn {
   border: none;
-  border-radius: 6px;
-  padding: 4px 8px;
-  background: #ff5a5f;
+  border-radius: 8px;
+  padding: 8px 14px;
+
+  background: rgba(0, 0, 0, 0.55);
   color: #fff;
+  font-size: 18px;
+
   cursor: pointer;
-  font-size: 12px;
   transition: 0.2s;
 }
 
-.video-info button:hover {
-  background: #ff787b;
+.control-btn:hover {
+  background: #ff5a5f;
+  transform: scale(1.3);
 }
 
-/* ---------- Остальные кнопки остаются как есть ---------- */
+.control-btn:active {
+  transform: scale(0.95);
+}
+
 #restart {
-  position: fixed;
-  bottom: 12px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.55);
-  border-radius: 8px;
-  padding: 6px 12px;
-  color: #fff;
-  font-size: 18px;
-  cursor: pointer;
-  z-index: 10;
+  font-size: 24px;
+  padding: 10px 18px;
 }
 
-#restart:hover {
-  background: rgba(255, 90, 95, 0.7);
+.volume-slider {
+  -webkit-appearance: none;
+  appearance: none;
+
+  width: 100px;
+  height: 14px; /* важно: как track */
+  border-radius: 8px;
+  cursor: pointer;
+
+  background: linear-gradient(
+    to right,
+    #ff5a5f 0%,
+    #ff5a5f var(--value, 50%),
+    rgba(255, 255, 255, 0.2) var(--value, 50%),
+    rgba(255, 255, 255, 0.2) 100%
+  );
+}
+
+/* Ползунок */
+.volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
+  transition: 0.2s;
+}
+
+.volume-slider::-webkit-slider-thumb:hover {
+  background: #ff5a5f;
+  transform: scale(1.2);
+}
+
+.volume-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
+  transition: 0.2s;
+}
+
+.volume-slider::-moz-range-thumb:hover {
+  background: #ff5a5f;
+  transform: scale(1.2);
+}
+
+/* Индикатор прогресса (Webkit) */
+.volume-slider::-webkit-slider-runnable-track {
+  height: 14px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.volume-slider:active {
+  transform: scale(0.95);
 }
