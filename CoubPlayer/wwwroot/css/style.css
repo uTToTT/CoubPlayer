@@ -466,7 +466,7 @@ body {
 .bottom-controls {
   position: fixed;
   bottom: 16px;
-  left: 46%;
+  left: 47%;
   transform: translateX(-50%);
 
   display: flex;

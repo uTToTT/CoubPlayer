@@ -84,11 +84,9 @@ export class Player {
         const newItem = this.playlist[newIndex];
         const player = this.players[this.next];
 
-        // 1. стоп старого
         const current = this.players[this.active];
         current.pause();
 
-        // 2. подготовка нового
         player.src = newItem.video;
         this.audio.src = newItem.audio;
         this.bgVideo.src = newItem.video;
