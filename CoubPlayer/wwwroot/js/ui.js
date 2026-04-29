@@ -1,41 +1,145 @@
-// ui.js
-// Весь рендеринг UI. Playlist editor работает по Pinterest-паттерну:
-// мгновенное сохранение при клике, без кнопки «Сохранить».
+// ui.js — весь рендеринг UI.
 
-// ─── Playlist Dropdown ────────────────────────────────────────────────────────
+// ─── Playlist Selector (Pinterest-style panel) ────────────────────────────────
 
-const playlistMenu    = document.getElementById("playlistMenu");
-const playlistTrigger = document.querySelector("#playlistDropdown .select-trigger");
+const selectorOverlay = document.getElementById("playlistSelectorOverlay");
+const selectorPanel   = document.getElementById("playlistSelectorPanel");
+const selectorClose   = document.getElementById("plSelectorClose");
+const selectorSearch  = document.getElementById("plSelectorSearch");
+const selectorClear   = document.getElementById("plSelectorClear");
+const selectorList    = document.getElementById("plSelectorList");
+const selectorNewBtn  = document.getElementById("plSelectorNewBtn");
+const triggerBtn      = document.getElementById("playlistTriggerBtn");
+const triggerLabel    = document.getElementById("playlistTriggerLabel");
 
-export function renderPlaylistDropdown(playlists, onSelect, onCreate) {
-    playlistMenu.innerHTML = "";
+let _selectorPlaylists   = {};
+let _selectorSelected    = null;
+let _onSelectPlaylist    = null;
+let _onCreateFromSelector = null;
 
-    for (const [name, data] of Object.entries(playlists)) {
-        const count = Object.keys(data.videos || {}).length;
-        const el = document.createElement("div");
-        el.className = "select-option";
-        el.textContent = `${name} (${count})`;
-        el.onclick = () => onSelect(name);
-        playlistMenu.appendChild(el);
+export function initPlaylistSelector({ getPlaylists, onSelect, onCreate }) {
+    _onSelectPlaylist     = onSelect;
+    _onCreateFromSelector = onCreate;
+
+    triggerBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        _selectorPlaylists = getPlaylists();
+        selectorSearch.value = "";
+        selectorClear.classList.add("hidden");
+        renderSelectorRows("");
+        openSelector();
+    });
+
+    selectorClose.addEventListener("click", closeSelector);
+
+    selectorOverlay.addEventListener("click", (e) => {
+        if (!selectorPanel.contains(e.target)) closeSelector();
+    });
+
+    selectorSearch.addEventListener("input", () => {
+        const q = selectorSearch.value.trim();
+        selectorClear.classList.toggle("hidden", !q);
+        renderSelectorRows(q);
+    });
+
+    selectorClear.addEventListener("click", () => {
+        selectorSearch.value = "";
+        selectorClear.classList.add("hidden");
+        selectorSearch.focus();
+        renderSelectorRows("");
+    });
+
+    selectorNewBtn.addEventListener("click", async () => {
+        if (!_onCreateFromSelector) return;
+        const name = await _onCreateFromSelector();
+        if (name) {
+            _selectorPlaylists = getPlaylists();
+            renderSelectorRows(selectorSearch.value.trim());
+        }
+    });
+
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && selectorOverlay.classList.contains("show")) closeSelector();
+    });
+}
+
+function openSelector() {
+    // Позиционируем под кнопкой-триггером
+    const rect = triggerBtn.getBoundingClientRect();
+    selectorPanel.style.top  = (rect.bottom + 8) + "px";
+    selectorPanel.style.left = rect.left + "px";
+    selectorPanel.style.transform = "none"; // сбрасываем translateY(-50%) из базового стиля
+
+    selectorOverlay.classList.add("show");
+    requestAnimationFrame(() => selectorSearch.focus());
+}
+
+function closeSelector() {
+    selectorOverlay.classList.remove("show");
+}
+
+function renderSelectorRows(query) {
+    selectorList.innerHTML = "";
+    const q = query.toLowerCase();
+    const entries = Object.entries(_selectorPlaylists).filter(
+        ([name]) => !q || name.toLowerCase().includes(q)
+    );
+
+    if (!entries.length) {
+        const empty = document.createElement("div");
+        empty.className = "pl-empty";
+        empty.textContent = query ? "Ничего не найдено" : "Нет плейлистов";
+        selectorList.appendChild(empty);
+        return;
     }
 
-    const newEl = document.createElement("div");
-    newEl.className = "select-option create-new";
-    newEl.textContent = "+ Создать плейлист";
-    newEl.onclick = onCreate;
-    playlistMenu.appendChild(newEl);
+    for (const [name, data] of entries) {
+        const count  = Object.keys(data.videos || {}).length;
+        const isActive = name === _selectorSelected;
+
+        const row = document.createElement("div");
+        row.className = "pl-row" + (isActive ? " pl-row--active" : "");
+
+        const icon = document.createElement("div");
+        icon.className = "pl-row-icon";
+        icon.textContent = emojiForPlaylist(name);
+
+        const text = document.createElement("div");
+        text.className = "pl-row-text";
+
+        const nameEl = document.createElement("div");
+        nameEl.className = "pl-row-name";
+        nameEl.textContent = name;
+
+        const countEl = document.createElement("div");
+        countEl.className = "pl-row-count";
+        countEl.textContent = `${count} видео`;
+
+        text.appendChild(nameEl);
+        text.appendChild(countEl);
+
+        // Для активного — галочка справа
+        const check = document.createElement("div");
+        check.className = "pl-row-check";
+
+        row.appendChild(icon);
+        row.appendChild(text);
+        row.appendChild(check);
+
+        row.addEventListener("click", () => {
+            _selectorSelected = name;
+            closeSelector();
+            setPlaylistTriggerLabel(name);
+            _onSelectPlaylist(name);
+        });
+
+        selectorList.appendChild(row);
+    }
 }
 
 export function setPlaylistTriggerLabel(name) {
-    playlistTrigger.textContent = `${name} ▼`;
-}
-
-export function togglePlaylistMenu() {
-    playlistMenu.classList.toggle("hidden");
-}
-
-export function hidePlaylistMenu() {
-    playlistMenu.classList.add("hidden");
+    triggerLabel.textContent = name;
+    _selectorSelected = name;
 }
 
 // ─── Video Info ───────────────────────────────────────────────────────────────
@@ -87,11 +191,16 @@ const sortTypeGroup    = document.getElementById("sortTypeGroup");
 const sortDirectionBtn = document.getElementById("sortDirectionBtn");
 const seedInput        = document.getElementById("seedInput");
 
+const DEFAULT_SEED = 42;
+
 export function initSortBar(onChange) {
     let sortType      = "order";
     let sortDirection = "asc";
 
-    const notify = () => onChange(sortType, sortDirection, parseInt(seedInput.value) || 1);
+    // Гарантируем дефолтный seed
+    if (!seedInput.value) seedInput.value = DEFAULT_SEED;
+
+    const notify = () => onChange(sortType, sortDirection, parseInt(seedInput.value) || DEFAULT_SEED);
 
     sortTypeGroup.addEventListener("click", (e) => {
         const btn = e.target.closest("button");
@@ -99,7 +208,12 @@ export function initSortBar(onChange) {
         [...sortTypeGroup.children].forEach((b) => b.classList.remove("active"));
         btn.classList.add("active");
         sortType = btn.dataset.type;
-        seedInput.classList.toggle("hidden", sortType !== "random");
+
+        const isRandom = sortType === "random";
+        seedInput.classList.toggle("hidden", !isRandom);
+        // Кнопка направления не нужна для random
+        sortDirectionBtn.classList.toggle("hidden", isRandom);
+
         notify();
     });
 
@@ -109,155 +223,127 @@ export function initSortBar(onChange) {
         notify();
     });
 
-    seedInput.addEventListener("change", notify);
+    seedInput.addEventListener("change", () => {
+        if (!seedInput.value || parseInt(seedInput.value) < 1) seedInput.value = DEFAULT_SEED;
+        notify();
+    });
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// PLAYLIST EDITOR — Pinterest-style
-// Мгновенное сохранение по клику. Нет кнопки "Сохранить".
+// PLAYLIST EDITOR — Pinterest-style (add/remove video from playlists)
 // ═════════════════════════════════════════════════════════════════════════════
 
 const READONLY_PLAYLISTS = ["bookmarks", "liked"];
 
-// DOM-элементы редактора
-const overlay       = document.getElementById("playlistEditorOverlay");
-const panel         = document.getElementById("playlistEditorPanel");
-const subtitle      = document.getElementById("plEditorSubtitle");
-const closeBtn      = document.getElementById("plEditorClose");
-const searchInput   = document.getElementById("plSearchInput");
-const searchClear   = document.getElementById("plSearchClear");
-const listEl        = document.getElementById("plEditorList");
-const newBtn        = document.getElementById("plNewBtn");
+const editorOverlay = document.getElementById("playlistEditorOverlay");
+const editorPanel   = document.getElementById("playlistEditorPanel");
+const editorSubtitle = document.getElementById("plEditorSubtitle");
+const editorClose   = document.getElementById("plEditorClose");
+const editorSearch  = document.getElementById("plSearchInput");
+const editorClear   = document.getElementById("plSearchClear");
+const editorList    = document.getElementById("plEditorList");
+const editorNewBtn  = document.getElementById("plNewBtn");
 
-// Тост-уведомление (создаём программно, чтобы не захламлять HTML)
 const toast = document.createElement("div");
 toast.className = "pl-toast";
 document.body.appendChild(toast);
 
-let _playlists        = {};   // ссылка на state.playlists
+let _playlists        = {};
 let _currentVideoId   = null;
 let _currentTitle     = "";
-let _onToggle         = null; // (playlistName, add: boolean) => Promise<void>
-let _onCreatePlaylist = null; // () => Promise<string|null>
+let _onToggle         = null;
+let _onCreatePlaylist = null;
 
-/**
- * Инициализация редактора. Вызывается один раз из main.js.
- *
- * @param {{
- *   getPlaylists: () => Record<string, any>,
- *   onToggle: (name: string, add: boolean) => Promise<void>,
- *   onCreatePlaylist: () => Promise<string|null>
- * }} opts
- */
 export function initPlaylistEditor({ getPlaylists, onToggle, onCreatePlaylist }) {
     _onToggle         = onToggle;
     _onCreatePlaylist = onCreatePlaylist;
 
-    // Закрытие по кнопке ✕
-    closeBtn.addEventListener("click", closeEditor);
+    editorClose.addEventListener("click", closeEditor);
 
-    // Закрытие по клику на оверлей вне панели
-    overlay.addEventListener("click", (e) => {
-        if (!panel.contains(e.target)) closeEditor();
+    editorOverlay.addEventListener("click", (e) => {
+        if (!editorPanel.contains(e.target)) closeEditor();
     });
 
-    // Поиск
-    searchInput.addEventListener("input", () => {
-        const q = searchInput.value.trim();
-        searchClear.classList.toggle("hidden", !q);
-        renderRows(q);
+    editorSearch.addEventListener("input", () => {
+        const q = editorSearch.value.trim();
+        editorClear.classList.toggle("hidden", !q);
+        renderEditorRows(q);
     });
 
-    searchClear.addEventListener("click", () => {
-        searchInput.value = "";
-        searchClear.classList.add("hidden");
-        searchInput.focus();
-        renderRows("");
+    editorClear.addEventListener("click", () => {
+        editorSearch.value = "";
+        editorClear.classList.add("hidden");
+        editorSearch.focus();
+        renderEditorRows("");
     });
 
-    // Новый плейлист
-    newBtn.addEventListener("click", async () => {
+    editorNewBtn.addEventListener("click", async () => {
         if (!_onCreatePlaylist) return;
         const name = await _onCreatePlaylist();
         if (name) {
             _playlists = getPlaylists();
-            renderRows(searchInput.value.trim());
+            renderEditorRows(editorSearch.value.trim());
         }
     });
 
-    // ESC закрывает
     document.addEventListener("keydown", (e) => {
-        if (e.key === "Escape" && overlay.classList.contains("show")) {
-            closeEditor();
-        }
+        if (e.key === "Escape" && editorOverlay.classList.contains("show")) closeEditor();
     });
 }
 
-/**
- * Открыть редактор для конкретного видео.
- * @param {{ id: string, title: string }} video
- * @param {Record<string, any>} playlists
- */
 export function openPlaylistEditor(video, playlists) {
     _currentVideoId = video.id;
     _currentTitle   = video.title || video.id;
     _playlists      = playlists;
 
-    subtitle.textContent = _currentTitle;
-    searchInput.value = "";
-    searchClear.classList.add("hidden");
+    editorSubtitle.textContent = _currentTitle;
+    editorSearch.value = "";
+    editorClear.classList.add("hidden");
+    renderEditorRows("");
 
-    renderRows("");
-
-    overlay.classList.add("show");
-    requestAnimationFrame(() => searchInput.focus());
+    editorOverlay.classList.add("show");
+    requestAnimationFrame(() => editorSearch.focus());
 }
 
 export function closeEditor() {
-    overlay.classList.remove("show");
+    editorOverlay.classList.remove("show");
 }
 
-/** Перерисовать список с фильтром поиска */
-function renderRows(query) {
-    listEl.innerHTML = "";
-
+function renderEditorRows(query) {
+    editorList.innerHTML = "";
     const q = query.toLowerCase();
-    const entries = Object.entries(_playlists).filter(([name]) =>
-        !q || name.toLowerCase().includes(q)
+    const entries = Object.entries(_playlists).filter(
+        ([name]) => !q || name.toLowerCase().includes(q)
     );
 
     if (!entries.length) {
         const empty = document.createElement("div");
         empty.className = "pl-empty";
         empty.textContent = query ? "Ничего не найдено" : "Нет плейлистов";
-        listEl.appendChild(empty);
+        editorList.appendChild(empty);
         return;
     }
 
     for (const [name, data] of entries) {
-        listEl.appendChild(buildRow(name, data));
+        editorList.appendChild(buildEditorRow(name, data));
     }
 }
 
-/** Собрать DOM-строку одного плейлиста */
-function buildRow(name, data) {
+function buildEditorRow(name, data) {
     const isChecked  = !!data.videos?.[_currentVideoId];
     const isReadonly = READONLY_PLAYLISTS.includes(name);
     const count      = Object.keys(data.videos || {}).length;
 
     const row = document.createElement("div");
-    row.className = [
-        "pl-row",
+    row.className = ["pl-row",
         isChecked  ? "pl-row--checked"  : "",
         isReadonly ? "pl-row--readonly" : "",
     ].filter(Boolean).join(" ");
 
-    // Иконка (первая буква или эмодзи)
     const icon = document.createElement("div");
     icon.className = "pl-row-icon";
     icon.textContent = emojiForPlaylist(name);
 
-    // Текст
     const text = document.createElement("div");
     text.className = "pl-row-text";
 
@@ -272,7 +358,6 @@ function buildRow(name, data) {
     text.appendChild(nameEl);
     text.appendChild(countEl);
 
-    // Чекбокс-кружок
     const check = document.createElement("div");
     check.className = "pl-row-check";
 
@@ -280,23 +365,16 @@ function buildRow(name, data) {
     row.appendChild(text);
     row.appendChild(check);
 
-    if (isReadonly) {
-        row.title = "Этот плейлист нельзя редактировать";
-        return row;
+    if (!isReadonly) {
+        row.addEventListener("click", () => handleToggle(row, name, data, countEl));
     }
-
-    // Клик = мгновенное переключение
-    row.addEventListener("click", () => handleToggle(row, name, data, countEl));
-
     return row;
 }
 
-/** Мгновенное добавление/удаление без перерисовки всего списка */
 async function handleToggle(row, name, data, countEl) {
     const wasChecked = row.classList.contains("pl-row--checked");
-    const add        = !wasChecked;
+    const add = !wasChecked;
 
-    // Оптимистичное обновление UI — сразу
     row.classList.toggle("pl-row--checked", add);
     data.videos = data.videos || {};
 
@@ -306,19 +384,15 @@ async function handleToggle(row, name, data, countEl) {
         delete data.videos[_currentVideoId];
     }
 
-    const newCount = Object.keys(data.videos).length;
-    countEl.textContent = `${newCount} видео`;
-
+    countEl.textContent = `${Object.keys(data.videos).length} видео`;
     showToast(add
         ? `<span class="pl-toast-accent">+</span> Добавлено в «${name}»`
         : `Удалено из «${name}»`
     );
 
-    // Запрос к серверу в фоне
     try {
         await _onToggle(name, add);
     } catch (err) {
-        // Откат UI при ошибке
         row.classList.toggle("pl-row--checked", wasChecked);
         if (wasChecked) {
             data.videos[_currentVideoId] = { title: _currentTitle };
@@ -331,7 +405,6 @@ async function handleToggle(row, name, data, countEl) {
     }
 }
 
-/** Показать тост-уведомление снизу */
 let _toastTimer = null;
 function showToast(html) {
     toast.innerHTML = html;
@@ -340,30 +413,22 @@ function showToast(html) {
     _toastTimer = setTimeout(() => toast.classList.remove("show"), 2000);
 }
 
-/** Подобрать эмодзи по имени плейлиста */
+export function syncEditorToVideo(video) {
+    if (!editorOverlay.classList.contains("show")) return;
+    openPlaylistEditor(video, _playlists);
+}
+
+// ─── Shared helpers ───────────────────────────────────────────────────────────
+
 function emojiForPlaylist(name) {
     const map = {
-        bookmarks: "🔖",
-        liked:     "❤️",
-        favorites: "⭐",
-        watch:     "👁",
-        music:     "🎵",
-        anime:     "✨",
-        funny:     "😂",
-        art:       "🎨",
-        nature:    "🌿",
-        games:     "🎮",
-        sport:     "⚡",
+        bookmarks: "🔖", liked: "❤️", favorites: "⭐", watch: "👁",
+        music: "🎵", anime: "✨", funny: "😂", art: "🎨",
+        nature: "🌿", games: "🎮", sport: "⚡",
     };
     const lower = name.toLowerCase();
     for (const [key, emoji] of Object.entries(map)) {
         if (lower.includes(key)) return emoji;
     }
     return name[0]?.toUpperCase() || "📋";
-}
-
-// Синхронизация: при смене видео обновить subtitle (если панель открыта)
-export function syncEditorToVideo(video) {
-    if (!overlay.classList.contains("show")) return;
-    openPlaylistEditor(video, _playlists);
 }

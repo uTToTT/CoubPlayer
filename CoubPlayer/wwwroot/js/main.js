@@ -1,16 +1,14 @@
 // main.js — точка входа, склейка модулей.
 
-import { loadData }     from "./loader.js";
+import { loadData }      from "./loader.js";
 import { buildPlaylist } from "./playlist.js";
-import { Player }       from "./player.js";
-import { initControls } from "./controls.js";
-import * as api         from "./api.js";
-import { state }        from "./state.js";
+import { Player }        from "./player.js";
+import { initControls }  from "./controls.js";
+import * as api          from "./api.js";
+import { state }         from "./state.js";
 import {
-    renderPlaylistDropdown,
+    initPlaylistSelector,
     setPlaylistTriggerLabel,
-    togglePlaylistMenu,
-    hidePlaylistMenu,
     updateVideoInfo,
     initVolumeSlider,
     initCopyLinkBtn,
@@ -20,11 +18,10 @@ import {
     syncEditorToVideo,
 } from "./ui.js";
 
-// ─── DOM refs ─────────────────────────────────────────────────────────────────
+// ─── DOM ──────────────────────────────────────────────────────────────────────
 
 const videoIndexInput  = document.getElementById("videoIndexInput");
 const editPlaylistsBtn = document.getElementById("editPlaylistsBtn");
-const playlistDropdown = document.getElementById("playlistDropdown");
 
 // ─── Player ───────────────────────────────────────────────────────────────────
 
@@ -68,7 +65,6 @@ function pickDefaultPlaylist() {
 async function selectPlaylist(name) {
     state.selectedPlaylist = name;
     setPlaylistTriggerLabel(name);
-    hidePlaylistMenu();
 
     await refreshData();
 
@@ -109,11 +105,22 @@ async function init() {
         applySorting();
     });
 
-    // ── Playlist Editor (Pinterest-style) ─────────────────────────────────────
+    // ── Выбор плейлиста (Pinterest-style) ────────────────────────────────────
+    initPlaylistSelector({
+        getPlaylists: () => state.playlists,
+        onSelect: (name) => selectPlaylist(name),
+        onCreate: async () => {
+            const name = prompt("Название нового плейлиста:");
+            if (!name?.trim()) return null;
+            await api.createPlaylist({ name: name.trim() });
+            state.playlists[name.trim()] = { title: name.trim(), videos: {} };
+            return name.trim();
+        },
+    });
+
+    // ── Редактор плейлистов для видео (Pinterest-style) ───────────────────────
     initPlaylistEditor({
         getPlaylists: () => state.playlists,
-
-        // Мгновенное переключение — вызывается при каждом клике по строке
         onToggle: async (name, add) => {
             const video = currentVideo();
             if (!video) return;
@@ -123,8 +130,6 @@ async function init() {
                 await api.removeVideoFromPlaylist(name, video.id);
             }
         },
-
-        // Создание нового плейлиста — возвращает имя или null
         onCreatePlaylist: async () => {
             const name = prompt("Название нового плейлиста:");
             if (!name?.trim()) return null;
@@ -134,7 +139,7 @@ async function init() {
         },
     });
 
-    // Кнопка ✎ открывает панель
+    // Кнопка ✎ открывает редактор
     editPlaylistsBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         const video = currentVideo();
@@ -142,35 +147,12 @@ async function init() {
         openPlaylistEditor(video, state.playlists);
     });
 
-    // ── Playlist Dropdown ─────────────────────────────────────────────────────
-    const rebuildDropdown = () =>
-        renderPlaylistDropdown(
-            state.playlists,
-            (name) => selectPlaylist(name),
-            async () => {
-                const name = prompt("Название нового плейлиста:");
-                if (!name?.trim()) return;
-                await api.createPlaylist({ name: name.trim() });
-                state.playlists[name.trim()] = { title: name.trim(), videos: {} };
-                rebuildDropdown();
-            }
-        );
-
-    playlistDropdown.querySelector(".select-trigger").addEventListener("click", (e) => {
-        e.stopPropagation();
-        rebuildDropdown();
-        togglePlaylistMenu();
-    });
-
-    document.addEventListener("click", (e) => {
-        if (!e.target.closest("#playlistDropdown")) hidePlaylistMenu();
-    });
-
-    // Клик по фону = пауза
+    // Клик по фону = пауза (игнорируем панели и контролы)
     document.body.addEventListener("click", (e) => {
         const ignore = [
             ".button", ".fullscreen-btn", ".bottom-controls",
-            "#videoIndexWrapper", ".top-controls", ".pl-editor-overlay",
+            "#videoIndexWrapper", ".top-controls",
+            ".pl-editor-overlay",
         ];
         if (!ignore.some((sel) => e.target.closest(sel))) player.togglePause();
     });
@@ -183,11 +165,10 @@ async function init() {
     // Колбэк смены видео
     player.onVideoChange = (item) => {
         updateVideoInfo(player.index, item.title, player.playlist.length);
-        syncEditorToVideo(item);  // обновить панель если открыта
+        syncEditorToVideo(item);
     };
 
-    // Запуск
-    rebuildDropdown();
+    // Запуск дефолтного плейлиста
     const defaultName = pickDefaultPlaylist();
     if (defaultName) await selectPlaylist(defaultName);
 }

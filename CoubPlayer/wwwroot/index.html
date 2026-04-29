@@ -41,19 +41,48 @@
 
     <!-- Верхняя панель (плейлист + сортировка) -->
     <div class="top-controls panel">
-      <div class="custom-select" id="playlistDropdown">
-        <div class="select-trigger">Playlist ▼</div>
-        <div class="select-menu hidden" id="playlistMenu"></div>
-      </div>
+      <button class="pl-trigger-btn" id="playlistTriggerBtn">
+        <span class="pl-trigger-icon">◈</span>
+        <span class="pl-trigger-label" id="playlistTriggerLabel">Playlist</span>
+        <svg class="pl-trigger-chevron" viewBox="0 0 12 12" fill="none">
+          <path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
 
       <div class="sort-bar">
         <div class="sort-group" id="sortTypeGroup">
           <button data-type="order" class="active">Order</button>
-          <button data-type="lastViewed" hidden>Last viewed</button>
           <button data-type="random">Random</button>
         </div>
-        <button id="sortDirectionBtn">↑</button>
-        <input id="seedInput" type="number" placeholder="Seed" class="hidden" />
+        <button id="sortDirectionBtn" title="Направление сортировки">↑</button>
+        <input id="seedInput" type="number" value="42" min="1" class="hidden" title="Seed" />
+      </div>
+    </div>
+
+    <!-- PLAYLIST SELECTOR panel -->
+    <div id="playlistSelectorOverlay" class="pl-editor-overlay">
+      <div id="playlistSelectorPanel" class="pl-editor-panel pl-selector-panel">
+        <div class="pl-editor-header">
+          <div class="pl-editor-header-text">
+            <div class="pl-editor-title">Плейлисты</div>
+            <div class="pl-editor-subtitle">Выберите плейлист</div>
+          </div>
+          <button class="pl-editor-close" id="plSelectorClose">✕</button>
+        </div>
+        <div class="pl-editor-search">
+          <svg class="pl-search-icon" viewBox="0 0 20 20" fill="none">
+            <circle cx="9" cy="9" r="6" stroke="currentColor" stroke-width="1.8"/>
+            <path d="M13.5 13.5 17 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+          <input id="plSelectorSearch" class="pl-search-input" type="text" placeholder="Найти плейлист…" autocomplete="off" />
+          <button class="pl-search-clear hidden" id="plSelectorClear">✕</button>
+        </div>
+        <div class="pl-editor-list" id="plSelectorList"></div>
+        <div class="pl-editor-footer">
+          <button class="pl-new-btn" id="plSelectorNewBtn">
+            <span class="pl-new-icon">＋</span> Создать плейлист
+          </button>
+        </div>
       </div>
     </div>
 
