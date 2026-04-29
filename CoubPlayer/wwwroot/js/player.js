@@ -145,7 +145,7 @@ export class Player {
         incoming.style.display = "block";
 
         this.audio.src = newItem.audio;
-        this._animateBg(newItem.video);
+        this._animateBg();
 
         // ── 2. Swap буфера ────────────────────────────────────────────────────
         outgoing.pause();
@@ -199,37 +199,24 @@ export class Player {
         this._markViewed(newItem);
     }
 
-    _animateBg(src) {
+    _animateBg() {
         const bg = this.bgVideo;
 
-        // Прерываем предыдущую bg-анимацию если есть
         if (this._bgAnimation) {
             this._bgAnimation.cancel();
             this._bgAnimation = null;
         }
 
-        const fadeOut = bg.animate(
-            [{ opacity: 1 }, { opacity: 0 }],
-            { duration: 200, easing: "ease", fill: "forwards" }
+        // Просто плавно перемаргиваем — src уже обновит _syncBg
+        const anim = bg.animate(
+            [{ opacity: 0.6 }, { opacity: 1 }],
+            { duration: 300, easing: "ease", fill: "forwards" }
         );
 
-        this._bgAnimation = fadeOut;
-
-        fadeOut.finished.then(() => {
-            bg.src = src;
-            bg.play().catch(() => { });
-
-            const fadeIn = bg.animate(
-                [{ opacity: 0 }, { opacity: 1 }],
-                { duration: 300, easing: "ease", fill: "forwards" }
-            );
-
-            this._bgAnimation = fadeIn;
-
-            fadeIn.finished.then(() => {
-                bg.style.opacity = "1";
-                this._bgAnimation = null;
-            }).catch(() => { });
+        this._bgAnimation = anim;
+        anim.finished.then(() => {
+            bg.style.opacity = "1";
+            this._bgAnimation = null;
         }).catch(() => { });
     }
 
@@ -279,7 +266,9 @@ export class Player {
             this._fitVideo(this.activeVideo);
             await this.activeVideo.play();
             this.audio.play().catch(() => { });
-            this.bgVideo.play().catch(() => { });
+
+            // Синхронизируем bg с основным видео
+            this._syncBg();
         } catch (err) {
             console.warn("Playback error:", err);
         }
@@ -296,11 +285,30 @@ export class Player {
             this.activeVideo.muted = true;
             this.bgVideo.muted = true;
             await this.activeVideo.play();
-            this.bgVideo.play().catch(() => { });
             this.audio.play().catch(() => { });
+            this._syncBg();
         } catch (err) {
             console.warn("Resume error:", err);
         }
+    }
+
+    _syncBg() {
+        const bg = this.bgVideo;
+        const main = this.activeVideo;
+
+        // Один и тот же src — просто выравниваем время
+        if (bg.src === main.src) {
+            bg.currentTime = main.currentTime;
+            bg.play().catch(() => { });
+            return;
+        }
+
+        // Новый src — ждём готовности и синхронизируем
+        bg.src = main.src;
+        bg.addEventListener("canplay", () => {
+            bg.currentTime = main.currentTime;
+            bg.play().catch(() => { });
+        }, { once: true });
     }
 
     _isValidIndex(index) {
