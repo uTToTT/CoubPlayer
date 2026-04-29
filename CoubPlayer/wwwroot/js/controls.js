@@ -1,93 +1,54 @@
-//controls.js
-export function initControls(player, bgVideo, audio) {
+// controls.js
+// Keyboard, wheel, кнопки. Работает только через публичный API Player.
+// Больше не лезет напрямую в player.videoEls[player.activeIdx].
 
-    let wheelLock = false;
-
+/**
+ * @param {import("./player.js").Player} player
+ */
+export function initControls(player) {
     const nextBtn = document.getElementById("next");
     const prevBtn = document.getElementById("prev");
     const restartBtn = document.getElementById("restart");
     const fullscreenBtn = document.getElementById("fullscreen");
 
-    nextBtn.onclick = () => player.nextVideo();
-    prevBtn.onclick = () => player.prevVideo();
-
-    restartBtn.onclick = () => restart(player, bgVideo, audio);
-
+    nextBtn.onclick = () => player.goToNext();
+    prevBtn.onclick = () => player.goToPrev();
+    restartBtn.onclick = () => player.restart();
     fullscreenBtn.onclick = toggleFullscreen;
 
     document.addEventListener("keydown", (e) => {
-
-        if (e.key === "ArrowRight") player.nextVideo();
-        if (e.key === "ArrowLeft") player.prevVideo();
+        if (e.key === "ArrowRight") player.goToNext();
+        if (e.key === "ArrowLeft") player.goToPrev();
 
         if (e.code === "Space") {
             e.preventDefault();
-            togglePause(player, bgVideo, audio);
+            player.togglePause();
         }
 
         if (e.key === "r" || e.key === "R") {
-            restart(player, bgVideo, audio);
+            player.restart();
         }
-
     });
 
+    // Колесо мыши с debounce
+    let wheelLock = false;
     document.addEventListener("wheel", (e) => {
-
         if (wheelLock) return;
-
         wheelLock = true;
-
-        setTimeout(() => wheelLock = false, 25);
+        setTimeout(() => (wheelLock = false), 250);
 
         if (e.deltaY > 0) {
-            player.nextVideo();
+            player.goToNext();
         } else {
-            player.prevVideo();
+            player.goToPrev();
         }
-
     });
-}
-
-function togglePause(player, bgVideo, audio) {
-
-    const video = player.players[player.active];
-
-    if (video.paused) {
-
-        video.play();
-        bgVideo.play();
-        audio.play().catch(() => { });
-
-    } else {
-
-        video.pause();
-        bgVideo.pause();
-        audio.pause();
-
-    }
-
-}
-
-function restart(player, bgVideo, audio) {
-
-    const video = player.players[player.active];
-
-    video.currentTime = 0;
-    bgVideo.currentTime = 0;
-    audio.currentTime = 0;
-
-    video.play();
-    bgVideo.play();
-    audio.play().catch(() => { });
-
 }
 
 function toggleFullscreen() {
-
     if (!document.fullscreenElement) {
         document.body.requestFullscreen();
     } else {
         document.exitFullscreen();
     }
-
 }

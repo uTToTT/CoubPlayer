@@ -1,240 +1,175 @@
-//player.js
+// player.js
+// Отвечает исключительно за воспроизведение: play, pause, switch, volume.
+// Вся логика сортировки перенесена в playlist.js.
+
 import { markVideoViewed } from "./api.js";
 
 export class Player {
+    /**
+     * @param {HTMLVideoElement[]} videoEls — два буфера видео (A и B)
+     * @param {HTMLAudioElement} audioEl
+     * @param {HTMLVideoElement} bgVideoEl
+     */
+    constructor(videoEls, audioEl, bgVideoEl) {
+        this.videoEls = videoEls;
+        this.audio = audioEl;
+        this.bgVideo = bgVideoEl;
 
-    constructor(players, audio, bgVideo, onVideoChange = null) {
-        this.players = players;
-        this.audio = audio;
-        this.bgVideo = bgVideo;
-
-        this.active = 0;
-        this.next = 1;
-        this.index = 0;
+        this.activeIdx = 0; // индекс активного буфера (0 или 1)
+        this.index = 0;     // индекс текущего элемента в playlist
         this.playlist = [];
-
         this.currentPlaylistName = null;
-        this.onVideoChange = onVideoChange;
+
+        /** @type {(() => void) | null} Вызывается при смене видео */
+        this.onVideoChange = null;
     }
 
-    seededRandom(seed) {
-        let x = Math.sin(seed++) * 10000;
-        return x - Math.floor(x);
+    // ─── Публичный API ────────────────────────────────────────────────────────
+
+    get activeVideo() {
+        return this.videoEls[this.activeIdx];
     }
 
-    createSeededRNG(seed) {
-        let s = seed;
-        return () => {
-            s += 1;
-            let x = Math.sin(s) * 10000;
-            return x - Math.floor(x);
-        };
+    get nextVideo() {
+        return this.videoEls[1 - this.activeIdx];
     }
 
+    /**
+     * @param {import("./playlist.js").ResolvedItem[]} list
+     * @param {string | null} playlistName
+     */
     setPlaylist(list, playlistName = null) {
         this.playlist = list;
-        if (playlistName) this.currentPlaylistName = playlistName;
+        if (playlistName !== null) this.currentPlaylistName = playlistName;
     }
 
-    async play(indexToPlay) {
-        if (indexToPlay < 0 || indexToPlay >= this.playlist.length) return;
+    setVolume(value) {
+        const vol = Math.max(0, Math.min(1, value / 100));
+        this.audio.volume = vol;
+        this.bgVideo.volume = vol;
+        this.videoEls.forEach((v) => (v.volume = vol));
+    }
 
-        this.index = indexToPlay;
-        const item = this.playlist[this.index];
-        const player = this.players[this.active];
+    /** Запустить видео по индексу (первый запуск или после setPlaylist) */
+    async play(index) {
+        if (!this._isValidIndex(index)) return;
 
-        player.src = item.video;
+        this.index = index;
+        const item = this.playlist[index];
+
+        this.activeVideo.src = item.video;
         this.audio.src = item.audio;
         this.bgVideo.src = item.video;
 
-        try {
-            player.muted = true;
-            this.bgVideo.muted = true;
+        await this._playAll();
+        this._notifyChange(item);
+        this._markViewed(item);
+    }
 
-            await player.play();
+    async goToNext() {
+        await this._switchTo(this.index + 1);
+    }
 
-            this.audio.play().catch(() => { });
-            this.bgVideo.play().catch(() => { });
-        } catch { }
+    async goToPrev() {
+        await this._switchTo(this.index - 1);
+    }
 
-        if (this.onVideoChange) this.onVideoChange(item);
+    async goToIndex(userIndex) {
+        const index = Number(userIndex) - 1; // пользователь вводит 1..N
+        if (!Number.isNaN(index)) await this._switchTo(index);
+    }
 
-        // console.log("Marking viewed:", this.currentPlaylistName, item.id);
-        if (this.currentPlaylistName && item.id) {
-            try {
-                await markVideoViewed(this.currentPlaylistName, item.id);
-                item.lastViewed = new Date().toISOString();
-            } catch (err) {
-                console.warn("Не удалось обновить время просмотра:", err);
-            }
+    togglePause() {
+        if (this.activeVideo.paused) {
+            this._resumeAll();
+        } else {
+            this._pauseAll();
         }
     }
 
-    nextVideo() {
-        this.switchVideo(this.index + 1);
+    pause() {
+        this._pauseAll();
     }
 
-    prevVideo() {
-        this.switchVideo(this.index - 1);
+    async restart() {
+        this.activeVideo.currentTime = 0;
+        this.bgVideo.currentTime = 0;
+        this.audio.currentTime = 0;
+        await this._resumeAll();
     }
 
-    async switchVideo(newIndex) {
-        if (newIndex < 0 || newIndex >= this.playlist.length) return;
+    // ─── Приватные методы ─────────────────────────────────────────────────────
+
+    /** Переключение через двойной буфер */
+    async _switchTo(newIndex) {
+        if (!this._isValidIndex(newIndex)) return;
 
         const newItem = this.playlist[newIndex];
-        const player = this.players[this.next];
+        const incoming = this.nextVideo;
+        const outgoing = this.activeVideo;
 
-        const current = this.players[this.active];
-        current.pause();
+        outgoing.pause();
 
-        player.src = newItem.video;
+        incoming.src = newItem.video;
         this.audio.src = newItem.audio;
         this.bgVideo.src = newItem.video;
 
-        player.style.display = "block";
-        current.style.display = "none";
+        incoming.style.display = "block";
+        outgoing.style.display = "none";
 
+        this.activeIdx = 1 - this.activeIdx;
+        this.index = newIndex;
+
+        await this._playAll();
+        this._notifyChange(newItem);
+        this._markViewed(newItem);
+    }
+
+    async _playAll() {
         try {
-            player.muted = true;
+            this.activeVideo.muted = true;
             this.bgVideo.muted = true;
-
-            await player.play();
-
-            this.audio.play().catch(() => { });
-            this.bgVideo.play().catch(() => { });
+            await this.activeVideo.play();
+            this.audio.play().catch(() => {});
+            this.bgVideo.play().catch(() => {});
         } catch (err) {
             console.warn("Playback error:", err);
         }
-
-        [this.active, this.next] = [this.next, this.active];
-        this.index = newIndex;
-
-        if (this.onVideoChange) this.onVideoChange(newItem);
     }
 
-    togglePause(bgVideo, audio) {
-        const video = this.players[this.active];
-        console.log("TOGGLE TRIGGERED");
-
-        if (video.paused) {
-            video.muted = true;
-            this.bgVideo.muted = true;
-            video.play();
-            bgVideo.play();
-            audio.play().catch(() => { });
-        } else {
-            video.pause();
-            bgVideo.pause();
-            audio.pause();
-        }
-    }
-
-    goToIndex(userIndex) {
-
-        const index = Number(userIndex) - 1; // пользователь вводит 1..N
-
-        if (Number.isNaN(index)) return;
-
-        if (index < 0 || index >= this.playlist.length) {
-            console.warn("Index out of range:", userIndex);
-            return;
-        }
-
-        this.switchVideo(index);
-    }
-
-    // Внутри класса Player
-
-    // Воспроизвести текущее видео
-    async playCurrent() {
-        const video = this.players[this.active];
-        if (!video.src) return;
-
-        try {
-            await video.play();
-            await this.bgVideo.play().catch(() => { });
-            await this.audio.play().catch(() => { });
-        } catch (err) {
-            console.warn("Не удалось воспроизвести видео:", err);
-        }
-    }
-
-    // Поставить текущее видео на паузу
-    pauseCurrent() {
-        const video = this.players[this.active];
-        if (!video.src) return;
-
-        video.pause();
+    _pauseAll() {
+        this.activeVideo.pause();
         this.bgVideo.pause();
         this.audio.pause();
     }
 
-    // --------------------------
-    // сортировка по полю order
-    buildOrderedPlaylistByOrder(playlistObj, order = 'asc') {
-        if (!playlistObj || !playlistObj.videos) return [];
-
-        const arr = Object.entries(playlistObj.videos).map(([id, meta]) => ({
-            id,
-            title: meta.title,
-            order: meta.order,
-            lastViewed: meta.lastViewed || null
-        }));
-
-        arr.sort((a, b) => {
-            return order === 'asc' ? a.order - b.order : b.order - a.order;
-        });
-
-        return arr;
-    }
-
-    // сортировка по дате просмотра
-    buildOrderedPlaylistByDate(playlistObj, order = 'desc') {
-        if (!playlistObj || !playlistObj.videos) return [];
-
-        const arr = Object.entries(playlistObj.videos).map(([id, meta]) => ({
-            id,
-            title: meta.title,
-            order: meta.order,
-            lastViewed: meta.lastViewed ? new Date(meta.lastViewed) : null
-        }));
-
-        arr.sort((a, b) => {
-            // если обе даты null, считаем равными
-            if (!a.lastViewed && !b.lastViewed) return 0;
-            // если только одна дата null
-            if (!a.lastViewed) return order === 'asc' ? -1 : 1;
-            if (!b.lastViewed) return order === 'asc' ? 1 : -1;
-
-            return order === 'asc'
-                ? a.lastViewed - b.lastViewed
-                : b.lastViewed - a.lastViewed;
-        });
-
-        return arr;
-    }
-
-    // сортировка рандомная
-    buildRandomPlaylist(playlistObj, seed = 1) {
-
-        if (!playlistObj || !playlistObj.videos) return [];
-
-        const arr = Object.entries(playlistObj.videos).map(([id, meta]) => ({
-            id,
-            title: meta.title,
-            order: meta.order,
-            lastViewed: meta.lastViewed || null
-        }));
-
-        const rng = this.createSeededRNG(seed);
-
-        for (let i = arr.length - 1; i > 0; i--) {
-
-            const j = Math.floor(rng() * (i + 1));
-
-            [arr[i], arr[j]] = [arr[j], arr[i]];
+    async _resumeAll() {
+        try {
+            this.activeVideo.muted = true;
+            this.bgVideo.muted = true;
+            await this.activeVideo.play();
+            this.bgVideo.play().catch(() => {});
+            this.audio.play().catch(() => {});
+        } catch (err) {
+            console.warn("Resume error:", err);
         }
+    }
 
-        return arr;
+    _isValidIndex(index) {
+        return index >= 0 && index < this.playlist.length;
+    }
+
+    _notifyChange(item) {
+        if (this.onVideoChange) this.onVideoChange(item);
+    }
+
+    async _markViewed(item) {
+        if (!this.currentPlaylistName || !item.id) return;
+        try {
+            await markVideoViewed(this.currentPlaylistName, item.id);
+            item.lastViewed = new Date().toISOString();
+        } catch (err) {
+            console.warn("Не удалось обновить время просмотра:", err);
+        }
     }
 }

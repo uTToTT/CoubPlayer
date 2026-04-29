@@ -1,54 +1,46 @@
 <!doctype html>
-<html>
+<html lang="ru">
   <head>
     <meta charset="UTF-8" />
     <title>Coub Player</title>
-
     <link rel="stylesheet" href="css/style.css" />
   </head>
 
   <body>
+    <!-- Фоновое видео -->
     <video id="bgVideo" autoplay muted loop></video>
+
+    <!-- Видео буферы -->
     <div class="video-wrapper">
-      <video id="playerA" src="video" autoplay muted loop></video>
-    </div>
-    <div class="video-wrapper">
-      <video id="playerB" src="video" autoplay muted loop></video>
+      <video id="playerA" autoplay muted loop></video>
+      <video id="playerB" autoplay muted loop></video>
     </div>
 
     <audio id="audio" loop></audio>
 
-    <button id="prev" class="button">◀</button>
-    <button id="next" class="button">▶</button>
+    <!-- Боковые кнопки навигации -->
+    <button id="prev" class="button">&#�</button>
+    <button id="next" class="button">&#8250;</button>
+
+    <!-- Кнопка полноэкранного режима -->
     <button id="fullscreen" class="fullscreen-btn" type="button">⛶</button>
-    <div id="videoIndexWrapper">
+
+    <!-- Счётчик видео -->
+    <div id="videoIndexWrapper" class="panel">
       <input id="videoIndexInput" type="number" min="1" />
       <span id="videoTotal"></span>
     </div>
 
-    <div class="bottom-controls">
-      <input
-        id="volumeSlider"
-        type="range"
-        min="0"
-        max="100"
-        value="50"
-        class="volume-slider"
-      />
-
-      <button id="copyLinkBtn" class="control-btn">🔗</button>
-      <button id="restart" class="control-btn">↺</button>
-      <button id="editPlaylistsBtn" class="control-btn">✎</button>
-
-      <div class="edit-playlist-frame">
-        <div id="playlistCheckboxesContainer">
-          <div id="playlistCheckboxes"></div>
-          <button id="savePlaylistsBtn" type="button">Сохранить</button>
-        </div>
-      </div>
+    <!-- Нижняя панель управления -->
+    <div class="bottom-controls panel">
+      <input id="volumeSlider" type="range" min="0" max="100" value="50" class="volume-slider" />
+      <button id="copyLinkBtn" class="control-btn" title="Копировать ссылку">🔗</button>
+      <button id="restart"     class="control-btn" title="Перезапустить">↺</button>
+      <button id="editPlaylistsBtn" class="control-btn control-btn--accent" title="Добавить в плейлист">✎</button>
     </div>
 
-    <div class="top-controls">
+    <!-- Верхняя панель (плейлист + сортировка) -->
+    <div class="top-controls panel">
       <div class="custom-select" id="playlistDropdown">
         <div class="select-trigger">Playlist ▼</div>
         <div class="select-menu hidden" id="playlistMenu"></div>
@@ -60,14 +52,61 @@
           <button data-type="lastViewed" hidden>Last viewed</button>
           <button data-type="random">Random</button>
         </div>
-
         <button id="sortDirectionBtn">↑</button>
         <input id="seedInput" type="number" placeholder="Seed" class="hidden" />
       </div>
     </div>
 
-    <div id="videoInfo" class="video-info">
-      <div><span id="videoTitleLabel">-</span></div>
+    <!-- Название текущего видео -->
+    <div id="videoInfo" class="video-info panel">
+      <span id="videoTitleLabel">—</span>
+    </div>
+
+    <!-- ═══════════════════════════════════════════
+         PLAYLIST EDITOR — Pinterest-style side panel
+         ═══════════════════════════════════════════ -->
+    <div id="playlistEditorOverlay" class="pl-editor-overlay">
+      <div id="playlistEditorPanel" class="pl-editor-panel">
+
+        <!-- Шапка -->
+        <div class="pl-editor-header">
+          <div class="pl-editor-header-text">
+            <div class="pl-editor-title">Сохранить в плейлист</div>
+            <div class="pl-editor-subtitle" id="plEditorSubtitle">—</div>
+          </div>
+          <button class="pl-editor-close" id="plEditorClose" title="Закрыть">✕</button>
+        </div>
+
+        <!-- Поиск -->
+        <div class="pl-editor-search">
+          <svg class="pl-search-icon" viewBox="0 0 20 20" fill="none">
+            <circle cx="9" cy="9" r="6" stroke="currentColor" stroke-width="1.8"/>
+            <path d="M13.5 13.5 17 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+          <input
+            id="plSearchInput"
+            class="pl-search-input"
+            type="text"
+            placeholder="Найти плейлист…"
+            autocomplete="off"
+          />
+          <button class="pl-search-clear hidden" id="plSearchClear">✕</button>
+        </div>
+
+        <!-- Список плейлистов -->
+        <div class="pl-editor-list" id="plEditorList">
+          <!-- Строки рендерятся через JS -->
+        </div>
+
+        <!-- Футер: кнопка нового плейлиста -->
+        <div class="pl-editor-footer">
+          <button class="pl-new-btn" id="plNewBtn">
+            <span class="pl-new-icon">＋</span>
+            Создать новый плейлист
+          </button>
+        </div>
+
+      </div>
     </div>
 
     <script type="module" src="js/main.js"></script>

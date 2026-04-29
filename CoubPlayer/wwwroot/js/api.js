@@ -1,39 +1,36 @@
-//api.js
-export async function createPlaylist({ name }) {
-    await fetch("/api/playlists", {
+// api.js
+// Все обращения к серверному API. Логика не изменилась, добавлена вспомогательная функция.
+
+/**
+ * @param {string} url
+ * @param {object} body
+ * @returns {Promise<Response>}
+ */
+async function post(url, body) {
+    const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name })
+        body: JSON.stringify(body),
     });
+    if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`API error [${url}]: ${text}`);
+    }
+    return res;
+}
+
+export async function createPlaylist({ name }) {
+    await post("/api/playlists", { name });
 }
 
 export async function addVideoToPlaylist(playlist, id, title) {
-    const res = await fetch(`/api/playlists/${encodeURIComponent(playlist)}/add`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, title })
-    });
-    if (!res.ok) throw new Error("Не удалось добавить видео");
+    await post(`/api/playlists/${encodeURIComponent(playlist)}/add`, { id, title });
 }
 
 export async function removeVideoFromPlaylist(playlist, id) {
-    const res = await fetch(`/api/playlists/${encodeURIComponent(playlist)}/remove`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id })
-    });
-    if (!res.ok) throw new Error("Не удалось удалить видео");
+    await post(`/api/playlists/${encodeURIComponent(playlist)}/remove`, { id });
 }
 
 export async function markVideoViewed(playlist, id) {
-    const res = await fetch(`/api/playlists/${encodeURIComponent(playlist)}/viewed`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }) // должно совпадать с ViewVideoRequest.id
-    });
-
-    if (!res.ok) {
-        const text = await res.text(); // текст ошибки от сервера
-        throw new Error("Не удалось обновить время просмотра: " + text);
-    }
+    await post(`/api/playlists/${encodeURIComponent(playlist)}/viewed`, { id });
 }
