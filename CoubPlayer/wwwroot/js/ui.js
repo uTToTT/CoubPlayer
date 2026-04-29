@@ -582,5 +582,5 @@ function emojiForPlaylist(name) {
     for (const [key, emoji] of Object.entries(map)) {
         if (lower.includes(key)) return emoji;
     }
-    return name[0]?.toUpperCase() || "📋";
+    return [...name][0] || "📋";
 }
