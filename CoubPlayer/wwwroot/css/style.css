@@ -1382,3 +1382,56 @@ body {
 .pl-selector-panel .pl-row:not(.pl-row--active) .pl-row-check {
   display: none;
 }
+
+/* ─── Кастомные иконки плейлистов ────────────────────────────────────────────── */
+
+.pl-row-icon--clickable {
+  cursor: pointer;
+  position: relative;
+  transition: all 0.15s ease;
+}
+
+/* Подсказка "+" при hover */
+.pl-row-icon--clickable::after {
+  content: "✎";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 8px;
+  font-size: 13px;
+  color: #fff;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.pl-row-icon--clickable:hover::after {
+  opacity: 1;
+}
+
+.pl-row-icon--clickable:hover {
+  transform: scale(1.1);
+}
+
+/* Иконки в селекторе — крупнее, как превью */
+.pl-selector-panel .pl-row-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  font-size: 22px;
+}
+
+.pl-selector-panel .pl-row {
+  padding: 10px 10px;
+  gap: 12px;
+}
+
+.pl-selector-panel .pl-row-name {
+  font-size: 13px;
+}
+
+.pl-selector-panel .pl-row-count {
+  font-size: 11px;
+}

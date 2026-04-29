@@ -2,6 +2,8 @@
 
 // ─── Playlist Selector (Pinterest-style panel) ────────────────────────────────
 
+import { setPlaylistIcon } from "./api.js";
+
 const selectorOverlay = document.getElementById("playlistSelectorOverlay");
 const selectorPanel = document.getElementById("playlistSelectorPanel");
 const selectorClose = document.getElementById("plSelectorClose");
@@ -86,7 +88,7 @@ function closeSelector() {
     selectorOverlay.classList.remove("show");
 }
 
-function renderSelectorRows(query) {
+async function renderSelectorRows(query) {
     selectorList.innerHTML = "";
     const q = query.toLowerCase();
     const entries = Object.entries(_selectorPlaylists).filter(
@@ -102,11 +104,11 @@ function renderSelectorRows(query) {
     }
 
     for (const [name, data] of entries) {
-        selectorList.appendChild(buildSelectorRow(name, data));
+        selectorList.appendChild(await buildSelectorRow(name, data));
     }
 }
 
-function buildSelectorRow(name, data) {
+async function buildSelectorRow(name, data) {
     const count = Object.keys(data.videos || {}).length;
     const isActive = name === _selectorSelected;
     const isRO = READONLY_SELECTOR.includes(name);
@@ -114,9 +116,11 @@ function buildSelectorRow(name, data) {
     const row = document.createElement("div");
     row.className = "pl-row" + (isActive ? " pl-row--active" : "");
 
-    const icon = document.createElement("div");
-    icon.className = "pl-row-icon";
-    icon.textContent = emojiForPlaylist(name);
+    const icon = await buildIconEl(name, true);
+
+    // const icon = document.createElement("div");
+    // icon.className = "pl-row-icon";
+    // icon.textContent = emojiForPlaylist(name);
 
     const text = document.createElement("div");
     text.className = "pl-row-text";
@@ -141,16 +145,8 @@ function buildSelectorRow(name, data) {
     row.appendChild(check);
 
     // Клик по основной части строки — выбрать плейлист
-    const selectArea = [icon, text, check];
-    selectArea.forEach(el => el.addEventListener("click", (e) => {
-        e.stopPropagation();
-        _selectorSelected = name;
-        closeSelector();
-        setPlaylistTriggerLabel(name);
-        _onSelectPlaylist(name);
-    }));
     row.addEventListener("click", (e) => {
-        // fallback если клик вне кнопок
+        if (e.target.closest(".pl-row-icon--clickable")) return;
         if (!e.target.closest(".pl-row-actions")) {
             _selectorSelected = name;
             closeSelector();
@@ -263,6 +259,7 @@ async function handleDeletePlaylist(name, row) {
     try {
         await _onDeletePlaylist(name);
         delete _selectorPlaylists[name];
+
         row.remove();
 
         // Если удалили активный — сбросить метку
@@ -461,7 +458,7 @@ export function closeEditor() {
     editorOverlay.classList.remove("show");
 }
 
-function renderEditorRows(query) {
+async function renderEditorRows(query) {
     editorList.innerHTML = "";
     const q = query.toLowerCase();
     const entries = Object.entries(_playlists).filter(
@@ -477,11 +474,11 @@ function renderEditorRows(query) {
     }
 
     for (const [name, data] of entries) {
-        editorList.appendChild(buildEditorRow(name, data));
+        editorList.appendChild(await buildEditorRow(name, data));
     }
 }
 
-function buildEditorRow(name, data) {
+async function buildEditorRow(name, data) {
     const isChecked = !!data.videos?.[_currentVideoId];
     const isReadonly = READONLY_PLAYLISTS.includes(name);
     const count = Object.keys(data.videos || {}).length;
@@ -492,9 +489,11 @@ function buildEditorRow(name, data) {
         isReadonly ? "pl-row--readonly" : "",
     ].filter(Boolean).join(" ");
 
-    const icon = document.createElement("div");
-    icon.className = "pl-row-icon";
-    icon.textContent = emojiForPlaylist(name);
+    const icon = await buildIconEl(name, true);
+
+    // const icon = document.createElement("div");
+    // icon.className = "pl-row-icon";
+    // icon.textContent = emojiForPlaylist(name);
 
     const text = document.createElement("div");
     text.className = "pl-row-text";
@@ -518,7 +517,10 @@ function buildEditorRow(name, data) {
     row.appendChild(check);
 
     if (!isReadonly) {
-        row.addEventListener("click", () => handleToggle(row, name, data, countEl));
+        row.addEventListener("click", (e) => {
+            if (e.target.closest(".pl-row-icon--clickable")) return;
+            handleToggle(row, name, data, countEl);
+        });
     }
     return row;
 }
@@ -583,4 +585,81 @@ function emojiForPlaylist(name) {
         if (lower.includes(key)) return emoji;
     }
     return [...name][0] || "📋";
+}
+
+// ─── Кастомные иконки плейлистов  ───────────────────────────────
+
+
+const _iconTimestamps = {}; // { [name]: timestamp }
+
+function iconUrlForPlaylist(name) {
+    const t = _iconTimestamps[name] || "";
+    return `/Data/icons/${encodeURIComponent(name)}.webp${t ? "?t=" + t : ""}`;
+}
+
+// Проверяем существует ли иконка — через Image onload/onerror
+function iconExists(url) {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve(true);
+        img.onerror = () => resolve(false);
+        img.src = url + "?t=" + Date.now(); // cache bust
+    });
+}
+
+function iconPick(name, onDone) {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+
+    input.addEventListener("change", async () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        try {
+            const url = await setPlaylistIcon(name, file);
+            // Сохраняем timestamp per-playlist чтобы bust работал везде
+            _iconTimestamps[name] = Date.now();
+            onDone(iconUrlForPlaylist(name));
+        } catch {
+            showToast("⚠ Не удалось загрузить изображение");
+        }
+    });
+
+    input.click();
+}
+
+async function buildIconEl(name, allowClick) {
+    const wrap = document.createElement("div");
+    wrap.className = "pl-row-icon";
+
+    const url = iconUrlForPlaylist(name);
+    const exists = await iconExists(url);
+
+    const render = (srcUrl) => {
+        wrap.innerHTML = "";
+        if (srcUrl) {
+            const img = document.createElement("img");
+            // Берём актуальный URL с timestamp в момент рендера
+            img.src = iconUrlForPlaylist(name);
+            img.alt = name;
+            img.style.cssText =
+                "width:100%; height:100%; border-radius:6px; object-fit:cover; display:block;";
+            wrap.appendChild(img);
+        } else {
+            wrap.textContent = emojiForPlaylist(name);
+        }
+    };
+
+    render(exists ? url : null);
+
+    if (allowClick) {
+        wrap.title = "Нажмите чтобы сменить иконку";
+        wrap.classList.add("pl-row-icon--clickable");
+        wrap.addEventListener("click", (e) => {
+            e.stopPropagation();
+            iconPick(name, (newUrl) => render(newUrl));
+        });
+    }
+
+    return wrap;
 }

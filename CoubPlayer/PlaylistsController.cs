@@ -2,6 +2,7 @@
 using CoubPlayer.Requests;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
+using SkiaSharp;
 
 namespace CoubPlayer
 {
@@ -12,7 +13,68 @@ namespace CoubPlayer
         private readonly string _path = Path.Combine(
             Directory.GetCurrentDirectory(), "wwwroot", "Data", "playlists.json");
 
+        private readonly string _iconsPath = Path.Combine(
+            Directory.GetCurrentDirectory(), "wwwroot", "Data", "icons");
+
         private static readonly object _lock = new();
+
+
+        #region Icons
+
+        [HttpPost("{playlist}/icon")]
+        public  IActionResult SetIcon([FromRoute] string playlist, IFormFile file)
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest("No file");
+
+            lock (_lock)
+            {
+                var json = System.IO.File.ReadAllText(_path);
+                var data = JsonConvert.DeserializeObject<Dictionary<string, Playlist>>(json)!;
+                if (!data.ContainsKey(playlist))
+                    return NotFound();
+            }
+
+            Directory.CreateDirectory(_iconsPath);
+
+            var iconPath = Path.Combine(_iconsPath, $"{SanitizeFileName(playlist)}.webp");
+
+            // Ресайз через SkiaSharp
+            using var inputStream = file.OpenReadStream();
+            using var original = SKBitmap.Decode(inputStream);
+
+            const int SIZE = 64;
+            var scale = Math.Max((float)SIZE / original.Width, (float)SIZE / original.Height);
+            var srcW = (int)(SIZE / scale);
+            var srcH = (int)(SIZE / scale);
+            var srcX = (original.Width - srcW) / 2;
+            var srcY = (original.Height - srcH) / 2;
+
+            using var cropped = new SKBitmap(SIZE, SIZE);
+            using var canvas = new SKCanvas(cropped);
+            canvas.DrawBitmap(original,
+                new SKRect(srcX, srcY, srcX + srcW, srcY + srcH),
+                new SKRect(0, 0, SIZE, SIZE));
+
+            using var output = System.IO.File.OpenWrite(iconPath);
+            cropped.Encode(output, SKEncodedImageFormat.Webp, 85);
+
+            return Ok(new { url = $"/Data/icons/{SanitizeFileName(playlist)}.webp" });
+        }
+
+        [HttpDelete("{playlist}/icon")]
+        public IActionResult DeleteIcon([FromRoute] string playlist)
+        {
+            var iconPath = Path.Combine(_iconsPath, $"{SanitizeFileName(playlist)}.webp");
+            if (System.IO.File.Exists(iconPath))
+                System.IO.File.Delete(iconPath);
+            return Ok();
+        }
+
+        private static string SanitizeFileName(string name) =>
+            string.Concat(name.Split(Path.GetInvalidFileNameChars()));
+
+        #endregion
 
         private IActionResult ExecuteLocked(Func<Dictionary<string, Playlist>, IActionResult> action)
         {
@@ -72,6 +134,10 @@ namespace CoubPlayer
                 if (!data.ContainsKey(playlist))
                     return NotFound();
 
+                var iconPath = Path.Combine(_iconsPath, $"{SanitizeFileName(playlist)}.webp");
+                if (System.IO.File.Exists(iconPath))
+                    System.IO.File.Delete(iconPath);
+
                 data.Remove(playlist);
                 return Ok();
             });
@@ -90,6 +156,11 @@ namespace CoubPlayer
 
                 var pl = data[playlist];
                 pl.title = req.NewName;
+
+                var oldIcon = Path.Combine(_iconsPath, $"{SanitizeFileName(playlist)}.webp");
+                var newIcon = Path.Combine(_iconsPath, $"{SanitizeFileName(req.NewName)}.webp");
+                if (System.IO.File.Exists(oldIcon))
+                    System.IO.File.Move(oldIcon, newIcon, overwrite: true);
 
                 data.Remove(playlist);
                 data[req.NewName] = pl;

@@ -19,6 +19,26 @@ async function post(url, body) {
     return res;
 }
 
+export async function setPlaylistIcon(playlist, file) {
+    const form = new FormData();
+    form.append("file", file);
+
+    const res = await fetch(`/api/playlists/${encodeURIComponent(playlist)}/icon`, {
+        method: "POST",
+        body: form, // Content-Type НЕ выставляем вручную — браузер сам добавит boundary
+    });
+
+    if (!res.ok) throw new Error(`Icon upload failed: ${await res.text()}`);
+    const { url } = await res.json();
+    return url; // "/Data/icons/myplaylist.webp"
+}
+
+export async function deletePlaylistIcon(playlist) {
+    await fetch(`/api/playlists/${encodeURIComponent(playlist)}/icon`, {
+        method: "DELETE",
+    });
+}
+
 export async function createPlaylist({ name }) {
     await post("/api/playlists", { name });
 }
@@ -42,3 +62,4 @@ export async function deletePlaylist(name) {
 export async function renamePlaylist(oldName, newName) {
     await post(`/api/playlists/${encodeURIComponent(oldName)}/rename`, { newName });
 }
+

@@ -60,3 +60,4 @@ nunit-*.xml
 **/playlists.json
 **/coub_list.json
 **/Coubs
+**/Data
