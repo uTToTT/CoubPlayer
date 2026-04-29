@@ -70,42 +70,18 @@ body {
   pointer-events: none;
 }
 
+/* Оба буфера лежат в одной grid-ячейке — перекрывают друг друга */
 .video-wrapper video {
-  grid-area: 1 / 1; /* оба видео в одной ячейке — накладываются */
-  max-width: 80vw;
-  max-height: 70vh;
+  grid-area: 1 / 1;
+  max-width: 85vw;
+  max-height: 80vh;
   width: auto;
   height: auto;
   border-radius: var(--radius-xl);
-  filter: drop-shadow(0 24px 48px rgba(0, 0, 0, 0.65));
-}
-
-@keyframes videoFadeOut {
-  from {
-    opacity: 1;
-    filter: blur(0px);
-  }
-  to {
-    opacity: 0;
-    filter: blur(10px);
-  }
-}
-@keyframes videoFadeIn {
-  from {
-    opacity: 0;
-    filter: blur(10px);
-  }
-  to {
-    opacity: 1;
-    filter: blur(0px);
-  }
-}
-.video-exit {
-  animation: videoFadeOut 0.35s ease forwards;
-  pointer-events: none;
-}
-.video-enter {
-  animation: videoFadeIn 0.35s ease forwards;
+  object-fit: contain;
+  /* drop-shadow убран — он конфликтует с filter:blur() анимации */
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.55);
+  will-change: opacity, filter;
 }
 
 /* ─── Боковые кнопки Prev / Next ─────────────────────────── */

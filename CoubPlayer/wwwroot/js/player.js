@@ -23,6 +23,11 @@ export class Player {
         /** @type {(() => void) | null} Вызывается при смене видео */
         this.onVideoChange = null;
 
+        this._generation = 0;
+
+        this._activeAnimations = null;
+        this._pendingOutgoing = null;
+
         window.addEventListener("resize", () => {
             this._fitVideo(this.activeVideo);
         });
@@ -62,8 +67,20 @@ export class Player {
     async play(index) {
         if (!this._isValidIndex(index)) return;
 
+        this._cancelTransition();
+        this._generation++;
+
         this.index = index;
         const item = this.playlist[index];
+
+        // Сбрасываем оба буфера в видимое состояние
+        this.videoEls.forEach((v) => {
+            v.style.opacity = "1";
+            v.style.filter = "";
+            v.style.display = "block";
+        });
+        // Прячем неактивный буфер
+        this.nextVideo.style.display = "none";
 
         this.activeVideo.src = item.video;
         this.audio.src = item.audio;
@@ -112,38 +129,123 @@ export class Player {
     async _switchTo(newIndex) {
         if (!this._isValidIndex(newIndex)) return;
 
+        // Отменяем предыдущую анимацию и инкрементируем поколение.
+        // Все колбэки предыдущего вызова увидят устаревший токен и выйдут.
+        this._cancelTransition();
+        const generation = ++this._generation;
+
         const newItem = this.playlist[newIndex];
         const incoming = this.nextVideo;
         const outgoing = this.activeVideo;
 
-        outgoing.pause();
-
+        // ── 1. Подготовка incoming: в DOM, но полностью прозрачный ───────────
         incoming.src = newItem.video;
-        this.audio.src = newItem.audio;
-        this.bgVideo.src = newItem.video;
-
-        // Анимация ухода
-        outgoing.classList.add("video-exit");
-
+        incoming.style.opacity = "0";
+        incoming.style.filter = "blur(12px)";
         incoming.style.display = "block";
 
+        this.audio.src = newItem.audio;
+        this._animateBg(newItem.video);
+
+        // ── 2. Swap буфера ────────────────────────────────────────────────────
+        outgoing.pause();
         this.activeIdx = 1 - this.activeIdx;
         this.index = newIndex;
 
+        // ── 3. Запуск воспроизведения — await может занять время, за которое
+        //       придёт следующий _switchTo. После await проверяем токен.
         await this._playAll();
 
-        // Анимация появления — после playAll, чтобы видео уже было готово и отцентровано
-        void incoming.offsetWidth;
-        incoming.classList.add("video-enter");
+        if (generation !== this._generation) return; // устарели — выходим
 
-        setTimeout(() => {
+        // ── 4. Параллельный crossfade ─────────────────────────────────────────
+        const DURATION = 320;
+        const EASING = "cubic-bezier(0.4, 0, 0.2, 1)";
+
+        const fadeIn = incoming.animate(
+            [
+                { opacity: 0, filter: "blur(12px)" },
+                { opacity: 1, filter: "blur(0px)" },
+            ],
+            { duration: DURATION, easing: EASING, fill: "forwards" }
+        );
+
+        const fadeOut = outgoing.animate(
+            [
+                { opacity: 1, filter: "blur(0px)" },
+                { opacity: 0, filter: "blur(12px)" },
+            ],
+            { duration: DURATION, easing: EASING, fill: "forwards" }
+        );
+
+        this._activeAnimations = [fadeIn, fadeOut];
+        this._pendingOutgoing = outgoing;
+
+        fadeIn.finished.then(() => {
+            // Проверяем токен — если устарел, DOM уже привёл в порядок
+            // следующий _switchTo через _cancelTransition(). Не трогаем ничего.
+            if (generation !== this._generation) return;
+
+            incoming.style.opacity = "1";
+            incoming.style.filter = "";
             outgoing.style.display = "none";
-            outgoing.classList.remove("video-exit");
-            incoming.classList.remove("video-enter");
-        }, 350);
+            outgoing.style.opacity = "1";
+            outgoing.style.filter = "";
+            this._activeAnimations = null;
+            this._pendingOutgoing = null;
+        }).catch(() => { });
 
         this._notifyChange(newItem);
         this._markViewed(newItem);
+    }
+
+    _animateBg(src) {
+        const bg = this.bgVideo;
+
+        // Прерываем предыдущую bg-анимацию если есть
+        if (this._bgAnimation) {
+            this._bgAnimation.cancel();
+            this._bgAnimation = null;
+        }
+
+        const fadeOut = bg.animate(
+            [{ opacity: 1 }, { opacity: 0 }],
+            { duration: 200, easing: "ease", fill: "forwards" }
+        );
+
+        this._bgAnimation = fadeOut;
+
+        fadeOut.finished.then(() => {
+            bg.src = src;
+            bg.play().catch(() => { });
+
+            const fadeIn = bg.animate(
+                [{ opacity: 0 }, { opacity: 1 }],
+                { duration: 300, easing: "ease", fill: "forwards" }
+            );
+
+            this._bgAnimation = fadeIn;
+
+            fadeIn.finished.then(() => {
+                bg.style.opacity = "1";
+                this._bgAnimation = null;
+            }).catch(() => { });
+        }).catch(() => { });
+    }
+
+    _cancelTransition() {
+        if (this._activeAnimations) {
+            this._activeAnimations.forEach((a) => a.cancel());
+            this._activeAnimations = null;
+        }
+
+        if (this._pendingOutgoing) {
+            // Мгновенно скрываем outgoing — он больше не нужен
+            this._pendingOutgoing.style.display = "none";
+            this._pendingOutgoing.style.opacity = "1";
+            this._pendingOutgoing.style.filter = "";
+            this._pendingOutgoing = null;
+        }
     }
 
     _fitVideo(video) {
