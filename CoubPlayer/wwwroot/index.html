@@ -19,8 +19,8 @@
     <audio id="audio" loop></audio>
 
     <!-- Боковые кнопки навигации -->
-    <button id="prev" class="button">&#�</button>
-    <button id="next" class="button">&#8250;</button>
+    <button id="prev" class="button">⯇</button>
+    <button id="next" class="button">⯈</button>
 
     <!-- Кнопка полноэкранного режима -->
     <button id="fullscreen" class="fullscreen-btn" type="button">⛶</button>
@@ -33,10 +33,25 @@
 
     <!-- Нижняя панель управления -->
     <div class="bottom-controls panel">
-      <input id="volumeSlider" type="range" min="0" max="100" value="50" class="volume-slider" />
-      <button id="copyLinkBtn" class="control-btn" title="Копировать ссылку">🔗</button>
-      <button id="restart"     class="control-btn" title="Перезапустить">↺</button>
-      <button id="editPlaylistsBtn" class="control-btn control-btn--accent" title="Добавить в плейлист">✎</button>
+      <input
+        id="volumeSlider"
+        type="range"
+        min="0"
+        max="100"
+        value="50"
+        class="volume-slider"
+      />
+      <button id="copyLinkBtn" class="control-btn" title="Копировать ссылку">
+        🔗
+      </button>
+      <button id="restart" class="control-btn" title="Перезапустить">↺</button>
+      <button
+        id="editPlaylistsBtn"
+        class="control-btn control-btn--accent"
+        title="Добавить в плейлист"
+      >
+        ✎
+      </button>
     </div>
 
     <!-- Верхняя панель (плейлист + сортировка) -->
@@ -45,7 +60,13 @@
         <span class="pl-trigger-icon">◈</span>
         <span class="pl-trigger-label" id="playlistTriggerLabel">Playlist</span>
         <svg class="pl-trigger-chevron" viewBox="0 0 12 12" fill="none">
-          <path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path
+            d="M2 4l4 4 4-4"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
         </svg>
       </button>
 
@@ -55,7 +76,14 @@
           <button data-type="random">Random</button>
         </div>
         <button id="sortDirectionBtn" title="Направление сортировки">↑</button>
-        <input id="seedInput" type="number" value="42" min="1" class="hidden" title="Seed" />
+        <input
+          id="seedInput"
+          type="number"
+          value="42"
+          min="1"
+          class="hidden"
+          title="Seed"
+        />
       </div>
     </div>
 
@@ -71,10 +99,27 @@
         </div>
         <div class="pl-editor-search">
           <svg class="pl-search-icon" viewBox="0 0 20 20" fill="none">
-            <circle cx="9" cy="9" r="6" stroke="currentColor" stroke-width="1.8"/>
-            <path d="M13.5 13.5 17 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <circle
+              cx="9"
+              cy="9"
+              r="6"
+              stroke="currentColor"
+              stroke-width="1.8"
+            />
+            <path
+              d="M13.5 13.5 17 17"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+            />
           </svg>
-          <input id="plSelectorSearch" class="pl-search-input" type="text" placeholder="Найти плейлист…" autocomplete="off" />
+          <input
+            id="plSelectorSearch"
+            class="pl-search-input"
+            type="text"
+            placeholder="Найти плейлист…"
+            autocomplete="off"
+          />
           <button class="pl-search-clear hidden" id="plSelectorClear">✕</button>
         </div>
         <div class="pl-editor-list" id="plSelectorList"></div>
@@ -96,21 +141,33 @@
          ═══════════════════════════════════════════ -->
     <div id="playlistEditorOverlay" class="pl-editor-overlay">
       <div id="playlistEditorPanel" class="pl-editor-panel">
-
         <!-- Шапка -->
         <div class="pl-editor-header">
           <div class="pl-editor-header-text">
             <div class="pl-editor-title">Сохранить в плейлист</div>
             <div class="pl-editor-subtitle" id="plEditorSubtitle">—</div>
           </div>
-          <button class="pl-editor-close" id="plEditorClose" title="Закрыть">✕</button>
+          <button class="pl-editor-close" id="plEditorClose" title="Закрыть">
+            ✕
+          </button>
         </div>
 
         <!-- Поиск -->
         <div class="pl-editor-search">
           <svg class="pl-search-icon" viewBox="0 0 20 20" fill="none">
-            <circle cx="9" cy="9" r="6" stroke="currentColor" stroke-width="1.8"/>
-            <path d="M13.5 13.5 17 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <circle
+              cx="9"
+              cy="9"
+              r="6"
+              stroke="currentColor"
+              stroke-width="1.8"
+            />
+            <path
+              d="M13.5 13.5 17 17"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+            />
           </svg>
           <input
             id="plSearchInput"
@@ -134,7 +191,6 @@
             Создать новый плейлист
           </button>
         </div>
-
       </div>
     </div>
 

@@ -30,12 +30,19 @@ export function initControls(player) {
         }
     });
 
-    // Колесо мыши с debounce
+    // Колесо мыши с debounce.
+    // Не перелистываем если курсор над скроллируемым списком (панели плейлистов).
+    const SCROLL_SELECTORS = [".pl-editor-list", ".pl-editor-overlay"];
+
+    const isOverScrollable = (target) =>
+        SCROLL_SELECTORS.some((sel) => target.closest(sel));
+
     let wheelLock = false;
     document.addEventListener("wheel", (e) => {
+        if (isOverScrollable(e.target)) return;
         if (wheelLock) return;
         wheelLock = true;
-        setTimeout(() => (wheelLock = false), 250);
+        setTimeout(() => (wheelLock = false), 25);
 
         if (e.deltaY > 0) {
             player.goToNext();

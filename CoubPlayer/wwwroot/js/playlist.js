@@ -101,14 +101,18 @@ export function sortRandom(playlistObj, seed = 1) {
 }
 
 /**
+ * Mulberry32 — быстрый PRNG с seed, всегда возвращает [0, 1).
+ * Math.sin-based RNG давал отрицательные значения → undefined в массиве.
  * @param {number} seed
  * @returns {() => number}
  */
 function createSeededRNG(seed) {
-    let s = seed;
+    let s = seed >>> 0; // uint32
     return () => {
-        s += 1;
-        return (Math.sin(s) * 10000) % 1;
+        s += 0x6d2b79f5;
+        let t = Math.imul(s ^ (s >>> 15), 1 | s);
+        t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
+        return ((t ^ (t >>> 14)) >>> 0) / 0x100000000;
     };
 }
 
