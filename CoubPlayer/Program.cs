@@ -15,15 +15,15 @@ namespace CoubPlayer
             app.UseStaticFiles();
             app.MapControllers();
 
-            // Запускаем браузер после старта сервера
+           
             var url = "http://localhost:5000/index.html";
             try
             {
-                // .NET 6+ рекомендуемый способ
+                
                 var psi = new ProcessStartInfo
                 {
                     FileName = url,
-                    UseShellExecute = true // важно, чтобы открывался системный браузер
+                    UseShellExecute = true 
                 };
                 Process.Start(psi);
             }

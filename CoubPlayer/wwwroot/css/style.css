@@ -64,21 +64,48 @@ body {
 .video-wrapper {
   position: fixed;
   inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
   z-index: 2;
   pointer-events: none;
 }
 
 .video-wrapper video {
-  max-width: 85vw;
-  max-height: 80vh;
+  grid-area: 1 / 1; /* оба видео в одной ячейке — накладываются */
+  max-width: 80vw;
+  max-height: 70vh;
   width: auto;
   height: auto;
   border-radius: var(--radius-xl);
-  object-fit: contain;
   filter: drop-shadow(0 24px 48px rgba(0, 0, 0, 0.65));
+}
+
+@keyframes videoFadeOut {
+  from {
+    opacity: 1;
+    filter: blur(0px);
+  }
+  to {
+    opacity: 0;
+    filter: blur(10px);
+  }
+}
+@keyframes videoFadeIn {
+  from {
+    opacity: 0;
+    filter: blur(10px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0px);
+  }
+}
+.video-exit {
+  animation: videoFadeOut 0.35s ease forwards;
+  pointer-events: none;
+}
+.video-enter {
+  animation: videoFadeIn 0.35s ease forwards;
 }
 
 /* ─── Боковые кнопки Prev / Next ─────────────────────────── */
@@ -1333,7 +1360,10 @@ body {
   color: rgba(255, 255, 255, 0.55);
   cursor: pointer;
   padding: 0;
-  transition: background 0.14s, color 0.14s, border-color 0.14s;
+  transition:
+    background 0.14s,
+    color 0.14s,
+    border-color 0.14s;
 }
 
 .pl-row-action-btn:hover {

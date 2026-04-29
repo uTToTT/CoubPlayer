@@ -22,6 +22,10 @@ export class Player {
 
         /** @type {(() => void) | null} Вызывается при смене видео */
         this.onVideoChange = null;
+
+        window.addEventListener("resize", () => {
+            this._fitVideo(this.activeVideo);
+        });
     }
 
     // ─── Публичный API ────────────────────────────────────────────────────────
@@ -118,21 +122,59 @@ export class Player {
         this.audio.src = newItem.audio;
         this.bgVideo.src = newItem.video;
 
+        // Анимация ухода
+        outgoing.classList.add("video-exit");
+
         incoming.style.display = "block";
-        outgoing.style.display = "none";
 
         this.activeIdx = 1 - this.activeIdx;
         this.index = newIndex;
 
         await this._playAll();
+
+        // Анимация появления — после playAll, чтобы видео уже было готово и отцентровано
+        void incoming.offsetWidth;
+        incoming.classList.add("video-enter");
+
+        setTimeout(() => {
+            outgoing.style.display = "none";
+            outgoing.classList.remove("video-exit");
+            incoming.classList.remove("video-enter");
+        }, 350);
+
         this._notifyChange(newItem);
         this._markViewed(newItem);
+    }
+
+    _fitVideo(video) {
+        const onMeta = () => {
+            const ratio = video.videoWidth / video.videoHeight;
+            const maxW = window.innerWidth * 0.8;
+            const maxH = window.innerHeight * 0.7;
+
+            let w, h;
+            if (ratio > maxW / maxH) {
+                w = maxW; h = maxW / ratio;
+            } else {
+                h = maxH; w = maxH * ratio;
+            }
+
+            video.style.width = w + "px";
+            video.style.height = h + "px";
+        };
+
+        if (video.readyState >= 1) {
+            onMeta();
+        } else {
+            video.addEventListener("loadedmetadata", onMeta, { once: true });
+        }
     }
 
     async _playAll() {
         try {
             this.activeVideo.muted = true;
             this.bgVideo.muted = true;
+            this._fitVideo(this.activeVideo);
             await this.activeVideo.play();
             this.audio.play().catch(() => { });
             this.bgVideo.play().catch(() => { });
