@@ -1304,3 +1304,72 @@ body {
 #seedInput {
   width: 72px;
 }
+
+/* ─── Playlist row: action buttons (rename / delete) ────────────────────────── */
+
+.pl-row-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.pl-row:hover .pl-row-actions {
+  opacity: 1;
+}
+
+.pl-row-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.14s, color 0.14s, border-color 0.14s;
+}
+
+.pl-row-action-btn:hover {
+  background: rgba(255, 255, 255, 0.13);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.pl-row-delete-btn:hover {
+  background: rgba(220, 60, 60, 0.25);
+  color: #ff6b6b;
+  border-color: rgba(220, 60, 60, 0.35);
+}
+
+/* Inline rename input */
+.pl-row-rename-input {
+  flex: 1;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 2px 7px;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(255, 90, 95, 0.18);
+}
+
+/* While editing, hide the check circle */
+.pl-row--editing .pl-row-check,
+.pl-row--editing .pl-row-actions {
+  display: none;
+}
+
+/* Hide check from selector rows that aren't active (keep only in editor) */
+.pl-selector-panel .pl-row:not(.pl-row--active) .pl-row-check {
+  display: none;
+}

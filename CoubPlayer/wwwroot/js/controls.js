@@ -5,7 +5,7 @@
 /**
  * @param {import("./player.js").Player} player
  */
-export function initControls(player) {
+export function initControls(player, setVolumeSlider) {
     const nextBtn = document.getElementById("next");
     const prevBtn = document.getElementById("prev");
     const restartBtn = document.getElementById("restart");
@@ -17,23 +17,42 @@ export function initControls(player) {
     fullscreenBtn.onclick = toggleFullscreen;
 
     document.addEventListener("keydown", (e) => {
-        if (e.key === "ArrowRight") player.goToNext();
-        if (e.key === "ArrowLeft") player.goToPrev();
+        // Не перехватываем клавиши если фокус в поле ввода
+        if (e.target.matches("input, textarea")) return;
 
-        if (e.code === "Space") {
-            e.preventDefault();
-            player.togglePause();
-        }
-
-        if (e.key === "r" || e.key === "R") {
-            player.restart();
+        switch (e.code) {
+            case "ArrowRight":
+                player.goToNext();
+                break;
+            case "ArrowLeft":
+                player.goToPrev();
+                break;
+            case "ArrowUp":
+                e.preventDefault();
+                const volUp = Math.min(100, player.getVolume() + 5);
+                player.setVolume(volUp);
+                setVolumeSlider(volUp);
+                break;
+            case "ArrowDown":
+                e.preventDefault();
+                const volDown = Math.max(0, player.getVolume() - 5);
+                player.setVolume(volDown);
+                setVolumeSlider(volDown);
+                break;
+            case "Numpad0":
+                player.restart();
+                break;
+            case "Space":
+                e.preventDefault();
+                player.togglePause();
+                break;
+            case "KeyR":
+                player.restart();
+                break;
         }
     });
 
-    // Колесо мыши с debounce.
-    // Не перелистываем если курсор над скроллируемым списком (панели плейлистов).
     const SCROLL_SELECTORS = [".pl-editor-list", ".pl-editor-overlay"];
-
     const isOverScrollable = (target) =>
         SCROLL_SELECTORS.some((sel) => target.closest(sel));
 

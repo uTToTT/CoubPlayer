@@ -34,3 +34,11 @@ export async function removeVideoFromPlaylist(playlist, id) {
 export async function markVideoViewed(playlist, id) {
     await post(`/api/playlists/${encodeURIComponent(playlist)}/viewed`, { id });
 }
+
+export async function deletePlaylist(name) {
+    await post(`/api/playlists/${encodeURIComponent(name)}/delete`, {});
+}
+
+export async function renamePlaylist(oldName, newName) {
+    await post(`/api/playlists/${encodeURIComponent(oldName)}/rename`, { newName });
+}

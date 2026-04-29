@@ -1,11 +1,11 @@
 // main.js — точка входа, склейка модулей.
 
-import { loadData }      from "./loader.js";
+import { loadData } from "./loader.js";
 import { buildPlaylist } from "./playlist.js";
-import { Player }        from "./player.js";
-import { initControls }  from "./controls.js";
-import * as api          from "./api.js";
-import { state }         from "./state.js";
+import { Player } from "./player.js";
+import { initControls } from "./controls.js";
+import * as api from "./api.js";
+import { state } from "./state.js";
 import {
     initPlaylistSelector,
     setPlaylistTriggerLabel,
@@ -20,7 +20,7 @@ import {
 
 // ─── DOM ──────────────────────────────────────────────────────────────────────
 
-const videoIndexInput  = document.getElementById("videoIndexInput");
+const videoIndexInput = document.getElementById("videoIndexInput");
 const editPlaylistsBtn = document.getElementById("editPlaylistsBtn");
 
 // ─── Player ───────────────────────────────────────────────────────────────────
@@ -40,16 +40,16 @@ function currentVideo() {
 async function refreshData() {
     const data = await loadData();
     state.playlists = data.playlists;
-    state.coubMap   = data.coubMap;
+    state.coubMap = data.coubMap;
 }
 
 function getResolvedPlaylist(name) {
     const obj = state.playlists[name];
     if (!obj?.videos) return [];
     return buildPlaylist(obj, state.coubMap, {
-        type:      state.sortType,
+        type: state.sortType,
         direction: state.sortDirection,
-        seed:      state.randomSeed,
+        seed: state.randomSeed,
     });
 }
 
@@ -89,19 +89,19 @@ async function init() {
     await refreshData();
 
     // Громкость
-    initVolumeSlider((v) => player.setVolume(v));
+    const setVolumeSlider = initVolumeSlider((value) => player.setVolume(value));
 
     // Клавиатура / колесо / кнопки
-    initControls(player);
+    initControls(player, setVolumeSlider);
 
     // Ссылка
     initCopyLinkBtn(() => currentVideo()?.id);
 
     // Сортировка
     initSortBar((type, direction, seed) => {
-        state.sortType      = type;
+        state.sortType = type;
         state.sortDirection = direction;
-        state.randomSeed    = seed;
+        state.randomSeed = seed;
         applySorting();
     });
 
@@ -115,6 +115,24 @@ async function init() {
             await api.createPlaylist({ name: name.trim() });
             state.playlists[name.trim()] = { title: name.trim(), videos: {} };
             return name.trim();
+        },
+        onDelete: async (name) => {
+            await api.deletePlaylist(name);
+            delete state.playlists[name];
+            // Если удалён активный плейлист — сбросить воспроизведение
+            if (state.selectedPlaylist === name) {
+                state.selectedPlaylist = null;
+                player.setPlaylist([], null);
+            }
+        },
+        onRename: async (oldName, newName) => {
+            await api.renamePlaylist(oldName, newName);
+            state.playlists[newName] = state.playlists[oldName];
+            delete state.playlists[oldName];
+            if (state.selectedPlaylist === oldName) {
+                state.selectedPlaylist = newName;
+                setPlaylistTriggerLabel(newName);
+            }
         },
     });
 

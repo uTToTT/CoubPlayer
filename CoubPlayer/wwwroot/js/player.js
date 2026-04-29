@@ -50,6 +50,10 @@ export class Player {
         this.videoEls.forEach((v) => (v.volume = vol));
     }
 
+    getVolume() {
+        return Math.round(this.audio.volume * 100);
+    }
+
     /** Запустить видео по индексу (первый запуск или после setPlaylist) */
     async play(index) {
         if (!this._isValidIndex(index)) return;
@@ -130,8 +134,8 @@ export class Player {
             this.activeVideo.muted = true;
             this.bgVideo.muted = true;
             await this.activeVideo.play();
-            this.audio.play().catch(() => {});
-            this.bgVideo.play().catch(() => {});
+            this.audio.play().catch(() => { });
+            this.bgVideo.play().catch(() => { });
         } catch (err) {
             console.warn("Playback error:", err);
         }
@@ -148,8 +152,8 @@ export class Player {
             this.activeVideo.muted = true;
             this.bgVideo.muted = true;
             await this.activeVideo.play();
-            this.bgVideo.play().catch(() => {});
-            this.audio.play().catch(() => {});
+            this.bgVideo.play().catch(() => { });
+            this.audio.play().catch(() => { });
         } catch (err) {
             console.warn("Resume error:", err);
         }
