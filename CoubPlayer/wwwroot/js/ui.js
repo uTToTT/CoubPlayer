@@ -233,6 +233,7 @@ export async function sanitizeBrokenPlaylists() {
 }
 
 function startInlineRename(row, oldName, nameEl, countEl) {
+
     row.classList.add("pl-row--editing");
 
     const input = document.createElement("input");
@@ -305,6 +306,9 @@ function startInlineRename(row, oldName, nameEl, countEl) {
         e.stopPropagation();
     });
     input.addEventListener("blur", commit);
+    input.addEventListener("mousedown", (e) => e.stopPropagation());
+    input.addEventListener("click", (e) => e.stopPropagation());
+
 }
 
 async function handleDeletePlaylist(name, row) {
