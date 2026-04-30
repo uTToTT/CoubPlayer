@@ -1435,3 +1435,8 @@ body {
 .pl-selector-panel .pl-row-count {
   font-size: 11px;
 }
+
+.pl-row-rename-input--invalid {
+  border-color: #e05;
+  background: rgba(255, 0, 68, 0.08);
+}

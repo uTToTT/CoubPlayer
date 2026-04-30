@@ -14,6 +14,8 @@ const selectorNewBtn = document.getElementById("plSelectorNewBtn");
 const triggerBtn = document.getElementById("playlistTriggerBtn");
 const triggerLabel = document.getElementById("playlistTriggerLabel");
 
+const INVALID_CHARS = /[\/\\:*?"<>|]/;
+const SANITIZE_CHARS = /[\/\\:*?"<>|]/g;
 const READONLY_SELECTOR = ["bookmarks", "liked"];
 
 let _selectorPlaylists = {};
@@ -188,6 +190,48 @@ async function buildSelectorRow(name, data) {
     return row;
 }
 
+
+
+export async function sanitizeBrokenPlaylists() {
+    const playlists = _getSelectorPlaylists();
+    const broken = Object.keys(playlists).filter(name => INVALID_CHARS.test(name));
+
+    if (!broken.length) {
+        showToast("✓ Сломанных плейлистов не найдено");
+        return;
+    }
+
+    let fixed = 0;
+    for (const oldName of broken) {
+        const newName = oldName.replace(SANITIZE_CHARS, "_").trim();
+
+        // Если после замены имя совпадает с существующим — добавляем суффикс
+        const finalName = playlists[newName] && newName !== oldName
+            ? newName + "_" + Date.now()
+            : newName;
+
+        try {
+            await _onRenamePlaylist(oldName, finalName);
+            // Переносим timestamp иконки на новое имя
+            if (_iconTimestamps[oldName]) {
+                _iconTimestamps[finalName] = _iconTimestamps[oldName];
+                delete _iconTimestamps[oldName];
+            }
+            if (_selectorSelected === oldName) {
+                _selectorSelected = finalName;
+                setPlaylistTriggerLabel(finalName);
+            }
+            fixed++;
+        } catch (err) {
+            console.error(`Не удалось исправить «${oldName}»:`, err);
+        }
+    }
+
+    _selectorPlaylists = _getSelectorPlaylists();
+    renderSelectorRows(selectorSearch.value.trim());
+    showToast(`✓ Исправлено плейлистов: ${fixed} из ${broken.length}`);
+}
+
 function startInlineRename(row, oldName, nameEl, countEl) {
     row.classList.add("pl-row--editing");
 
@@ -219,6 +263,12 @@ function startInlineRename(row, oldName, nameEl, countEl) {
 
         if (!newName || newName === oldName) return;
 
+        // Проверка на недопустимые символы
+        if (INVALID_CHARS.test(newName)) {
+            showToast('⚠ Недопустимые символы: / \\ : * ? " < > |');
+            return;
+        }
+
         if (_selectorPlaylists[newName]) {
             showToast("⚠ Плейлист с таким именем уже существует");
             return;
@@ -240,6 +290,14 @@ function startInlineRename(row, oldName, nameEl, countEl) {
             console.error("Rename error:", err);
         }
     };
+
+    input.addEventListener("input", () => {
+        if (INVALID_CHARS.test(input.value)) {
+            input.classList.add("pl-row-rename-input--invalid");
+        } else {
+            input.classList.remove("pl-row-rename-input--invalid");
+        }
+    });
 
     input.addEventListener("keydown", (e) => {
         if (e.key === "Enter") { e.preventDefault(); commit(); }

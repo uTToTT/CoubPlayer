@@ -16,6 +16,7 @@ import {
     initPlaylistEditor,
     openPlaylistEditor,
     syncEditorToVideo,
+    sanitizeBrokenPlaylists
 } from "./ui.js";
 
 // ─── DOM ──────────────────────────────────────────────────────────────────────
@@ -135,7 +136,7 @@ async function init() {
             }
         },
     });
-
+    await sanitizeBrokenPlaylists();
     // ── Редактор плейлистов для видео (Pinterest-style) ───────────────────────
     initPlaylistEditor({
         getPlaylists: () => state.playlists,
