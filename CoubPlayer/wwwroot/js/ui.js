@@ -71,6 +71,16 @@ export function initPlaylistSelector({ getPlaylists, onSelect, onCreate, onDelet
     });
 
     document.addEventListener("keydown", (e) => {
+        console.log("keydown:", e.code, e.key);
+        // if (e.code === "ControlRight") {
+        //     e.preventDefault();
+        //     document.getElementById("editPlaylistsBtn").click();
+        //     return;
+        // }
+
+        // Остальные клавиши не перехватываем если фокус в поле ввода
+        if (e.target.matches("input, textarea")) return;
+
         if (e.key === "Escape" && selectorOverlay.classList.contains("show")) closeSelector();
     });
 }
@@ -363,14 +373,17 @@ export function updateVideoInfo(index, title, total) {
 
 const volumeSlider = document.getElementById("volumeSlider");
 
-export function initVolumeSlider(onChange) {
+export function initVolumeSlider(onChange, initialValue = 50) {
     const update = (value) => {
         volumeSlider.value = value;
         volumeSlider.style.setProperty("--value", value + "%");
         onChange(value);
     };
-    volumeSlider.addEventListener("input", (e) => update(e.target.value));
-    update(volumeSlider.value);
+    volumeSlider.addEventListener("input", (e) => {
+        update(e.target.value);
+        volumeSlider.blur()
+    });
+    update(initialValue);
 
     return (value) => {
         volumeSlider.value = value;
@@ -404,12 +417,23 @@ const seedInput = document.getElementById("seedInput");
 
 const DEFAULT_SEED = 42;
 
-export function initSortBar(onChange) {
-    let sortType = "order";
-    let sortDirection = "asc";
+export function initSortBar(onChange, initial = {}) {
+    let sortType = initial.sortType ?? "order";
+    let sortDirection = initial.sortDirection ?? "asc";
 
-    // Гарантируем дефолтный seed
-    if (!seedInput.value) seedInput.value = DEFAULT_SEED;
+    seedInput.value = initial.randomSeed ?? DEFAULT_SEED;
+
+    const activeBtn = sortTypeGroup.querySelector(`[data-type="${sortType}"]`);
+    if (activeBtn) {
+        [...sortTypeGroup.children].forEach(b => b.classList.remove("active"));
+        activeBtn.classList.add("active");
+    }
+
+    sortDirectionBtn.textContent = sortDirection === "asc" ? "↑" : "↓";
+
+    const random = sortType === "random";
+    seedInput.classList.toggle("hidden", !random);
+    sortDirectionBtn.classList.toggle("hidden", random);
 
     const notify = () => onChange(sortType, sortDirection, parseInt(seedInput.value) || DEFAULT_SEED);
 
@@ -518,6 +542,15 @@ export function openPlaylistEditor(video, playlists) {
 
 export function closeEditor() {
     editorOverlay.classList.remove("show");
+}
+
+export function togglePlaylistEditor(video, playlists) {
+    console.log("toggle, show =", editorOverlay.classList.contains("show"));
+    if (editorOverlay.classList.contains("show")) {
+        closeEditor();
+    } else {
+        openPlaylistEditor(video, playlists);
+    }
 }
 
 async function renderEditorRows(query) {

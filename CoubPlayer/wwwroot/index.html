@@ -6,7 +6,7 @@
     <link rel="stylesheet" href="css/style.css" />
   </head>
 
-  <body>
+  <body tabindex="-1">
     <!-- Фоновое видео -->
     <video id="bgVideo" autoplay muted loop></video>
 
@@ -29,6 +29,10 @@
     <div id="videoIndexWrapper" class="panel">
       <input id="videoIndexInput" type="number" min="1" />
       <span id="videoTotal"></span>
+    </div>
+
+    <div id="pauseOverlay" class="pause-overlay">
+      <div class="pause-icon"><span></span><span></span></div>
     </div>
 
     <!-- Нижняя панель управления -->

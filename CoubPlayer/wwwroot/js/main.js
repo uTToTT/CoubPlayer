@@ -14,7 +14,7 @@ import {
     initCopyLinkBtn,
     initSortBar,
     initPlaylistEditor,
-    openPlaylistEditor,
+    togglePlaylistEditor,
     syncEditorToVideo,
     sanitizeBrokenPlaylists
 } from "./ui.js";
@@ -63,7 +63,7 @@ function pickDefaultPlaylist() {
 
 // ─── Actions ──────────────────────────────────────────────────────────────────
 
-async function selectPlaylist(name) {
+async function selectPlaylist(name, startIndex = 0) {
     state.selectedPlaylist = name;
     setPlaylistTriggerLabel(name);
 
@@ -73,7 +73,7 @@ async function selectPlaylist(name) {
     if (!resolved.length) { alert("Playlist empty!"); return; }
 
     player.setPlaylist(resolved, name);
-    await player.play(0);
+    await player.playPaused(startIndex);
 }
 
 async function applySorting() {
@@ -81,7 +81,7 @@ async function applySorting() {
     await refreshData();
     const resolved = getResolvedPlaylist(state.selectedPlaylist);
     player.setPlaylist(resolved, state.selectedPlaylist);
-    await player.play(0);
+    await player.playPaused(0);
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
@@ -90,7 +90,13 @@ async function init() {
     await refreshData();
 
     // Громкость
-    const setVolumeSlider = initVolumeSlider((value) => player.setVolume(value));
+    const setVolumeSlider = initVolumeSlider(
+        (value) => {
+            player.setVolume(value);
+            state.volume = value;
+        },
+        state.volume
+    );
 
     // Клавиатура / колесо / кнопки
     initControls(player, setVolumeSlider);
@@ -104,6 +110,10 @@ async function init() {
         state.sortDirection = direction;
         state.randomSeed = seed;
         applySorting();
+    }, {
+        sortType: state.sortType,
+        sortDirection: state.sortDirection,
+        randomSeed: state.randomSeed,
     });
 
     // ── Выбор плейлиста (Pinterest-style) ────────────────────────────────────
@@ -136,7 +146,6 @@ async function init() {
             }
         },
     });
-    await sanitizeBrokenPlaylists();
     // ── Редактор плейлистов для видео (Pinterest-style) ───────────────────────
     initPlaylistEditor({
         getPlaylists: () => state.playlists,
@@ -158,14 +167,17 @@ async function init() {
         },
     });
 
+
     // Кнопка ✎ открывает редактор
     editPlaylistsBtn.addEventListener("click", (e) => {
+        console.log("editPlaylistsBtn clicked, currentVideo =", currentVideo()?.id);
         e.stopPropagation();
         const video = currentVideo();
         if (!video) { alert("Нет текущего видео!"); return; }
-        openPlaylistEditor(video, state.playlists);
+        togglePlaylistEditor(video, state.playlists);
+        editPlaylistsBtn.blur();
     });
-
+    await sanitizeBrokenPlaylists();
     // Клик по фону = пауза (игнорируем панели и контролы)
     document.body.addEventListener("click", (e) => {
         const ignore = [
@@ -185,11 +197,28 @@ async function init() {
     player.onVideoChange = (item) => {
         updateVideoInfo(player.index, item.title, player.playlist.length);
         syncEditorToVideo(item);
+        state.videoIndex = player.index; // ← сохраняем
     };
 
+    player.activeVideo.addEventListener("play", () => updatePauseOverlay(false));
+    player.activeVideo.addEventListener("pause", () => updatePauseOverlay(true));
+
     // Запуск дефолтного плейлиста
-    const defaultName = pickDefaultPlaylist();
-    if (defaultName) await selectPlaylist(defaultName);
+    const defaultName = (state.selectedPlaylist && state.playlists[state.selectedPlaylist])
+        ? state.selectedPlaylist
+        : pickDefaultPlaylist();
+    if (defaultName) {
+        const startIndex = (defaultName === state.selectedPlaylist)
+            ? (state.videoIndex ?? 0)
+            : 0;
+        await selectPlaylist(defaultName, startIndex);
+    }
+
+    player.onPlayStateChange = (isPaused) => updatePauseOverlay(isPaused);
+
+    function updatePauseOverlay(isPaused) {
+        document.getElementById("pauseOverlay").classList.toggle("visible", isPaused);
+    }
 }
 
 init().catch(console.error);

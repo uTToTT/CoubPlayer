@@ -1282,7 +1282,7 @@ body {
   transform: translateX(0) translateY(0) !important;
   /* начальное состояние для анимации */
   transform-origin: top left;
-  width: 260px;
+  width: 320px;
 }
 
 /* Анимация для селектора — вниз, а не справа */
@@ -1417,8 +1417,8 @@ body {
 
 /* Иконки в селекторе — крупнее, как превью */
 .pl-selector-panel .pl-row-icon {
-  width: 48px;
-  height: 48px;
+  width: 64px;
+  height: 64px;
   border-radius: 10px;
   font-size: 22px;
 }
@@ -1439,4 +1439,45 @@ body {
 .pl-row-rename-input--invalid {
   border-color: #e05;
   background: rgba(255, 0, 68, 0.08);
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.pause-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.pause-overlay.visible {
+  opacity: 0.75;
+}
+
+.pause-icon {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  width: 128px;
+  height: 128px;
+  background: rgba(0, 0, 0, 0);
+  border-radius: 50%;
+  backdrop-filter: blur(8px);
+  border: 3px solid rgba(138, 53, 53, 0);
+}
+
+.pause-icon span {
+  display: block;
+  width: 12px;
+  height: 60px;
+  background: #c2c2c200;
+  border-radius: 3px;
 }

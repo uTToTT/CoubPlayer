@@ -43,7 +43,7 @@ namespace CoubPlayer
             using var inputStream = file.OpenReadStream();
             using var original = SKBitmap.Decode(inputStream);
 
-            const int SIZE = 64;
+            const int SIZE = 256;
             var scale = Math.Max((float)SIZE / original.Width, (float)SIZE / original.Height);
             var srcW = (int)(SIZE / scale);
             var srcH = (int)(SIZE / scale);

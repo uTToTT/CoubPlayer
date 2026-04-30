@@ -22,7 +22,7 @@ export class Player {
 
         /** @type {(() => void) | null} Вызывается при смене видео */
         this.onVideoChange = null;
-
+        this.onPlayStateChange = null;
         this._generation = 0;
 
         this._activeAnimations = null;
@@ -91,6 +91,11 @@ export class Player {
         this._markViewed(item);
     }
 
+    async playPaused(index) {
+        await this.play(index);
+        this._pauseAll();
+    }
+
     async goToNext() {
         await this._switchTo(this.index + 1);
     }
@@ -114,6 +119,10 @@ export class Player {
 
     pause() {
         this._pauseAll();
+    }
+
+    get isPaused() {
+        return this.activeVideo.paused;
     }
 
     async restart() {
@@ -265,10 +274,13 @@ export class Player {
             this.bgVideo.muted = true;
             this._fitVideo(this.activeVideo);
             await this.activeVideo.play();
+            this.activeVideo.addEventListener("play", () => this.onPlayStateChange?.(false), { once: false });
+            this.activeVideo.addEventListener("pause", () => this.onPlayStateChange?.(true), { once: false });
             this.audio.play().catch(() => { });
 
             // Синхронизируем bg с основным видео
             this._syncBg();
+            this.onPlayStateChange?.(false);
         } catch (err) {
             console.warn("Playback error:", err);
         }
@@ -278,6 +290,7 @@ export class Player {
         this.activeVideo.pause();
         this.bgVideo.pause();
         this.audio.pause();
+        this.onPlayStateChange?.(true);
     }
 
     async _resumeAll() {
@@ -285,8 +298,11 @@ export class Player {
             this.activeVideo.muted = true;
             this.bgVideo.muted = true;
             await this.activeVideo.play();
+            this.activeVideo.addEventListener("play", () => this.onPlayStateChange?.(false), { once: false });
+            this.activeVideo.addEventListener("pause", () => this.onPlayStateChange?.(true), { once: false });
             this.audio.play().catch(() => { });
             this._syncBg();
+            this.onPlayStateChange?.(false);
         } catch (err) {
             console.warn("Resume error:", err);
         }
