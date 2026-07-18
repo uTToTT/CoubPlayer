@@ -836,10 +836,6 @@ body {
   pointer-events: none;
 }
 
-.pl-editor-overlay.show {
-  pointer-events: auto;
-}
-
 /* ─── Сама панель ──────────────────────────────────────────── */
 .pl-editor-panel {
   position: fixed;

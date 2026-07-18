@@ -140,6 +140,15 @@ const toast = document.createElement("div");
 toast.className = "pl-toast";
 document.body.appendChild(toast);
 
+const NAV_EXEMPT_SELECTORS = [
+    "#prev", "#next", "#restart", "#fullscreen",
+    "#videoIndexWrapper", ".volume-slider", "#copyLinkBtn",
+];
+
+function isNavExempt(target) {
+    return NAV_EXEMPT_SELECTORS.some((sel) => target.closest(sel));
+}
+
 let _playlists = {};
 let _currentVideoId = null;
 let _currentTitle = "";
@@ -182,14 +191,7 @@ export function initPlaylistEditor({ getPlaylists, onToggle, onCreatePlaylist })
         if (e.key === "Escape" && editorOverlay.classList.contains("show")) closeEditor();
     });
 
-    const NAV_EXEMPT_SELECTORS = [
-        "#prev", "#next", "#restart", "#fullscreen",
-        "#videoIndexWrapper", ".volume-slider", "#copyLinkBtn",
-    ];
 
-    function isNavExempt(target) {
-        return NAV_EXEMPT_SELECTORS.some((sel) => target.closest(sel));
-    }
 
     document.addEventListener("click", (e) => {
         if (editorOverlay.classList.contains("show")
@@ -513,7 +515,8 @@ export function initVideoTagsEditor({ getCoubTags, addTag, removeTag, getAllTags
         if (
             videoTagsOverlay.classList.contains("show") &&
             !videoTagsPanel.contains(e.target) &&
-            !e.target.closest("#editTagsBtn")
+            !e.target.closest("#editTagsBtn") &&
+            !isNavExempt(e.target)          // ← добавить эту строку
         ) {
             videoTagsOverlay.classList.remove("show");
         }
