@@ -154,56 +154,6 @@
     </div>
 
     <!-- TAG FILTER panel -->
-    <div id="tagFilterOverlay" class="pl-editor-overlay">
-      <div
-        id="tagFilterPanel"
-        class="pl-editor-panel pl-anchored-panel tag-filter-panel"
-      >
-        <div class="pl-editor-header">
-          <div class="pl-editor-header-text">
-            <div class="pl-editor-title">Фильтр по тегам</div>
-            <div class="pl-editor-subtitle" id="tagFilterSubtitle">
-              Все видео
-            </div>
-          </div>
-          <button class="pl-editor-close" id="tagFilterClose">✕</button>
-        </div>
-        <div class="pl-editor-search">
-          <svg class="pl-search-icon" viewBox="0 0 20 20" fill="none">
-            <circle
-              cx="9"
-              cy="9"
-              r="6"
-              stroke="currentColor"
-              stroke-width="1.8"
-            />
-            <path
-              d="M13.5 13.5 17 17"
-              stroke="currentColor"
-              stroke-width="1.8"
-              stroke-linecap="round"
-            />
-          </svg>
-          <input
-            id="tagFilterSearch"
-            class="pl-search-input"
-            type="text"
-            placeholder="Найти тег…"
-            autocomplete="off"
-          />
-        </div>
-        <div class="tag-filter-mode">
-          <button data-mode="any" class="active">Любой из</button>
-          <button data-mode="all">Все сразу</button>
-        </div>
-        <div class="pl-editor-list tag-filter-list" id="tagFilterList"></div>
-        <div class="pl-editor-footer">
-          <button class="pl-new-btn" id="tagFilterClearBtn">
-            ✕ Сбросить фильтр
-          </button>
-        </div>
-      </div>
-    </div>
 
     <!-- VIDEO TAGS panel -->
     <div id="videoTagsOverlay" class="pl-editor-overlay">
@@ -297,12 +247,73 @@
         <!-- NEW: tag filter -->
         <button
           id="tagFilterBtn"
-          class="tag-filter-btn"
+          class="pl-trigger-btn"
           title="Фильтр по тегам"
         >
-          <span>🏷</span>
+          <span class="pl-trigger-icon">🏷</span>
+          <span class="pl-trigger-label" id="tagFilterLabel">Все теги</span>
           <span id="tagFilterCount" class="tag-filter-count" hidden>0</span>
+          <svg class="pl-trigger-chevron" viewBox="0 0 12 12" fill="none">
+            <path
+              d="M2 4l4 4 4-4"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
         </button>
+      </div>
+    </div>
+
+    <div
+      id="tagFilterOverlay"
+      class="pl-editor-overlay pl-editor-overlay--modal"
+    >
+      <div id="tagFilterPanel" class="pl-editor-panel pl-fullscreen-panel">
+        <div class="pl-editor-header">
+          <div class="pl-editor-header-text">
+            <div class="pl-editor-title">Фильтр по тегам</div>
+            <div class="pl-editor-subtitle" id="tagFilterSubtitle">
+              Все видео
+            </div>
+          </div>
+          <div class="tag-filter-mode" id="tagFilterModeGroup">
+            <button data-mode="any" class="active">Любой из</button>
+            <button data-mode="all">Все сразу</button>
+          </div>
+          <button class="pl-editor-close" id="tagFilterClose">✕</button>
+        </div>
+        <div class="pl-editor-search">
+          <svg class="pl-search-icon" viewBox="0 0 20 20" fill="none">
+            <circle
+              cx="9"
+              cy="9"
+              r="6"
+              stroke="currentColor"
+              stroke-width="1.8"
+            />
+            <path
+              d="M13.5 13.5 17 17"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+            />
+          </svg>
+          <input
+            id="tagFilterSearch"
+            class="pl-search-input"
+            type="text"
+            placeholder="Найти тег…"
+            autocomplete="off"
+          />
+        </div>
+        <div class="pl-editor-list pl-selector-grid" id="tagFilterList"></div>
+        <div class="pl-editor-footer">
+          <button class="pl-new-btn" id="tagFilterClearBtn">
+            ✕ Сбросить фильтр
+          </button>
+        </div>
       </div>
     </div>
 

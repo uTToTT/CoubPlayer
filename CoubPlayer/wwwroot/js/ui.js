@@ -798,8 +798,9 @@ const tagFilterClose = document.getElementById("tagFilterClose");
 const tagFilterSearch = document.getElementById("tagFilterSearch");
 const tagFilterList = document.getElementById("tagFilterList");
 const tagFilterSubtitle = document.getElementById("tagFilterSubtitle");
-const tagFilterModeGroup = document.querySelector(".tag-filter-mode");
+const tagFilterModeGroup = document.getElementById("tagFilterModeGroup");
 const tagFilterClearBtn = document.getElementById("tagFilterClearBtn");
+const tagFilterLabel = document.getElementById("tagFilterLabel");
 
 let _allTagsCache = [];
 let _activeTags = [];
@@ -809,6 +810,8 @@ let _onTagFilterChange = null;
 export function initTagFilterPanel({ getAllTags, getActive, getMode, onChange }) {
     _onTagFilterChange = onChange;
 
+
+
     tagFilterBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         _allTagsCache = getAllTags();
@@ -817,7 +820,8 @@ export function initTagFilterPanel({ getAllTags, getActive, getMode, onChange })
         syncTagModeButtons();
         tagFilterSearch.value = "";
         renderTagFilterRows("");
-        openTagFilter();
+        tagFilterOverlay.classList.add("show");
+        requestAnimationFrame(() => tagFilterSearch.focus());
     });
 
     tagFilterClose.addEventListener("click", closeTagFilter);
@@ -859,6 +863,7 @@ export function initTagFilterPanel({ getAllTags, getActive, getMode, onChange })
     tagFilterCount.hidden = initialActive.length === 0;
     tagFilterCount.textContent = initialActive.length;
     tagFilterBtn.classList.toggle("tag-filter-btn--active", initialActive.length > 0);
+    tagFilterLabel.textContent = initialActive.length ? `${initialActive.length} тег(ов)` : "Все теги";
 }
 
 function syncTagModeButtons() {
@@ -867,13 +872,7 @@ function syncTagModeButtons() {
     );
 }
 
-function openTagFilter() {
-    const rect = tagFilterBtn.getBoundingClientRect();
-    tagFilterPanel.style.top = rect.bottom + 8 + "px";
-    tagFilterPanel.style.left = "auto";
-    tagFilterPanel.style.right = window.innerWidth - rect.right + "px";
-    tagFilterOverlay.classList.add("show");
-}
+
 
 function closeTagFilter() {
     tagFilterOverlay.classList.remove("show");
@@ -893,43 +892,57 @@ function renderTagFilterRows(query) {
     }
 
     for (const { tag, count } of filtered) {
-        const row = document.createElement("div");
-        const checked = _activeTags.includes(tag);
-        row.className = "pl-row tag-filter-row" + (checked ? " pl-row--checked" : "");
-
-        const text = document.createElement("div");
-        text.className = "pl-row-text";
-        const nameEl = document.createElement("div");
-        nameEl.className = "pl-row-name";
-        nameEl.textContent = tag;
-        const countEl = document.createElement("div");
-        countEl.className = "pl-row-count";
-        countEl.textContent = `${count} видео`;
-        text.appendChild(nameEl);
-        text.appendChild(countEl);
-
-        const check = document.createElement("div");
-        check.className = "pl-row-check";
-
-        row.appendChild(text);
-        row.appendChild(check);
-
-        row.addEventListener("click", () => {
-            const idx = _activeTags.indexOf(tag);
-            if (idx === -1) _activeTags.push(tag);
-            else _activeTags.splice(idx, 1);
-            row.classList.toggle("pl-row--checked");
-            notifyTagFilterChange();
-        });
-
-        tagFilterList.appendChild(row);
+        tagFilterList.appendChild(buildTagTile(tag, count));
     }
+}
+
+function buildTagTile(tag, count) {
+    const checked = _activeTags.includes(tag);
+
+    const tile = document.createElement("div");
+    tile.className = "pl-tile" + (checked ? " pl-tile--active" : "");
+
+    const thumb = document.createElement("div");
+    thumb.className = "pl-row-icon pl-tile-thumb pl-tag-thumb";
+    thumb.textContent = "🏷";
+    tile.appendChild(thumb);
+
+    const text = document.createElement("div");
+    text.className = "pl-tile-text";
+
+    const nameEl = document.createElement("div");
+    nameEl.className = "pl-tile-name";
+    nameEl.textContent = tag;
+
+    const countEl = document.createElement("div");
+    countEl.className = "pl-tile-count";
+    countEl.textContent = `${count} видео`;
+
+    text.appendChild(nameEl);
+    text.appendChild(countEl);
+    tile.appendChild(text);
+
+    const check = document.createElement("div");
+    check.className = "pl-row-check";
+    tile.appendChild(check);
+
+    tile.addEventListener("click", () => {
+        const idx = _activeTags.indexOf(tag);
+        if (idx === -1) _activeTags.push(tag);
+        else _activeTags.splice(idx, 1);
+        tile.classList.toggle("pl-tile--active");
+        notifyTagFilterChange();
+    });
+
+    return tile;
 }
 
 function notifyTagFilterChange() {
     tagFilterCount.hidden = _activeTags.length === 0;
     tagFilterCount.textContent = _activeTags.length;
-    tagFilterBtn.classList.toggle("tag-filter-btn--active", _activeTags.length > 0);
+    tagFilterLabel.textContent = _activeTags.length
+        ? `${_activeTags.length} тег(ов)`
+        : "Все теги";
     tagFilterSubtitle.textContent = _activeTags.length
         ? `${_activeTags.length} тег(ов) · ${_tagMode === "any" ? "любой из" : "все сразу"}`
         : "Все видео";

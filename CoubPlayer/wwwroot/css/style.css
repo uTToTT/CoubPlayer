@@ -1275,19 +1275,8 @@ body {
 }
 
 /* Селектор позиционируется под кнопкой, а не по центру экрана */
-.pl-anchored-panel {
-  top: auto !important;
-  right: auto !important;
-  transform: translateX(0) translateY(0) !important;
-  transform-origin: top left;
-  width: 320px;
-}
 
 /* Анимация для селектора — вниз, а не справа */
-.pl-editor-overlay.show .pl-anchored-panel {
-  transform: translateX(0) translateY(0) !important;
-  opacity: 1;
-}
 
 /* Для активного плейлиста в селекторе — галочка вместо круга */
 .pl-row--active .pl-row-check {
@@ -1473,34 +1462,11 @@ body {
 }
 
 /* ─── Tag Filter Button & Panel ────────────────────────────────────────── */
-.tag-filter-btn {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-sm);
-  padding: 6px 10px;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 13px;
-  cursor: pointer;
-  transition: all var(--transition);
-}
-.tag-filter-btn:hover {
-  color: var(--text);
-  border-color: rgba(255, 255, 255, 0.15);
-  background: var(--glass-hover);
-}
-.tag-filter-btn--active {
-  background: var(--accent-dim);
-  color: var(--accent);
-  border-color: rgba(255, 90, 95, 0.3);
-}
+
 .tag-filter-count {
-  min-width: 15px;
-  height: 15px;
-  padding: 0 4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 5px;
   border-radius: 8px;
   background: var(--accent);
   color: #fff;
@@ -1510,36 +1476,31 @@ body {
   align-items: center;
   justify-content: center;
   font-family: "JetBrains Mono", monospace;
-}
-
-.tag-filter-panel {
-  width: 260px;
+  flex-shrink: 0;
 }
 
 .tag-filter-mode {
   display: flex;
   gap: 6px;
-  padding: 10px 12px 4px;
+  flex-shrink: 0;
 }
 .tag-filter-mode button {
-  flex: 1;
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-sm);
-  padding: 6px 8px;
+  padding: 7px 12px;
   background: transparent;
   color: var(--text-muted);
   font-family: inherit;
   font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
   transition: all var(--transition);
+  white-space: nowrap;
 }
 .tag-filter-mode button.active {
   background: var(--accent-dim);
   color: var(--accent);
   border-color: rgba(255, 90, 95, 0.3);
-}
-.tag-filter-row {
-  cursor: pointer;
 }
 
 /* ─── Video Tags Panel ──────────────────────────────────────────────────── */
@@ -1769,4 +1730,18 @@ body {
 .pl-tile.pl-row--editing .pl-row-rename-input {
   width: 100%;
   text-align: center;
+}
+@media (max-width: 640px) {
+  .pl-editor-header {
+    flex-wrap: wrap;
+  }
+  .tag-filter-mode {
+    order: 3;
+    width: 100%;
+  }
+}
+.pl-tag-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
