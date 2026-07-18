@@ -583,7 +583,12 @@ export function closeEditor() {
 }
 
 export function isAnyPanelOpen() {
-    return editorOverlay.classList.contains("show") || selectorOverlay.classList.contains("show");
+    return (
+        editorOverlay.classList.contains("show") ||
+        selectorOverlay.classList.contains("show") ||
+        tagFilterOverlay.classList.contains("show") ||
+        videoTagsOverlay.classList.contains("show")
+    );
 }
 
 export function togglePlaylistEditor(video, playlists) {
@@ -799,4 +804,316 @@ async function buildIconEl(name, allowClick) {
     }
 
     return wrap;
+}
+
+// ─── Tag Filter Panel ──────────────────────────────────────────────────────
+
+const tagFilterBtn = document.getElementById("tagFilterBtn");
+const tagFilterCount = document.getElementById("tagFilterCount");
+const tagFilterOverlay = document.getElementById("tagFilterOverlay");
+const tagFilterPanel = document.getElementById("tagFilterPanel");
+const tagFilterClose = document.getElementById("tagFilterClose");
+const tagFilterSearch = document.getElementById("tagFilterSearch");
+const tagFilterList = document.getElementById("tagFilterList");
+const tagFilterSubtitle = document.getElementById("tagFilterSubtitle");
+const tagFilterModeGroup = document.querySelector(".tag-filter-mode");
+const tagFilterClearBtn = document.getElementById("tagFilterClearBtn");
+
+let _allTagsCache = [];
+let _activeTags = [];
+let _tagMode = "any";
+let _onTagFilterChange = null;
+
+export function initTagFilterPanel({ getAllTags, getActive, getMode, onChange }) {
+    _onTagFilterChange = onChange;
+
+    tagFilterBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        _allTagsCache = getAllTags();
+        _activeTags = [...getActive()];
+        _tagMode = getMode();
+        syncTagModeButtons();
+        tagFilterSearch.value = "";
+        renderTagFilterRows("");
+        openTagFilter();
+    });
+
+    tagFilterClose.addEventListener("click", closeTagFilter);
+
+    tagFilterSearch.addEventListener("input", () =>
+        renderTagFilterRows(tagFilterSearch.value.trim())
+    );
+
+    tagFilterModeGroup.addEventListener("click", (e) => {
+        const btn = e.target.closest("button[data-mode]");
+        if (!btn) return;
+        _tagMode = btn.dataset.mode;
+        syncTagModeButtons();
+        notifyTagFilterChange();
+    });
+
+    tagFilterClearBtn.addEventListener("click", () => {
+        _activeTags = [];
+        renderTagFilterRows(tagFilterSearch.value.trim());
+        notifyTagFilterChange();
+    });
+
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && tagFilterOverlay.classList.contains("show")) closeTagFilter();
+    });
+
+    document.addEventListener("click", (e) => {
+        if (
+            tagFilterOverlay.classList.contains("show") &&
+            !tagFilterPanel.contains(e.target) &&
+            !e.target.closest("#tagFilterBtn")
+        ) {
+            closeTagFilter();
+        }
+    });
+
+    // Отражаем персистентное состояние фильтра сразу при загрузке (бейдж на кнопке)
+    const initialActive = getActive();
+    tagFilterCount.hidden = initialActive.length === 0;
+    tagFilterCount.textContent = initialActive.length;
+    tagFilterBtn.classList.toggle("tag-filter-btn--active", initialActive.length > 0);
+}
+
+function syncTagModeButtons() {
+    [...tagFilterModeGroup.children].forEach((b) =>
+        b.classList.toggle("active", b.dataset.mode === _tagMode)
+    );
+}
+
+function openTagFilter() {
+    const rect = tagFilterBtn.getBoundingClientRect();
+    tagFilterPanel.style.top = rect.bottom + 8 + "px";
+    tagFilterPanel.style.left = "auto";
+    tagFilterPanel.style.right = window.innerWidth - rect.right + "px";
+    tagFilterOverlay.classList.add("show");
+}
+
+function closeTagFilter() {
+    tagFilterOverlay.classList.remove("show");
+}
+
+function renderTagFilterRows(query) {
+    tagFilterList.innerHTML = "";
+    const q = query.toLowerCase();
+    const filtered = _allTagsCache.filter(({ tag }) => !q || tag.toLowerCase().includes(q));
+
+    if (!filtered.length) {
+        const empty = document.createElement("div");
+        empty.className = "pl-empty";
+        empty.textContent = "Тегов не найдено";
+        tagFilterList.appendChild(empty);
+        return;
+    }
+
+    for (const { tag, count } of filtered) {
+        const row = document.createElement("div");
+        const checked = _activeTags.includes(tag);
+        row.className = "pl-row tag-filter-row" + (checked ? " pl-row--checked" : "");
+
+        const text = document.createElement("div");
+        text.className = "pl-row-text";
+        const nameEl = document.createElement("div");
+        nameEl.className = "pl-row-name";
+        nameEl.textContent = tag;
+        const countEl = document.createElement("div");
+        countEl.className = "pl-row-count";
+        countEl.textContent = `${count} видео`;
+        text.appendChild(nameEl);
+        text.appendChild(countEl);
+
+        const check = document.createElement("div");
+        check.className = "pl-row-check";
+
+        row.appendChild(text);
+        row.appendChild(check);
+
+        row.addEventListener("click", () => {
+            const idx = _activeTags.indexOf(tag);
+            if (idx === -1) _activeTags.push(tag);
+            else _activeTags.splice(idx, 1);
+            row.classList.toggle("pl-row--checked");
+            notifyTagFilterChange();
+        });
+
+        tagFilterList.appendChild(row);
+    }
+}
+
+function notifyTagFilterChange() {
+    tagFilterCount.hidden = _activeTags.length === 0;
+    tagFilterCount.textContent = _activeTags.length;
+    tagFilterBtn.classList.toggle("tag-filter-btn--active", _activeTags.length > 0);
+    tagFilterSubtitle.textContent = _activeTags.length
+        ? `${_activeTags.length} тег(ов) · ${_tagMode === "any" ? "любой из" : "все сразу"}`
+        : "Все видео";
+    _onTagFilterChange?.([..._activeTags], _tagMode);
+}
+
+// ─── Video Tags Editor ───────────────────────────────────────────────────────
+
+const editTagsBtn = document.getElementById("editTagsBtn");
+const videoTagsOverlay = document.getElementById("videoTagsOverlay");
+const videoTagsPanel = document.getElementById("videoTagsPanel");
+const videoTagsClose = document.getElementById("videoTagsClose");
+const videoTagsSubtitle = document.getElementById("videoTagsSubtitle");
+const videoTagsChips = document.getElementById("videoTagsChips");
+const videoTagsInput = document.getElementById("videoTagsInput");
+const videoTagsAddBtn = document.getElementById("videoTagsAddBtn");
+const allTagsDatalist = document.getElementById("allTagsDatalist");
+
+let _tagsVideo = null;
+let _tagsCurrent = [];
+let _onGetCoubTags = null;
+let _onAddTag = null;
+let _onRemoveTag = null;
+let _onTagsChanged = null;
+
+export function initVideoTagsEditor({ getCoubTags, addTag, removeTag, getAllTags, onTagsChanged }) {
+    _onGetCoubTags = getCoubTags;
+    _onAddTag = addTag;
+    _onRemoveTag = removeTag;
+    _onTagsChanged = onTagsChanged;
+
+    refreshTagsDatalist(getAllTags());
+
+    editTagsBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        if (!_tagsVideo) {
+            showToast("⚠ Нет текущего видео");
+            return;
+        }
+        refreshTagsDatalist(getAllTags());
+        videoTagsOverlay.classList.add("show");
+        await loadTagsForCurrentVideo();
+        requestAnimationFrame(() => videoTagsInput.focus());
+    });
+
+    videoTagsClose.addEventListener("click", () => videoTagsOverlay.classList.remove("show"));
+
+    videoTagsAddBtn.addEventListener("click", commitAddTag);
+    videoTagsInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            commitAddTag();
+        }
+        e.stopPropagation();
+    });
+
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && videoTagsOverlay.classList.contains("show")) {
+            videoTagsOverlay.classList.remove("show");
+        }
+    });
+
+    document.addEventListener("click", (e) => {
+        if (
+            videoTagsOverlay.classList.contains("show") &&
+            !videoTagsPanel.contains(e.target) &&
+            !e.target.closest("#editTagsBtn")
+        ) {
+            videoTagsOverlay.classList.remove("show");
+        }
+    });
+}
+
+export function setVideoTagsTarget(video) {
+    _tagsVideo = video ? { id: video.id, title: video.title } : null;
+    if (videoTagsOverlay.classList.contains("show")) loadTagsForCurrentVideo();
+}
+
+export function refreshTagsDatalist(allTags) {
+    allTagsDatalist.innerHTML = "";
+    for (const { tag } of allTags) {
+        const opt = document.createElement("option");
+        opt.value = tag;
+        allTagsDatalist.appendChild(opt);
+    }
+}
+
+async function loadTagsForCurrentVideo() {
+    if (!_tagsVideo) return;
+    videoTagsSubtitle.textContent = _tagsVideo.title || _tagsVideo.id;
+    videoTagsChips.innerHTML = `<div class="pl-empty">Загрузка…</div>`;
+    try {
+        const res = await _onGetCoubTags(_tagsVideo.id);
+        const list = Array.isArray(res) ? res : res.tags || [];
+        _tagsCurrent = list.map((t) => (typeof t === "string" ? t : t.tag));
+        renderTagChips();
+    } catch (err) {
+        videoTagsChips.innerHTML = `<div class="pl-empty">Ошибка загрузки тегов</div>`;
+        console.error("Tags load error:", err);
+    }
+}
+
+function renderTagChips() {
+    videoTagsChips.innerHTML = "";
+    if (!_tagsCurrent.length) {
+        const empty = document.createElement("div");
+        empty.className = "pl-empty";
+        empty.textContent = "Тегов пока нет";
+        videoTagsChips.appendChild(empty);
+        return;
+    }
+    for (const tag of _tagsCurrent) {
+        const chip = document.createElement("span");
+        chip.className = "tag-chip";
+
+        const label = document.createElement("span");
+        label.textContent = tag;
+
+        const remove = document.createElement("button");
+        remove.className = "tag-chip-remove";
+        remove.textContent = "✕";
+        remove.title = "Удалить тег";
+        remove.addEventListener("click", () => removeTagChip(tag, chip));
+
+        chip.appendChild(label);
+        chip.appendChild(remove);
+        videoTagsChips.appendChild(chip);
+    }
+}
+
+async function commitAddTag() {
+    const tag = videoTagsInput.value.trim();
+    if (!tag || !_tagsVideo) return;
+    if (_tagsCurrent.includes(tag)) {
+        showToast("⚠ Тег уже добавлен");
+        videoTagsInput.value = "";
+        return;
+    }
+
+    videoTagsInput.value = "";
+    _tagsCurrent.push(tag);
+    renderTagChips();
+
+    try {
+        await _onAddTag(_tagsVideo.id, tag);
+        _onTagsChanged?.();
+    } catch (err) {
+        _tagsCurrent = _tagsCurrent.filter((t) => t !== tag);
+        renderTagChips();
+        showToast("⚠ Не удалось добавить тег");
+        console.error("Add tag error:", err);
+    }
+}
+
+async function removeTagChip(tag, chipEl) {
+    const prev = [..._tagsCurrent];
+    _tagsCurrent = _tagsCurrent.filter((t) => t !== tag);
+    chipEl.remove();
+
+    try {
+        await _onRemoveTag(_tagsVideo.id, tag);
+        _onTagsChanged?.();
+    } catch (err) {
+        _tagsCurrent = prev;
+        renderTagChips();
+        showToast("⚠ Не удалось удалить тег");
+        console.error("Remove tag error:", err);
+    }
 }

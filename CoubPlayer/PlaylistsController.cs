@@ -26,13 +26,15 @@ namespace CoubPlayer
 
         private readonly CoubDownloadService _downloadService;
         private readonly CoubTimelineService _timelineService;
+        private readonly CoubListService _coubListService;
 
         private static readonly string[] SyncCategories = { "liked", "bookmarks" };
 
-        public PlaylistsController(CoubDownloadService downloadService, CoubTimelineService timelineService)
+        public PlaylistsController(CoubDownloadService downloadService, CoubTimelineService timelineService, CoubListService coubListService)
         {
             _downloadService = downloadService;
             _timelineService = timelineService;
+            _coubListService = coubListService;
         }
 
         #region Icons

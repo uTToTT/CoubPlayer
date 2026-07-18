@@ -24,7 +24,24 @@ export function resolveItems(sorted, coubMap) {
             video: coub.video || "",
             audio: coub.audio || "",
             lastViewed: item.lastViewed || null,
+            tags: coub.tags || [],
         };
+    });
+}
+
+/**
+ * Фильтрует уже resolved-список по тегам.
+ * @param {ResolvedItem[]} items
+ * @param {string[]} tags
+ * @param {"any"|"all"} mode — "any": хотя бы один тег совпал, "all": все теги должны быть у ролика
+ */
+export function filterByTags(items, tags, mode = "any") {
+    if (!tags?.length) return items;
+    return items.filter((item) => {
+        const itemTags = item.tags || [];
+        return mode === "all"
+            ? tags.every((t) => itemTags.includes(t))
+            : tags.some((t) => itemTags.includes(t));
     });
 }
 
@@ -123,16 +140,29 @@ function createSeededRNG(seed) {
  * @param {{ type: "order" | "lastViewed" | "random", direction: "asc" | "desc", seed?: number }} options
  * @returns {ResolvedItem[]}
  */
-export function buildPlaylist(playlistObj, coubMap, { type, direction, seed = 1 }) {
+export function buildPlaylist(playlistObj, coubMap, { type, direction, seed = 1, tags = [], tagMode = "any" }) {
     let sorted;
+    if (type === "order") sorted = sortByOrder(playlistObj, direction);
+    else if (type === "lastViewed") sorted = sortByLastViewed(playlistObj, direction);
+    else sorted = sortRandom(playlistObj, seed);
 
-    if (type === "order") {
-        sorted = sortByOrder(playlistObj, direction);
-    } else if (type === "lastViewed") {
-        sorted = sortByLastViewed(playlistObj, direction);
-    } else {
-        sorted = sortRandom(playlistObj, seed);
-    }
+    let resolved = resolveItems(sorted, coubMap);
+    if (tags.length) resolved = filterByTags(resolved, tags, tagMode);
+    return resolved;
+}
 
-    return resolveItems(sorted, coubMap);
+/**
+ * Строит "виртуальный" плейлист из результатов поиска по тегам —
+ * без привязки к конкретной папке. lastViewed тут брать неоткуда
+ * (он персистится per-playlist), поэтому используем null.
+ */
+export function buildTagSearchPlaylist(coubEntries) {
+    return coubEntries.map((c) => ({
+        id: c.id,
+        title: c.title || c.id,
+        video: c.video || "",
+        audio: c.audio || "",
+        lastViewed: null,
+        tags: c.tags || [],
+    }));
 }

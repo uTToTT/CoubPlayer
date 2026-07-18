@@ -18,6 +18,10 @@ import {
     syncEditorToVideo,
     sanitizeBrokenPlaylists,
     isAnyPanelOpen,
+    initTagFilterPanel,
+    initVideoTagsEditor,
+    setVideoTagsTarget,
+    refreshTagsDatalist,
 } from "./ui.js";
 
 // ─── DOM ──────────────────────────────────────────────────────────────────────
@@ -62,14 +66,49 @@ async function refreshData() {
     state.coubMap = data.coubMap;
 }
 
+// Кэш id роликов, прошедших текущий тег-фильтр. null = фильтр не активен.
+let matchingTagIds = null;
+
+async function refreshAllTags() {
+    try {
+        state.allTags = await api.getAllTags();
+    } catch (err) {
+        console.error("Не удалось загрузить теги:", err);
+        state.allTags = [];
+    }
+}
+
+async function refreshTagFilterIds() {
+    if (!state.activeTagFilter.length) {
+        matchingTagIds = null;
+        return;
+    }
+    try {
+        const results = await api.searchCoubsByTags(state.activeTagFilter, state.tagFilterMode);
+        matchingTagIds = new Set(results.map((r) => (typeof r === "string" ? r : r.id)));
+    } catch (err) {
+        console.error("Ошибка поиска по тегам:", err);
+        matchingTagIds = null;
+    }
+}
+
+async function applyTagFilterAndRefresh() {
+    await refreshTagFilterIds();
+    if (state.selectedPlaylist) await applySorting();
+}
+
 function getResolvedPlaylist(name) {
     const obj = state.playlists[name];
     if (!obj?.videos) return [];
-    return buildPlaylist(obj, state.coubMap, {
+    let resolved = buildPlaylist(obj, state.coubMap, {
         type: state.sortType,
         direction: state.sortDirection,
         seed: state.randomSeed,
     });
+    if (matchingTagIds) {
+        resolved = resolved.filter((item) => matchingTagIds.has(item.id));
+    }
+    return resolved;
 }
 
 function pickDefaultPlaylist() {
@@ -88,11 +127,13 @@ async function selectPlaylist(name) {
     await refreshData();
 
     const resolved = getResolvedPlaylist(name);
-    if (!resolved.length) { alert("Playlist empty!"); return; }
+    if (!resolved.length) {
+        player.setPlaylist([], name);
+        alert(matchingTagIds ? "Нет видео с выбранными тегами в этом плейлисте!" : "Playlist empty!");
+        return;
+    }
 
     player.setPlaylist(resolved, name);
-    // Стартовый индекс резолвится по id последнего просмотренного ролика
-    // для ЭТОГО плейлиста (player.currentPlaylistName уже установлен строкой выше)
     const startIndex = player.getStartIndex();
     await player.playPaused(startIndex);
 }
@@ -100,14 +141,18 @@ async function selectPlaylist(name) {
 async function applySorting() {
     if (!state.selectedPlaylist) return;
 
-    // Запоминаем id текущего ролика ДО пересборки списка — после сортировки
-    // порядок меняется, но мы хотим остаться на том же видео, а не прыгать на 0
     const currentId = currentVideo()?.id ?? null;
 
     await refreshData();
     const resolved = getResolvedPlaylist(state.selectedPlaylist);
-    player.setPlaylist(resolved, state.selectedPlaylist);
 
+    if (!resolved.length) {
+        player.setPlaylist([], state.selectedPlaylist);
+        alert(matchingTagIds ? "Нет видео с выбранными тегами в этом плейлисте!" : "Playlist empty!");
+        return;
+    }
+
+    player.setPlaylist(resolved, state.selectedPlaylist);
     const idx = currentId ? resolved.findIndex((v) => v.id === currentId) : -1;
     await player.playPaused(idx === -1 ? 0 : idx);
 }
@@ -182,6 +227,8 @@ async function syncFavorites(category, btn) {
 
 async function init() {
     await refreshData();
+    await refreshAllTags();
+    await refreshTagFilterIds(); // фильтр мог сохраниться с прошлой сессии
 
     // Громкость
     const setVolumeSlider = initVolumeSlider(
@@ -208,6 +255,31 @@ async function init() {
         sortType: state.sortType,
         sortDirection: state.sortDirection,
         randomSeed: state.randomSeed,
+    });
+
+    // ── Фильтр по тегам ────────────────────────────────────────────────────
+    initTagFilterPanel({
+        getAllTags: () => state.allTags,
+        getActive: () => state.activeTagFilter,
+        getMode: () => state.tagFilterMode,
+        onChange: (tags, mode) => {
+            state.activeTagFilter = tags;
+            state.tagFilterMode = mode;
+            applyTagFilterAndRefresh();
+        },
+    });
+
+    // ── Теги текущего видео ────────────────────────────────────────────────
+    initVideoTagsEditor({
+        getCoubTags: (id) => api.getCoubTags(id),
+        addTag: (id, tag) => api.addTagToCoub(id, tag),
+        removeTag: (id, tag) => api.removeTagFromCoub(id, tag),
+        getAllTags: () => state.allTags,
+        onTagsChanged: async () => {
+            await refreshAllTags();
+            refreshTagsDatalist(state.allTags);
+            if (state.activeTagFilter.length) await applyTagFilterAndRefresh();
+        },
     });
 
     // ── Выбор плейлиста (Pinterest-style) ────────────────────────────────────
@@ -353,6 +425,7 @@ async function init() {
     player.onVideoChange = (item) => {
         updateVideoInfo(player.index, item.title, player.playlist.length);
         syncEditorToVideo(item);
+        setVideoTagsTarget(item); // NEW
     };
 
     player.activeVideo.addEventListener("play", () => updatePauseOverlay(false));

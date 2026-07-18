@@ -11,6 +11,7 @@ namespace CoubPlayer
             builder.Services.AddHttpClient();
             builder.Services.AddSingleton<CoubDownloadService>();
             builder.Services.AddSingleton<CoubTimelineService>();
+            builder.Services.AddSingleton<CoubListService>();
             var app = builder.Build();
 
             // ѕереносит старые ролики (скачанные консольным CoubDownloader в wwwroot/Coubs)

@@ -6,5 +6,6 @@
         public string id { get; set; } = "";
         public string video { get; set; } = "";
         public string audio { get; set; } = "";
+        public List<string> tags { get; set; } = new();
     }
 }

@@ -860,7 +860,7 @@ body {
     transform 0.32s cubic-bezier(0.34, 1.28, 0.64, 1),
     opacity 0.22s ease;
   opacity: 0;
-  pointer-events: auto;
+  pointer-events: none;
   z-index: 61;
 }
 
@@ -1480,4 +1480,158 @@ body {
   height: 60px;
   background: #c2c2c200;
   border-radius: 3px;
+}
+
+/* ─── Tag Filter Button & Panel ────────────────────────────────────────── */
+.tag-filter-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.tag-filter-btn:hover {
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.15);
+  background: var(--glass-hover);
+}
+.tag-filter-btn--active {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: rgba(255, 90, 95, 0.3);
+}
+.tag-filter-count {
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "JetBrains Mono", monospace;
+}
+
+.tag-filter-panel {
+  width: 260px;
+}
+
+.tag-filter-mode {
+  display: flex;
+  gap: 6px;
+  padding: 10px 12px 4px;
+}
+.tag-filter-mode button {
+  flex: 1;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.tag-filter-mode button.active {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: rgba(255, 90, 95, 0.3);
+}
+.tag-filter-row {
+  cursor: pointer;
+}
+
+/* ─── Video Tags Panel ──────────────────────────────────────────────────── */
+.video-tags-panel {
+  width: 280px;
+}
+
+.video-tags-chips {
+  padding: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  overflow-y: auto;
+  max-height: 260px;
+}
+
+.tag-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 6px 5px 10px;
+  border-radius: 999px;
+  background: var(--accent-dim);
+  border: 1px solid rgba(255, 90, 95, 0.25);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.tag-chip-remove {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+  font-size: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+.tag-chip-remove:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.video-tags-add {
+  display: flex;
+  gap: 6px;
+  padding: 10px 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+.video-tags-add input {
+  flex: 1;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12.5px;
+  outline: none;
+}
+.video-tags-add input:focus {
+  border-color: rgba(255, 90, 95, 0.45);
+  box-shadow: 0 0 0 3px rgba(255, 90, 95, 0.1);
+}
+.video-tags-add button {
+  width: 34px;
+  border-radius: 10px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.video-tags-add button:hover {
+  background: var(--accent-hover);
+}
+.tag-filter-panel .pl-row-check {
+  display: flex !important;
 }

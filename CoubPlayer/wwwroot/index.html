@@ -34,7 +34,10 @@
         letter-spacing: 0.2px;
         cursor: pointer;
         white-space: nowrap;
-        transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+        transition:
+          background 0.2s ease,
+          border-color 0.2s ease,
+          transform 0.15s ease;
       }
 
       .download-btn:hover {
@@ -141,6 +144,12 @@
         🔗
       </button>
       <button id="restart" class="control-btn" title="Перезапустить">↺</button>
+
+      <!-- NEW -->
+      <button id="editTagsBtn" class="control-btn" title="Теги видео">
+        🏷
+      </button>
+
       <button
         id="editPlaylistsBtn"
         class="control-btn control-btn--accent"
@@ -150,12 +159,92 @@
       </button>
     </div>
 
+    <!-- TAG FILTER panel -->
+    <div id="tagFilterOverlay" class="pl-editor-overlay">
+      <div
+        id="tagFilterPanel"
+        class="pl-editor-panel pl-selector-panel tag-filter-panel"
+      >
+        <div class="pl-editor-header">
+          <div class="pl-editor-header-text">
+            <div class="pl-editor-title">Фильтр по тегам</div>
+            <div class="pl-editor-subtitle" id="tagFilterSubtitle">
+              Все видео
+            </div>
+          </div>
+          <button class="pl-editor-close" id="tagFilterClose">✕</button>
+        </div>
+        <div class="pl-editor-search">
+          <svg class="pl-search-icon" viewBox="0 0 20 20" fill="none">
+            <circle
+              cx="9"
+              cy="9"
+              r="6"
+              stroke="currentColor"
+              stroke-width="1.8"
+            />
+            <path
+              d="M13.5 13.5 17 17"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+            />
+          </svg>
+          <input
+            id="tagFilterSearch"
+            class="pl-search-input"
+            type="text"
+            placeholder="Найти тег…"
+            autocomplete="off"
+          />
+        </div>
+        <div class="tag-filter-mode">
+          <button data-mode="any" class="active">Любой из</button>
+          <button data-mode="all">Все сразу</button>
+        </div>
+        <div class="pl-editor-list tag-filter-list" id="tagFilterList"></div>
+        <div class="pl-editor-footer">
+          <button class="pl-new-btn" id="tagFilterClearBtn">
+            ✕ Сбросить фильтр
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIDEO TAGS panel -->
+    <div id="videoTagsOverlay" class="pl-editor-overlay">
+      <div id="videoTagsPanel" class="pl-editor-panel video-tags-panel">
+        <div class="pl-editor-header">
+          <div class="pl-editor-header-text">
+            <div class="pl-editor-title">Теги видео</div>
+            <div class="pl-editor-subtitle" id="videoTagsSubtitle">—</div>
+          </div>
+          <button class="pl-editor-close" id="videoTagsClose">✕</button>
+        </div>
+        <div class="video-tags-chips" id="videoTagsChips"></div>
+        <div class="video-tags-add">
+          <input
+            id="videoTagsInput"
+            type="text"
+            placeholder="Добавить тег…"
+            list="allTagsDatalist"
+            autocomplete="off"
+            maxlength="40"
+          />
+          <button id="videoTagsAddBtn">＋</button>
+        </div>
+        <datalist id="allTagsDatalist"></datalist>
+      </div>
+    </div>
+
     <!-- Верхняя панель (плейлист + загрузка по ссылке + сортировка) -->
     <div class="top-controls panel">
       <div class="top-controls-left">
         <button class="pl-trigger-btn" id="playlistTriggerBtn">
           <span class="pl-trigger-icon">◈</span>
-          <span class="pl-trigger-label" id="playlistTriggerLabel">Playlist</span>
+          <span class="pl-trigger-label" id="playlistTriggerLabel"
+            >Playlist</span
+          >
           <svg class="pl-trigger-chevron" viewBox="0 0 12 12" fill="none">
             <path
               d="M2 4l4 4 4-4"
@@ -210,6 +299,16 @@
           class="hidden"
           title="Seed"
         />
+
+        <!-- NEW: tag filter -->
+        <button
+          id="tagFilterBtn"
+          class="tag-filter-btn"
+          title="Фильтр по тегам"
+        >
+          <span>🏷</span>
+          <span id="tagFilterCount" class="tag-filter-count" hidden>0</span>
+        </button>
       </div>
     </div>
 

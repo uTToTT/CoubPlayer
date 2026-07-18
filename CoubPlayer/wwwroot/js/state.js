@@ -5,7 +5,11 @@
 const STORAGE_KEY = "coub_player_state";
 
 // Только эти поля персистим — playlists и coubMap не нужны (они с сервера)
-const PERSIST_KEYS = ["selectedPlaylist", "sortType", "sortDirection", "randomSeed", "volume", "lastVideoByPlaylist", "coubAccessToken"];
+const PERSIST_KEYS = [
+    "selectedPlaylist", "sortType", "sortDirection", "randomSeed",
+    "volume", "lastVideoByPlaylist", "coubAccessToken",
+    "activeTagFilter", "tagFilterMode",
+];
 
 function loadPersistedState() {
     try {
@@ -41,12 +45,16 @@ const _state = {
     // remember_token из cookie авторизованной сессии coub.com — нужен только для докачки liked/bookmarks.
     // Хранится локально в браузере, на сервер уходит лишь в теле запроса /api/playlists/sync
     coubAccessToken: persisted.coubAccessToken ?? null,
+    activeTagFilter: persisted.activeTagFilter ?? [],
+    tagFilterMode: persisted.tagFilterMode ?? "any",
+    allTags: [], // не персистим — тянем с сервера при старте/после изменения тегов
 };
 
 export const state = new Proxy(_state, {
     set(target, key, value) {
         target[key] = value;
         if (PERSIST_KEYS.includes(key)) saveState(target);
+
         return true;
     },
 });

@@ -89,3 +89,35 @@ export async function syncFavorites(category, token, limit) {
     const res = await post("/api/playlists/sync", { category, token, limit });
     return res.json();
 }
+
+export async function getAllTags() {
+    const res = await fetch("/api/coubs/tags");
+    if (!res.ok) throw new Error("Failed to load tags");
+    return res.json(); // [{ tag, count }]
+}
+
+export async function getCoubTags(id) {
+    const res = await fetch(`/api/coubs/${encodeURIComponent(id)}/tags`);
+    if (!res.ok) throw new Error("Failed to load coub tags");
+    return res.json();
+}
+
+export async function addTagToCoub(id, tag) {
+    const res = await post(`/api/coubs/${encodeURIComponent(id)}/tags`, { tag });
+    return res.json();
+}
+
+export async function removeTagFromCoub(id, tag) {
+    const res = await fetch(`/api/coubs/${encodeURIComponent(id)}/tags/${encodeURIComponent(tag)}`, {
+        method: "DELETE",
+    });
+    if (!res.ok) throw new Error(`Remove tag failed: ${await res.text()}`);
+    return res.json();
+}
+
+export async function searchCoubsByTags(tags, mode = "any") {
+    const qs = new URLSearchParams({ tags: tags.join(","), mode });
+    const res = await fetch(`/api/coubs/search?${qs}`);
+    if (!res.ok) throw new Error("Tag search failed");
+    return res.json();
+}
