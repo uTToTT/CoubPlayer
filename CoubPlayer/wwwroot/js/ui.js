@@ -86,12 +86,6 @@ export function initPlaylistSelector({ getPlaylists, onSelect, onCreate, onDelet
 }
 
 function openSelector() {
-    // Позиционируем под кнопкой-триггером
-    const rect = triggerBtn.getBoundingClientRect();
-    selectorPanel.style.top = (rect.bottom + 8) + "px";
-    selectorPanel.style.left = rect.left + "px";
-    selectorPanel.style.transform = "none"; // сбрасываем translateY(-50%) из базового стиля
-
     selectorOverlay.classList.add("show");
     requestAnimationFrame(() => selectorSearch.focus());
 }
@@ -125,82 +119,70 @@ async function buildSelectorRow(name, data) {
     const isActive = name === _selectorSelected;
     const isRO = READONLY_SELECTOR.includes(name);
 
-    const row = document.createElement("div");
-    row.className = "pl-row" + (isActive ? " pl-row--active" : "");
+    const tile = document.createElement("div");
+    tile.className = "pl-tile" + (isActive ? " pl-tile--active" : "");
 
-    const icon = await buildIconEl(name, true);
-
-    // const icon = document.createElement("div");
-    // icon.className = "pl-row-icon";
-    // icon.textContent = emojiForPlaylist(name);
+    const thumb = await buildIconEl(name, true);
+    thumb.classList.add("pl-tile-thumb");
+    tile.appendChild(thumb);
 
     const text = document.createElement("div");
-    text.className = "pl-row-text";
+    text.className = "pl-tile-text";
 
     const nameEl = document.createElement("div");
-    nameEl.className = "pl-row-name";
+    nameEl.className = "pl-tile-name pl-row-name";
     nameEl.textContent = name;
 
     const countEl = document.createElement("div");
-    countEl.className = "pl-row-count";
+    countEl.className = "pl-tile-count";
     countEl.textContent = `${count} видео`;
 
     text.appendChild(nameEl);
     text.appendChild(countEl);
+    tile.appendChild(text);
 
-    // Галочка для активного
     const check = document.createElement("div");
     check.className = "pl-row-check";
+    tile.appendChild(check);
 
-    row.appendChild(icon);
-    row.appendChild(text);
-    row.appendChild(check);
-
-    // Клик по основной части строки — выбрать плейлист
-    row.addEventListener("click", (e) => {
+    tile.addEventListener("click", (e) => {
         if (e.target.closest(".pl-row-icon--clickable")) return;
-        if (!e.target.closest(".pl-row-actions")) {
-            _selectorSelected = name;
-            closeSelector();
-
-            setPlaylistTriggerLabel(name);
-            _onSelectPlaylist(name);
-        }
+        if (e.target.closest(".pl-row-actions")) return;
+        _selectorSelected = name;
+        closeSelector();
+        setPlaylistTriggerLabel(name);
+        _onSelectPlaylist(name);
     });
 
-    // Кнопки управления — только для не-readonly
     if (!isRO) {
         const actions = document.createElement("div");
         actions.className = "pl-row-actions";
 
-        // Кнопка переименования
         const renameBtn = document.createElement("button");
         renameBtn.className = "pl-row-action-btn pl-row-rename-btn";
         renameBtn.title = "Переименовать";
         renameBtn.innerHTML = `<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" width="13" height="13"><path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.757l8.61-8.61z" stroke="currentColor" stroke-width="1.2"/></svg>`;
         renameBtn.addEventListener("click", (e) => {
             e.stopPropagation();
-            startInlineRename(row, name, nameEl, countEl);
+            startInlineRename(tile, name, nameEl, countEl);
         });
 
-        // Кнопка удаления
         const deleteBtn = document.createElement("button");
         deleteBtn.className = "pl-row-action-btn pl-row-delete-btn";
         deleteBtn.title = "Удалить плейлист";
         deleteBtn.innerHTML = `<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" width="13" height="13"><path d="M2 4h12M5 4V2.5A.5.5 0 0 1 5.5 2h5a.5.5 0 0 1 .5.5V4M6 7v5M10 7v5M3 4l.8 9.6A.5.5 0 0 0 4.3 14h7.4a.5.5 0 0 0 .5-.4L13 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>`;
         deleteBtn.addEventListener("click", async (e) => {
             e.stopPropagation();
-            await handleDeletePlaylist(name, row);
+            await handleDeletePlaylist(name, tile);
         });
 
         actions.appendChild(renameBtn);
         actions.appendChild(deleteBtn);
-        row.appendChild(actions);
+        tile.appendChild(actions);
     }
 
-    return row;
+    return tile;
 }
-
 
 
 export async function sanitizeBrokenPlaylists() {

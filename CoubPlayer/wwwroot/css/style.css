@@ -1275,18 +1275,16 @@ body {
 }
 
 /* Селектор позиционируется под кнопкой, а не по центру экрана */
-.pl-selector-panel {
-  /* JS переопределит top/left, убираем центровку */
+.pl-anchored-panel {
   top: auto !important;
   right: auto !important;
   transform: translateX(0) translateY(0) !important;
-  /* начальное состояние для анимации */
   transform-origin: top left;
   width: 320px;
 }
 
 /* Анимация для селектора — вниз, а не справа */
-.pl-editor-overlay.show .pl-selector-panel {
+.pl-editor-overlay.show .pl-anchored-panel {
   transform: translateX(0) translateY(0) !important;
   opacity: 1;
 }
@@ -1378,11 +1376,6 @@ body {
   display: none;
 }
 
-/* Hide check from selector rows that aren't active (keep only in editor) */
-.pl-selector-panel .pl-row:not(.pl-row--active) .pl-row-check {
-  display: none;
-}
-
 /* ─── Кастомные иконки плейлистов ────────────────────────────────────────────── */
 
 .pl-row-icon--clickable {
@@ -1416,23 +1409,20 @@ body {
 }
 
 /* Иконки в селекторе — крупнее, как превью */
-.pl-selector-panel .pl-row-icon {
+.pl-anchored-panel .pl-row-icon {
   width: 64px;
   height: 64px;
   border-radius: 10px;
   font-size: 22px;
 }
-
-.pl-selector-panel .pl-row {
+.pl-anchored-panel .pl-row {
   padding: 10px 10px;
   gap: 12px;
 }
-
-.pl-selector-panel .pl-row-name {
+.pl-anchored-panel .pl-row-name {
   font-size: 13px;
 }
-
-.pl-selector-panel .pl-row-count {
+.pl-anchored-panel .pl-row-count {
   font-size: 11px;
 }
 
@@ -1632,6 +1622,151 @@ body {
 .video-tags-add button:hover {
   background: var(--accent-hover);
 }
-.tag-filter-panel .pl-row-check {
-  display: flex !important;
+/* ─── Playlist Selector — fullscreen modal ─────────────────────────────── */
+
+.pl-editor-overlay--modal {
+  background: rgba(5, 5, 8, 0);
+  transition: background 0.25s ease;
+}
+.pl-editor-overlay--modal.show {
+  background: rgba(5, 5, 8, 0.72);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  pointer-events: auto;
+}
+
+.pl-fullscreen-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  right: auto;
+  width: min(94vw, 1400px);
+  height: 88vh;
+  max-height: 88vh;
+  transform: translate(-50%, -50%) scale(0.96);
+  transition:
+    transform 0.28s cubic-bezier(0.34, 1.2, 0.64, 1),
+    opacity 0.2s ease;
+}
+.pl-editor-overlay.show .pl-fullscreen-panel {
+  transform: translate(-50%, -50%) scale(1);
+  opacity: 1;
+}
+
+.pl-fullscreen-panel .pl-editor-title {
+  font-size: 16px;
+}
+.pl-fullscreen-panel .pl-editor-search {
+  padding: 14px 20px;
+}
+.pl-fullscreen-panel .pl-editor-footer {
+  padding: 14px 20px;
+}
+
+/* ─── Grid list ─────────────────────────────────────────────────────────── */
+
+.pl-selector-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 18px;
+  padding: 20px;
+  align-content: start;
+}
+.pl-selector-grid .pl-empty {
+  grid-column: 1 / -1;
+  padding: 60px 0;
+}
+
+/* ─── Tile card ─────────────────────────────────────────────────────────── */
+
+.pl-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 16px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.03);
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease,
+    transform 0.16s ease;
+}
+.pl-tile:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+  transform: translateY(-2px);
+}
+.pl-tile--active {
+  border-color: rgba(255, 90, 95, 0.45);
+  background: var(--accent-dim);
+}
+
+.pl-tile-thumb {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  height: auto;
+  border-radius: 12px;
+  font-size: 32px;
+}
+
+.pl-tile-text {
+  text-align: center;
+  padding: 0 2px;
+}
+
+.pl-tile-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #f0f0f0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pl-tile-count {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.35);
+  font-family: "JetBrains Mono", monospace;
+  margin-top: 2px;
+}
+
+/* Галочка выбранной плитки — верхний правый угол */
+.pl-tile .pl-row-check {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+}
+.pl-tile--active .pl-row-check {
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 12px rgba(255, 90, 95, 0.5);
+}
+.pl-tile--active .pl-row-check::after {
+  opacity: 1;
+}
+
+/* Кнопки rename/delete — верхний левый угол, только по hover */
+.pl-tile .pl-row-actions {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  margin-left: 0;
+  z-index: 2;
+}
+
+/* Скрываем бейджи во время инлайн-переименования (startInlineRename
+   вешает именно этот класс — pl-row--editing, никаких доп. правок JS не нужно) */
+.pl-tile.pl-row--editing .pl-row-check,
+.pl-tile.pl-row--editing .pl-row-actions {
+  display: none;
+}
+.pl-tile.pl-row--editing .pl-tile-name {
+  display: none;
+}
+.pl-tile.pl-row--editing .pl-row-rename-input {
+  width: 100%;
+  text-align: center;
 }

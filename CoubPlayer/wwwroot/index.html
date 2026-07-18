@@ -5,12 +5,6 @@
     <title>Coub Player</title>
     <link rel="stylesheet" href="css/style.css" />
 
-    <!--
-      Стиль кнопки "Добавить по ссылке" вынесен сюда отдельным блоком,
-      чтобы не трогать существующий style.css. При желании можно перенести
-      эти правила туда же — они самодостаточны и ни на что не завязаны,
-      кроме структуры .top-controls-left / .download-btn ниже.
-    -->
     <style>
       .top-controls-left {
         display: flex;
@@ -163,7 +157,7 @@
     <div id="tagFilterOverlay" class="pl-editor-overlay">
       <div
         id="tagFilterPanel"
-        class="pl-editor-panel pl-selector-panel tag-filter-panel"
+        class="pl-editor-panel pl-anchored-panel tag-filter-panel"
       >
         <div class="pl-editor-header">
           <div class="pl-editor-header-text">
@@ -313,8 +307,14 @@
     </div>
 
     <!-- PLAYLIST SELECTOR panel -->
-    <div id="playlistSelectorOverlay" class="pl-editor-overlay">
-      <div id="playlistSelectorPanel" class="pl-editor-panel pl-selector-panel">
+    <div
+      id="playlistSelectorOverlay"
+      class="pl-editor-overlay pl-editor-overlay--modal"
+    >
+      <div
+        id="playlistSelectorPanel"
+        class="pl-editor-panel pl-fullscreen-panel"
+      >
         <div class="pl-editor-header">
           <div class="pl-editor-header-text">
             <div class="pl-editor-title">Плейлисты</div>
@@ -347,7 +347,7 @@
           />
           <button class="pl-search-clear hidden" id="plSelectorClear">✕</button>
         </div>
-        <div class="pl-editor-list" id="plSelectorList"></div>
+        <div class="pl-editor-list pl-selector-grid" id="plSelectorList"></div>
         <div class="pl-editor-footer">
           <button class="pl-new-btn" id="plSelectorNewBtn">
             <span class="pl-new-icon">＋</span> Создать плейлист
