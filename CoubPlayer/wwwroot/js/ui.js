@@ -1,344 +1,18 @@
 // ui.js — весь рендеринг UI.
 
-// ─── Playlist Selector (Pinterest-style panel) ────────────────────────────────
 
-import { setPlaylistIcon } from "./api.js";
 
-const selectorOverlay = document.getElementById("playlistSelectorOverlay");
-const selectorPanel = document.getElementById("playlistSelectorPanel");
-const selectorClose = document.getElementById("plSelectorClose");
-const selectorSearch = document.getElementById("plSelectorSearch");
-const selectorClear = document.getElementById("plSelectorClear");
-const selectorList = document.getElementById("plSelectorList");
-const selectorNewBtn = document.getElementById("plSelectorNewBtn");
-const triggerBtn = document.getElementById("playlistTriggerBtn");
-const triggerLabel = document.getElementById("playlistTriggerLabel");
 
-const INVALID_CHARS = /[\/\\:*?"<>|]/;
-const SANITIZE_CHARS = /[\/\\:*?"<>|]/g;
-const READONLY_SELECTOR = ["bookmarks", "liked"];
 
-let _selectorPlaylists = {};
-let _selectorSelected = null;
-let _onSelectPlaylist = null;
-let _onCreateFromSelector = null;
-let _onDeletePlaylist = null;
-let _onRenamePlaylist = null;
-let _getSelectorPlaylists = null;
 
-export function initPlaylistSelector({ getPlaylists, onSelect, onCreate, onDelete, onRename }) {
-    _onSelectPlaylist = onSelect;
-    _onCreateFromSelector = onCreate;
-    _onDeletePlaylist = onDelete;
-    _onRenamePlaylist = onRename;
-    _getSelectorPlaylists = getPlaylists;
 
-    triggerBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        _selectorPlaylists = _getSelectorPlaylists();
-        selectorSearch.value = "";
-        selectorClear.classList.add("hidden");
-        renderSelectorRows("");
-        openSelector();
-    });
 
-    selectorClose.addEventListener("click", closeSelector);
 
-    // selectorOverlay.addEventListener("click", (e) => {
-    //     if (!selectorPanel.contains(e.target)) closeSelector();
-    // });
 
-    selectorSearch.addEventListener("input", () => {
-        const q = selectorSearch.value.trim();
-        selectorClear.classList.toggle("hidden", !q);
-        renderSelectorRows(q);
-    });
 
-    selectorClear.addEventListener("click", () => {
-        selectorSearch.value = "";
-        selectorClear.classList.add("hidden");
-        selectorSearch.focus();
-        renderSelectorRows("");
-    });
 
-    selectorNewBtn.addEventListener("click", async () => {
-        if (!_onCreateFromSelector) return;
-        const name = await _onCreateFromSelector();
-        if (name) {
-            _selectorPlaylists = _getSelectorPlaylists();
-            renderSelectorRows(selectorSearch.value.trim());
-        }
-    });
 
-    document.addEventListener("keydown", (e) => {
-        console.log("keydown:", e.code, e.key);
-        // if (e.code === "ControlRight") {
-        //     e.preventDefault();
-        //     document.getElementById("editPlaylistsBtn").click();
-        //     return;
-        // }
 
-        // Остальные клавиши не перехватываем если фокус в поле ввода
-        if (e.target.matches("input, textarea")) return;
-
-        if (e.key === "Escape" && selectorOverlay.classList.contains("show")) closeSelector();
-    });
-}
-
-function openSelector() {
-    selectorOverlay.classList.add("show");
-    requestAnimationFrame(() => selectorSearch.focus());
-}
-
-function closeSelector() {
-    selectorOverlay.classList.remove("show");
-}
-
-async function renderSelectorRows(query) {
-    selectorList.innerHTML = "";
-    const q = query.toLowerCase();
-    const entries = Object.entries(_selectorPlaylists).filter(
-        ([name]) => !q || name.toLowerCase().includes(q)
-    );
-
-    if (!entries.length) {
-        const empty = document.createElement("div");
-        empty.className = "pl-empty";
-        empty.textContent = query ? "Ничего не найдено" : "Нет плейлистов";
-        selectorList.appendChild(empty);
-        return;
-    }
-
-    for (const [name, data] of entries) {
-        selectorList.appendChild(await buildSelectorRow(name, data));
-    }
-}
-
-async function buildSelectorRow(name, data) {
-    const count = Object.keys(data.videos || {}).length;
-    const isActive = name === _selectorSelected;
-    const isRO = READONLY_SELECTOR.includes(name);
-
-    const tile = document.createElement("div");
-    tile.className = "pl-tile" + (isActive ? " pl-tile--active" : "");
-
-    const thumb = await buildIconEl(name, true);
-    thumb.classList.add("pl-tile-thumb");
-    tile.appendChild(thumb);
-
-    const text = document.createElement("div");
-    text.className = "pl-tile-text";
-
-    const nameEl = document.createElement("div");
-    nameEl.className = "pl-tile-name pl-row-name";
-    nameEl.textContent = name;
-
-    const countEl = document.createElement("div");
-    countEl.className = "pl-tile-count";
-    countEl.textContent = `${count} видео`;
-
-    text.appendChild(nameEl);
-    text.appendChild(countEl);
-    tile.appendChild(text);
-
-    const check = document.createElement("div");
-    check.className = "pl-row-check";
-    tile.appendChild(check);
-
-    tile.addEventListener("click", (e) => {
-        if (e.target.closest(".pl-row-icon--clickable")) return;
-        if (e.target.closest(".pl-row-actions")) return;
-        _selectorSelected = name;
-        closeSelector();
-        setPlaylistTriggerLabel(name);
-        _onSelectPlaylist(name);
-    });
-
-    if (!isRO) {
-        const actions = document.createElement("div");
-        actions.className = "pl-row-actions";
-
-        const renameBtn = document.createElement("button");
-        renameBtn.className = "pl-row-action-btn pl-row-rename-btn";
-        renameBtn.title = "Переименовать";
-        renameBtn.innerHTML = `<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" width="13" height="13"><path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.757l8.61-8.61z" stroke="currentColor" stroke-width="1.2"/></svg>`;
-        renameBtn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            startInlineRename(tile, name, nameEl, countEl);
-        });
-
-        const deleteBtn = document.createElement("button");
-        deleteBtn.className = "pl-row-action-btn pl-row-delete-btn";
-        deleteBtn.title = "Удалить плейлист";
-        deleteBtn.innerHTML = `<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" width="13" height="13"><path d="M2 4h12M5 4V2.5A.5.5 0 0 1 5.5 2h5a.5.5 0 0 1 .5.5V4M6 7v5M10 7v5M3 4l.8 9.6A.5.5 0 0 0 4.3 14h7.4a.5.5 0 0 0 .5-.4L13 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>`;
-        deleteBtn.addEventListener("click", async (e) => {
-            e.stopPropagation();
-            await handleDeletePlaylist(name, tile);
-        });
-
-        actions.appendChild(renameBtn);
-        actions.appendChild(deleteBtn);
-        tile.appendChild(actions);
-    }
-
-    return tile;
-}
-
-
-export async function sanitizeBrokenPlaylists() {
-    const playlists = _getSelectorPlaylists();
-    const broken = Object.keys(playlists).filter(name => INVALID_CHARS.test(name));
-
-    if (!broken.length) {
-        showToast("✓ Сломанных плейлистов не найдено");
-        return;
-    }
-
-    let fixed = 0;
-    for (const oldName of broken) {
-        const newName = oldName.replace(SANITIZE_CHARS, "_").trim();
-
-        // Если после замены имя совпадает с существующим — добавляем суффикс
-        const finalName = playlists[newName] && newName !== oldName
-            ? newName + "_" + Date.now()
-            : newName;
-
-        try {
-            await _onRenamePlaylist(oldName, finalName);
-            // Переносим timestamp иконки на новое имя
-            if (_iconTimestamps[oldName]) {
-                _iconTimestamps[finalName] = _iconTimestamps[oldName];
-                delete _iconTimestamps[oldName];
-            }
-            if (_selectorSelected === oldName) {
-                _selectorSelected = finalName;
-                setPlaylistTriggerLabel(finalName);
-            }
-            fixed++;
-        } catch (err) {
-            console.error(`Не удалось исправить «${oldName}»:`, err);
-        }
-    }
-
-    _selectorPlaylists = _getSelectorPlaylists();
-    renderSelectorRows(selectorSearch.value.trim());
-    showToast(`✓ Исправлено плейлистов: ${fixed} из ${broken.length}`);
-}
-
-function startInlineRename(row, oldName, nameEl, countEl) {
-
-    row.classList.add("pl-row--editing");
-
-    const input = document.createElement("input");
-    input.className = "pl-row-rename-input";
-    input.value = oldName;
-    input.maxLength = 80;
-
-    nameEl.replaceWith(input);
-    input.focus();
-    input.select();
-
-    let committed = false; // ← гарантируем однократное выполнение
-
-    const cancel = () => {
-        if (committed) return;
-        committed = true;
-        input.replaceWith(nameEl);
-        row.classList.remove("pl-row--editing");
-    };
-
-    const commit = async () => {
-        if (committed) return;
-        committed = true;
-
-        const newName = input.value.trim();
-        input.replaceWith(nameEl);
-        row.classList.remove("pl-row--editing");
-
-        if (!newName || newName === oldName) return;
-
-        // Проверка на недопустимые символы
-        if (INVALID_CHARS.test(newName)) {
-            showToast('⚠ Недопустимые символы: / \\ : * ? " < > |');
-            return;
-        }
-
-        if (_selectorPlaylists[newName]) {
-            showToast("⚠ Плейлист с таким именем уже существует");
-            return;
-        }
-
-        try {
-            await _onRenamePlaylist(oldName, newName);
-
-            if (_selectorSelected === oldName) {
-                _selectorSelected = newName;
-                setPlaylistTriggerLabel(newName);
-            }
-
-            nameEl.textContent = newName;
-            showToast(`Плейлист переименован в «${newName}»`);
-            renderSelectorRows(selectorSearch.value.trim());
-        } catch (err) {
-            showToast("⚠ Ошибка переименования");
-            console.error("Rename error:", err);
-        }
-    };
-
-    input.addEventListener("input", () => {
-        if (INVALID_CHARS.test(input.value)) {
-            input.classList.add("pl-row-rename-input--invalid");
-        } else {
-            input.classList.remove("pl-row-rename-input--invalid");
-        }
-    });
-
-    input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") { e.preventDefault(); commit(); }
-        if (e.key === "Escape") { e.preventDefault(); cancel(); }
-        e.stopPropagation();
-    });
-    input.addEventListener("blur", commit);
-    input.addEventListener("mousedown", (e) => e.stopPropagation());
-    input.addEventListener("click", (e) => e.stopPropagation());
-
-}
-
-async function handleDeletePlaylist(name, row) {
-    const count = Object.keys(_selectorPlaylists[name]?.videos || {}).length;
-    const msg = count > 0
-        ? `Удалить плейлист «${name}»?\nВ нём ${count} видео. Видеофайлы останутся.`
-        : `Удалить плейлист «${name}»?`;
-    if (!confirm(msg)) return;
-
-    try {
-        await _onDeletePlaylist(name);
-        delete _selectorPlaylists[name];
-
-        row.remove();
-
-        // Если удалили активный — сбросить метку
-        if (_selectorSelected === name) {
-            _selectorSelected = null;
-            setPlaylistTriggerLabel("Playlist");
-        }
-
-        showToast(`Плейлист «${name}» удалён`);
-
-        // Если список стал пустым — показать заглушку
-        if (!Object.keys(_selectorPlaylists).length) {
-            renderSelectorRows(selectorSearch.value.trim());
-        }
-    } catch (err) {
-        showToast("⚠ Ошибка удаления");
-        console.error("Delete error:", err);
-    }
-}
-
-export function setPlaylistTriggerLabel(name) {
-    triggerLabel.textContent = name;
-    _selectorSelected = name;
-}
 
 // ─── Video Info ───────────────────────────────────────────────────────────────
 
@@ -523,11 +197,11 @@ export function initPlaylistEditor({ getPlaylists, onToggle, onCreatePlaylist })
             && !isNavExempt(e.target)) {
             closeEditor();
         }
-        if (selectorOverlay.classList.contains("show")
-            && !selectorPanel.contains(e.target)
-            && !isNavExempt(e.target)) {
-            closeSelector();
-        }
+        // if (selectorOverlay.classList.contains("show")
+        //     && !selectorPanel.contains(e.target)
+        //     && !isNavExempt(e.target)) {
+        //     closeSelector();
+        // }
     });
 }
 
@@ -562,15 +236,6 @@ export function closeEditor() {
     // Очищаем поиск именно при закрытии — по требованию.
     editorSearch.value = "";
     editorClear.classList.add("hidden");
-}
-
-export function isAnyPanelOpen() {
-    return (
-        editorOverlay.classList.contains("show") ||
-        selectorOverlay.classList.contains("show") ||
-        tagFilterOverlay.classList.contains("show") ||
-        videoTagsOverlay.classList.contains("show")
-    );
 }
 
 export function togglePlaylistEditor(video, playlists) {
@@ -788,167 +453,6 @@ async function buildIconEl(name, allowClick) {
     return wrap;
 }
 
-// ─── Tag Filter Panel ──────────────────────────────────────────────────────
-
-const tagFilterBtn = document.getElementById("tagFilterBtn");
-const tagFilterCount = document.getElementById("tagFilterCount");
-const tagFilterOverlay = document.getElementById("tagFilterOverlay");
-const tagFilterPanel = document.getElementById("tagFilterPanel");
-const tagFilterClose = document.getElementById("tagFilterClose");
-const tagFilterSearch = document.getElementById("tagFilterSearch");
-const tagFilterList = document.getElementById("tagFilterList");
-const tagFilterSubtitle = document.getElementById("tagFilterSubtitle");
-const tagFilterModeGroup = document.getElementById("tagFilterModeGroup");
-const tagFilterClearBtn = document.getElementById("tagFilterClearBtn");
-const tagFilterLabel = document.getElementById("tagFilterLabel");
-
-let _allTagsCache = [];
-let _activeTags = [];
-let _tagMode = "any";
-let _onTagFilterChange = null;
-
-export function initTagFilterPanel({ getAllTags, getActive, getMode, onChange }) {
-    _onTagFilterChange = onChange;
-
-
-
-    tagFilterBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        _allTagsCache = getAllTags();
-        _activeTags = [...getActive()];
-        _tagMode = getMode();
-        syncTagModeButtons();
-        tagFilterSearch.value = "";
-        renderTagFilterRows("");
-        tagFilterOverlay.classList.add("show");
-        requestAnimationFrame(() => tagFilterSearch.focus());
-    });
-
-    tagFilterClose.addEventListener("click", closeTagFilter);
-
-    tagFilterSearch.addEventListener("input", () =>
-        renderTagFilterRows(tagFilterSearch.value.trim())
-    );
-
-    tagFilterModeGroup.addEventListener("click", (e) => {
-        const btn = e.target.closest("button[data-mode]");
-        if (!btn) return;
-        _tagMode = btn.dataset.mode;
-        syncTagModeButtons();
-        notifyTagFilterChange();
-    });
-
-    tagFilterClearBtn.addEventListener("click", () => {
-        _activeTags = [];
-        renderTagFilterRows(tagFilterSearch.value.trim());
-        notifyTagFilterChange();
-    });
-
-    document.addEventListener("keydown", (e) => {
-        if (e.key === "Escape" && tagFilterOverlay.classList.contains("show")) closeTagFilter();
-    });
-
-    document.addEventListener("click", (e) => {
-        if (
-            tagFilterOverlay.classList.contains("show") &&
-            !tagFilterPanel.contains(e.target) &&
-            !e.target.closest("#tagFilterBtn")
-        ) {
-            closeTagFilter();
-        }
-    });
-
-    // Отражаем персистентное состояние фильтра сразу при загрузке (бейдж на кнопке)
-    const initialActive = getActive();
-    tagFilterCount.hidden = initialActive.length === 0;
-    tagFilterCount.textContent = initialActive.length;
-    tagFilterBtn.classList.toggle("tag-filter-btn--active", initialActive.length > 0);
-    tagFilterLabel.textContent = initialActive.length ? `${initialActive.length} тег(ов)` : "Все теги";
-}
-
-function syncTagModeButtons() {
-    [...tagFilterModeGroup.children].forEach((b) =>
-        b.classList.toggle("active", b.dataset.mode === _tagMode)
-    );
-}
-
-
-
-function closeTagFilter() {
-    tagFilterOverlay.classList.remove("show");
-}
-
-function renderTagFilterRows(query) {
-    tagFilterList.innerHTML = "";
-    const q = query.toLowerCase();
-    const filtered = _allTagsCache.filter(({ tag }) => !q || tag.toLowerCase().includes(q));
-
-    if (!filtered.length) {
-        const empty = document.createElement("div");
-        empty.className = "pl-empty";
-        empty.textContent = "Тегов не найдено";
-        tagFilterList.appendChild(empty);
-        return;
-    }
-
-    for (const { tag, count } of filtered) {
-        tagFilterList.appendChild(buildTagTile(tag, count));
-    }
-}
-
-function buildTagTile(tag, count) {
-    const checked = _activeTags.includes(tag);
-
-    const tile = document.createElement("div");
-    tile.className = "pl-tile" + (checked ? " pl-tile--active" : "");
-
-    const thumb = document.createElement("div");
-    thumb.className = "pl-row-icon pl-tile-thumb pl-tag-thumb";
-    thumb.textContent = "🏷";
-    tile.appendChild(thumb);
-
-    const text = document.createElement("div");
-    text.className = "pl-tile-text";
-
-    const nameEl = document.createElement("div");
-    nameEl.className = "pl-tile-name";
-    nameEl.textContent = tag;
-
-    const countEl = document.createElement("div");
-    countEl.className = "pl-tile-count";
-    countEl.textContent = `${count} видео`;
-
-    text.appendChild(nameEl);
-    text.appendChild(countEl);
-    tile.appendChild(text);
-
-    const check = document.createElement("div");
-    check.className = "pl-row-check";
-    tile.appendChild(check);
-
-    tile.addEventListener("click", () => {
-        const idx = _activeTags.indexOf(tag);
-        if (idx === -1) _activeTags.push(tag);
-        else _activeTags.splice(idx, 1);
-        tile.classList.toggle("pl-tile--active");
-        notifyTagFilterChange();
-    });
-
-    return tile;
-}
-
-function notifyTagFilterChange() {
-    tagFilterCount.hidden = _activeTags.length === 0;
-    tagFilterCount.textContent = _activeTags.length;
-    tagFilterLabel.textContent = _activeTags.length
-        ? `${_activeTags.length} тег(ов)`
-        : "Все теги";
-    tagFilterSubtitle.textContent = _activeTags.length
-        ? `${_activeTags.length} тег(ов) · ${_tagMode === "any" ? "любой из" : "все сразу"}`
-        : "Все видео";
-    _onTagFilterChange?.([..._activeTags], _tagMode);
-}
-
 // ─── Video Tags Editor ───────────────────────────────────────────────────────
 
 const editTagsBtn = document.getElementById("editTagsBtn");
@@ -1111,4 +615,530 @@ async function removeTagChip(tag, chipEl) {
         showToast("⚠ Не удалось удалить тег");
         console.error("Remove tag error:", err);
     }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SORTING PANEL — Плейлисты + Теги в одном окне (табы)
+// ═════════════════════════════════════════════════════════════════════════════
+
+import { setPlaylistIcon } from "./api.js";
+
+const sortingOverlay = document.getElementById("sortingOverlay");
+const sortingPanel = document.getElementById("sortingPanel");
+const sortingClose = document.getElementById("sortingClose");
+const sortingTitle = document.getElementById("sortingTitle");
+const sortingSubtitle = document.getElementById("sortingSubtitle");
+const sortingTabs = document.getElementById("sortingTabs");
+const sortingSearch = document.getElementById("sortingSearch");
+const sortingSearchClear = document.getElementById("sortingSearchClear");
+const tagFilterModeGroup = document.getElementById("tagFilterModeGroup");
+
+const plSelectorList = document.getElementById("plSelectorList");
+const tagFilterListEl = document.getElementById("tagFilterList");
+const sortingFooterPlaylists = document.getElementById("sortingFooterPlaylists");
+const sortingFooterTags = document.getElementById("sortingFooterTags");
+const plSelectorNewBtn = document.getElementById("plSelectorNewBtn");
+const tagFilterClearBtn = document.getElementById("tagFilterClearBtn");
+
+const playlistTriggerBtn = document.getElementById("playlistTriggerBtn");
+const playlistTriggerLabel = document.getElementById("playlistTriggerLabel");
+const tagFilterBtn = document.getElementById("tagFilterBtn");
+const tagFilterLabel = document.getElementById("tagFilterLabel");
+const tagFilterCount = document.getElementById("tagFilterCount");
+
+const INVALID_CHARS = /[\/\\:*?"<>|]/;
+const SANITIZE_CHARS = /[\/\\:*?"<>|]/g;
+const READONLY_SELECTOR = ["bookmarks", "liked"];
+
+// state — playlists
+let _selectorPlaylists = {};
+let _selectorSelected = null;
+let _onSelectPlaylist = null;
+let _onCreateFromSelector = null;
+let _onDeletePlaylist = null;
+let _onRenamePlaylist = null;
+let _getSelectorPlaylists = null;
+
+// state — tags
+let _allTagsCache = [];
+let _activeTags = [];
+let _tagMode = "any";
+let _onTagFilterChange = null;
+let _getAllTags = null;
+let _getActiveTags = null;
+let _getTagMode = null;
+
+let _activeSortingTab = "playlists";
+
+export function initSortingPanel({
+    // playlists
+    getPlaylists, onSelect, onCreate, onDelete, onRename,
+    // tags
+    getAllTags, getActiveTagFilter, getTagFilterMode, onTagFilterChange,
+}) {
+    _onSelectPlaylist = onSelect;
+    _onCreateFromSelector = onCreate;
+    _onDeletePlaylist = onDelete;
+    _onRenamePlaylist = onRename;
+    _getSelectorPlaylists = getPlaylists;
+
+    _getAllTags = getAllTags;
+    _getActiveTags = getActiveTagFilter;
+    _getTagMode = getTagFilterMode;
+    _onTagFilterChange = onTagFilterChange;
+
+    // Триггеры — открывают одно окно на нужной вкладке
+    playlistTriggerBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openSortingPanel("playlists");
+    });
+    tagFilterBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openSortingPanel("tags");
+    });
+
+    sortingClose.addEventListener("click", closeSortingPanel);
+
+    sortingTabs.addEventListener("click", (e) => {
+        const btn = e.target.closest("button[data-tab]");
+        if (!btn) return;
+        switchSortingTab(btn.dataset.tab);
+    });
+
+    sortingSearch.addEventListener("input", () => {
+        const q = sortingSearch.value.trim();
+        sortingSearchClear.classList.toggle("hidden", !q);
+        renderActiveTab(q);
+    });
+
+    sortingSearchClear.addEventListener("click", () => {
+        sortingSearch.value = "";
+        sortingSearchClear.classList.add("hidden");
+        sortingSearch.focus();
+        renderActiveTab("");
+    });
+
+    tagFilterModeGroup.addEventListener("click", (e) => {
+        const btn = e.target.closest("button[data-mode]");
+        if (!btn) return;
+        _tagMode = btn.dataset.mode;
+        syncTagModeButtons();
+        notifyTagFilterChange();
+    });
+
+    tagFilterClearBtn.addEventListener("click", () => {
+        _activeTags = [];
+        renderActiveTab(sortingSearch.value.trim());
+        notifyTagFilterChange();
+    });
+
+    plSelectorNewBtn.addEventListener("click", async () => {
+        if (!_onCreateFromSelector) return;
+        const name = await _onCreateFromSelector();
+        if (name) {
+            _selectorPlaylists = _getSelectorPlaylists();
+            renderActiveTab(sortingSearch.value.trim());
+        }
+    });
+
+    document.addEventListener("keydown", (e) => {
+        if (e.target.matches("input, textarea")) return;
+        if (e.key === "Escape" && sortingOverlay.classList.contains("show")) closeSortingPanel();
+    });
+
+    document.addEventListener("click", (e) => {
+        if (
+            sortingOverlay.classList.contains("show") &&
+            !sortingPanel.contains(e.target) &&
+            !e.target.closest("#playlistTriggerBtn") &&
+            !e.target.closest("#tagFilterBtn")
+        ) {
+            closeSortingPanel();
+        }
+    });
+
+    // Начальное состояние бейджа тег-фильтра на кнопке (без открытия окна)
+    const initialActive = getActiveTagFilter();
+    tagFilterCount.hidden = initialActive.length === 0;
+    tagFilterCount.textContent = initialActive.length;
+    tagFilterLabel.textContent = initialActive.length ? `${initialActive.length} тег(ов)` : "Все теги";
+    tagFilterBtn.classList.toggle("tag-filter-btn--active", initialActive.length > 0);
+}
+
+function openSortingPanel(tab) {
+    _selectorPlaylists = _getSelectorPlaylists();
+    _allTagsCache = _getAllTags();
+    _activeTags = [..._getActiveTags()];
+    _tagMode = _getTagMode();
+    syncTagModeButtons();
+
+    sortingSearch.value = "";
+    sortingSearchClear.classList.add("hidden");
+
+    switchSortingTab(tab);
+    sortingOverlay.classList.add("show");
+    requestAnimationFrame(() => sortingSearch.focus());
+}
+
+function closeSortingPanel() {
+    sortingOverlay.classList.remove("show");
+}
+
+function switchSortingTab(tab) {
+    _activeSortingTab = tab;
+    const isTags = tab === "tags";
+
+    [...sortingTabs.children].forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+
+    tagFilterModeGroup.hidden = !isTags;
+    plSelectorList.classList.toggle("pl-tab-hidden", isTags);
+    tagFilterListEl.classList.toggle("pl-tab-hidden", !isTags);
+    sortingFooterPlaylists.classList.toggle("pl-tab-hidden", isTags);
+    sortingFooterTags.classList.toggle("pl-tab-hidden", !isTags);
+
+    sortingTitle.textContent = isTags ? "Теги" : "Плейлисты";
+    sortingSearch.placeholder = isTags ? "Найти тег…" : "Найти плейлист…";
+
+    sortingSearch.value = "";
+    sortingSearchClear.classList.add("hidden");
+
+    updateSortingSubtitle();
+    renderActiveTab("");
+}
+
+function updateSortingSubtitle() {
+    if (_activeSortingTab === "tags") {
+        sortingSubtitle.textContent = _activeTags.length
+            ? `${_activeTags.length} тег(ов) · ${_tagMode === "any" ? "любой из" : "все сразу"}`
+            : "Все видео";
+    } else {
+        sortingSubtitle.textContent = "Выберите плейлист";
+    }
+}
+
+function renderActiveTab(query) {
+    if (_activeSortingTab === "tags") renderTagFilterRows(query);
+    else renderSelectorRows(query);
+}
+
+function syncTagModeButtons() {
+    [...tagFilterModeGroup.children].forEach((b) =>
+        b.classList.toggle("active", b.dataset.mode === _tagMode)
+    );
+}
+
+// ─── Playlists tab ─────────────────────────────────────────────────────────
+
+async function renderSelectorRows(query) {
+    plSelectorList.innerHTML = "";
+    const q = query.toLowerCase();
+    const entries = Object.entries(_selectorPlaylists).filter(
+        ([name]) => !q || name.toLowerCase().includes(q)
+    );
+
+    if (!entries.length) {
+        const empty = document.createElement("div");
+        empty.className = "pl-empty";
+        empty.textContent = query ? "Ничего не найдено" : "Нет плейлистов";
+        plSelectorList.appendChild(empty);
+        return;
+    }
+
+    for (const [name, data] of entries) {
+        plSelectorList.appendChild(await buildSelectorRow(name, data));
+    }
+}
+
+async function buildSelectorRow(name, data) {
+    const count = Object.keys(data.videos || {}).length;
+    const isActive = name === _selectorSelected;
+    const isRO = READONLY_SELECTOR.includes(name);
+
+    const tile = document.createElement("div");
+    tile.className = "pl-tile" + (isActive ? " pl-tile--active" : "");
+
+    const thumb = await buildIconEl(name, true);
+    thumb.classList.add("pl-tile-thumb");
+    tile.appendChild(thumb);
+
+    const text = document.createElement("div");
+    text.className = "pl-tile-text";
+
+    const nameEl = document.createElement("div");
+    nameEl.className = "pl-tile-name pl-row-name";
+    nameEl.textContent = name;
+
+    const countEl = document.createElement("div");
+    countEl.className = "pl-tile-count";
+    countEl.textContent = `${count} видео`;
+
+    text.appendChild(nameEl);
+    text.appendChild(countEl);
+    tile.appendChild(text);
+
+    const check = document.createElement("div");
+    check.className = "pl-row-check";
+    tile.appendChild(check);
+
+    tile.addEventListener("click", (e) => {
+        if (e.target.closest(".pl-row-icon--clickable")) return;
+        if (e.target.closest(".pl-row-actions")) return;
+        _selectorSelected = name;
+        closeSortingPanel();
+        setPlaylistTriggerLabel(name);
+        _onSelectPlaylist(name);
+    });
+
+    if (!isRO) {
+        const actions = document.createElement("div");
+        actions.className = "pl-row-actions";
+
+        const renameBtn = document.createElement("button");
+        renameBtn.className = "pl-row-action-btn pl-row-rename-btn";
+        renameBtn.title = "Переименовать";
+        renameBtn.innerHTML = `<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" width="13" height="13"><path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.757l8.61-8.61z" stroke="currentColor" stroke-width="1.2"/></svg>`;
+        renameBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            startInlineRename(tile, name, nameEl, countEl);
+        });
+
+        const deleteBtn = document.createElement("button");
+        deleteBtn.className = "pl-row-action-btn pl-row-delete-btn";
+        deleteBtn.title = "Удалить плейлист";
+        deleteBtn.innerHTML = `<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" width="13" height="13"><path d="M2 4h12M5 4V2.5A.5.5 0 0 1 5.5 2h5a.5.5 0 0 1 .5.5V4M6 7v5M10 7v5M3 4l.8 9.6A.5.5 0 0 0 4.3 14h7.4a.5.5 0 0 0 .5-.4L13 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>`;
+        deleteBtn.addEventListener("click", async (e) => {
+            e.stopPropagation();
+            await handleDeletePlaylist(name, tile);
+        });
+
+        actions.appendChild(renameBtn);
+        actions.appendChild(deleteBtn);
+        tile.appendChild(actions);
+    }
+
+    return tile;
+}
+
+export async function sanitizeBrokenPlaylists() {
+    const playlists = _getSelectorPlaylists();
+    const broken = Object.keys(playlists).filter((name) => INVALID_CHARS.test(name));
+
+    if (!broken.length) {
+        showToast("✓ Сломанных плейлистов не найдено");
+        return;
+    }
+
+    let fixed = 0;
+    for (const oldName of broken) {
+        const newName = oldName.replace(SANITIZE_CHARS, "_").trim();
+        const finalName = playlists[newName] && newName !== oldName
+            ? newName + "_" + Date.now()
+            : newName;
+
+        try {
+            await _onRenamePlaylist(oldName, finalName);
+            if (_iconTimestamps[oldName]) {
+                _iconTimestamps[finalName] = _iconTimestamps[oldName];
+                delete _iconTimestamps[oldName];
+            }
+            if (_selectorSelected === oldName) {
+                _selectorSelected = finalName;
+                setPlaylistTriggerLabel(finalName);
+            }
+            fixed++;
+        } catch (err) {
+            console.error(`Не удалось исправить «${oldName}»:`, err);
+        }
+    }
+
+    _selectorPlaylists = _getSelectorPlaylists();
+    if (sortingOverlay.classList.contains("show") && _activeSortingTab === "playlists") {
+        renderSelectorRows(sortingSearch.value.trim());
+    }
+    showToast(`✓ Исправлено плейлистов: ${fixed} из ${broken.length}`);
+}
+
+function startInlineRename(tile, oldName, nameEl, countEl) {
+    tile.classList.add("pl-row--editing");
+
+    const input = document.createElement("input");
+    input.className = "pl-row-rename-input";
+    input.value = oldName;
+    input.maxLength = 80;
+
+    nameEl.replaceWith(input);
+    input.focus();
+    input.select();
+
+    let committed = false;
+
+    const cancel = () => {
+        if (committed) return;
+        committed = true;
+        input.replaceWith(nameEl);
+        tile.classList.remove("pl-row--editing");
+    };
+
+    const commit = async () => {
+        if (committed) return;
+        committed = true;
+
+        const newName = input.value.trim();
+        input.replaceWith(nameEl);
+        tile.classList.remove("pl-row--editing");
+
+        if (!newName || newName === oldName) return;
+
+        if (INVALID_CHARS.test(newName)) {
+            showToast('⚠ Недопустимые символы: / \\ : * ? " < > |');
+            return;
+        }
+
+        if (_selectorPlaylists[newName]) {
+            showToast("⚠ Плейлист с таким именем уже существует");
+            return;
+        }
+
+        try {
+            await _onRenamePlaylist(oldName, newName);
+
+            if (_selectorSelected === oldName) {
+                _selectorSelected = newName;
+                setPlaylistTriggerLabel(newName);
+            }
+
+            nameEl.textContent = newName;
+            showToast(`Плейлист переименован в «${newName}»`);
+            renderSelectorRows(sortingSearch.value.trim());
+        } catch (err) {
+            showToast("⚠ Ошибка переименования");
+            console.error("Rename error:", err);
+        }
+    };
+
+    input.addEventListener("input", () => {
+        input.classList.toggle("pl-row-rename-input--invalid", INVALID_CHARS.test(input.value));
+    });
+
+    input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); commit(); }
+        if (e.key === "Escape") { e.preventDefault(); cancel(); }
+        e.stopPropagation();
+    });
+    input.addEventListener("blur", commit);
+    input.addEventListener("mousedown", (e) => e.stopPropagation());
+    input.addEventListener("click", (e) => e.stopPropagation());
+}
+
+async function handleDeletePlaylist(name, tile) {
+    const count = Object.keys(_selectorPlaylists[name]?.videos || {}).length;
+    const msg = count > 0
+        ? `Удалить плейлист «${name}»?\nВ нём ${count} видео. Видеофайлы останутся.`
+        : `Удалить плейлист «${name}»?`;
+    if (!confirm(msg)) return;
+
+    try {
+        await _onDeletePlaylist(name);
+        delete _selectorPlaylists[name];
+        tile.remove();
+
+        if (_selectorSelected === name) {
+            _selectorSelected = null;
+            setPlaylistTriggerLabel("Playlist");
+        }
+
+        showToast(`Плейлист «${name}» удалён`);
+
+        if (!Object.keys(_selectorPlaylists).length) {
+            renderSelectorRows(sortingSearch.value.trim());
+        }
+    } catch (err) {
+        showToast("⚠ Ошибка удаления");
+        console.error("Delete error:", err);
+    }
+}
+
+export function setPlaylistTriggerLabel(name) {
+    playlistTriggerLabel.textContent = name;
+    _selectorSelected = name;
+}
+
+// ─── Tags tab ──────────────────────────────────────────────────────────────
+
+function renderTagFilterRows(query) {
+    tagFilterListEl.innerHTML = "";
+    const q = query.toLowerCase();
+    const filtered = _allTagsCache.filter(({ tag }) => !q || tag.toLowerCase().includes(q));
+
+    if (!filtered.length) {
+        const empty = document.createElement("div");
+        empty.className = "pl-empty";
+        empty.textContent = "Тегов не найдено";
+        tagFilterListEl.appendChild(empty);
+        return;
+    }
+
+    for (const { tag, count } of filtered) {
+        tagFilterListEl.appendChild(buildTagTile(tag, count));
+    }
+}
+
+function buildTagTile(tag, count) {
+    const checked = _activeTags.includes(tag);
+
+    const tile = document.createElement("div");
+    tile.className = "pl-tile" + (checked ? " pl-tile--active" : "");
+
+    const thumb = document.createElement("div");
+    thumb.className = "pl-row-icon pl-tile-thumb pl-tag-thumb";
+    thumb.textContent = "🏷";
+    tile.appendChild(thumb);
+
+    const text = document.createElement("div");
+    text.className = "pl-tile-text";
+
+    const nameEl = document.createElement("div");
+    nameEl.className = "pl-tile-name";
+    nameEl.textContent = tag;
+
+    const countEl = document.createElement("div");
+    countEl.className = "pl-tile-count";
+    countEl.textContent = `${count} видео`;
+
+    text.appendChild(nameEl);
+    text.appendChild(countEl);
+    tile.appendChild(text);
+
+    const check = document.createElement("div");
+    check.className = "pl-row-check";
+    tile.appendChild(check);
+
+    tile.addEventListener("click", () => {
+        const idx = _activeTags.indexOf(tag);
+        if (idx === -1) _activeTags.push(tag);
+        else _activeTags.splice(idx, 1);
+        tile.classList.toggle("pl-tile--active");
+        notifyTagFilterChange();
+    });
+
+    return tile;
+}
+
+function notifyTagFilterChange() {
+    tagFilterCount.hidden = _activeTags.length === 0;
+    tagFilterCount.textContent = _activeTags.length;
+    tagFilterLabel.textContent = _activeTags.length ? `${_activeTags.length} тег(ов)` : "Все теги";
+    tagFilterBtn.classList.toggle("tag-filter-btn--active", _activeTags.length > 0);
+    updateSortingSubtitle();
+    _onTagFilterChange?.([..._activeTags], _tagMode);
+}
+
+// ─── isAnyPanelOpen — используется main.js для клика-паузы ────────────────
+
+export function isAnyPanelOpen() {
+    return (
+        editorOverlay.classList.contains("show") ||
+        sortingOverlay.classList.contains("show") ||
+        videoTagsOverlay.classList.contains("show")
+    );
 }

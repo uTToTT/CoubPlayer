@@ -7,7 +7,7 @@ import { initControls } from "./controls.js";
 import * as api from "./api.js";
 import { state } from "./state.js";
 import {
-    initPlaylistSelector,
+    initSortingPanel,          // было initPlaylistSelector + initTagFilterPanel
     setPlaylistTriggerLabel,
     updateVideoInfo,
     initVolumeSlider,
@@ -18,7 +18,6 @@ import {
     syncEditorToVideo,
     sanitizeBrokenPlaylists,
     isAnyPanelOpen,
-    initTagFilterPanel,
     initVideoTagsEditor,
     setVideoTagsTarget,
     refreshTagsDatalist,
@@ -257,18 +256,6 @@ async function init() {
         randomSeed: state.randomSeed,
     });
 
-    // ── Фильтр по тегам ────────────────────────────────────────────────────
-    initTagFilterPanel({
-        getAllTags: () => state.allTags,
-        getActive: () => state.activeTagFilter,
-        getMode: () => state.tagFilterMode,
-        onChange: (tags, mode) => {
-            state.activeTagFilter = tags;
-            state.tagFilterMode = mode;
-            applyTagFilterAndRefresh();
-        },
-    });
-
     // ── Теги текущего видео ────────────────────────────────────────────────
     initVideoTagsEditor({
         getCoubTags: (id) => api.getCoubTags(id),
@@ -283,35 +270,7 @@ async function init() {
     });
 
     // ── Выбор плейлиста (Pinterest-style) ────────────────────────────────────
-    initPlaylistSelector({
-        getPlaylists: () => state.playlists,
-        onSelect: (name) => selectPlaylist(name),
-        onCreate: async () => {
-            const name = prompt("Название нового плейлиста:");
-            if (!name?.trim()) return null;
-            await api.createPlaylist({ name: name.trim() });
-            state.playlists[name.trim()] = { title: name.trim(), videos: {} };
-            return name.trim();
-        },
-        onDelete: async (name) => {
-            await api.deletePlaylist(name);
-            delete state.playlists[name];
-            // Если удалён активный плейлист — сбросить воспроизведение
-            if (state.selectedPlaylist === name) {
-                state.selectedPlaylist = null;
-                player.setPlaylist([], null);
-            }
-        },
-        onRename: async (oldName, newName) => {
-            await api.renamePlaylist(oldName, newName);
-            state.playlists[newName] = state.playlists[oldName];
-            delete state.playlists[oldName];
-            if (state.selectedPlaylist === oldName) {
-                state.selectedPlaylist = newName;
-                setPlaylistTriggerLabel(newName);
-            }
-        },
-    });
+
     // ── Редактор плейлистов для видео (Pinterest-style) ───────────────────────
     initPlaylistEditor({
         getPlaylists: () => state.playlists,
@@ -343,6 +302,47 @@ async function init() {
         togglePlaylistEditor(video, state.playlists);
         editPlaylistsBtn.blur();
     });
+
+    // ── Единая панель: Плейлисты + Теги ──────────────────────────────────────
+    initSortingPanel({
+        // playlists
+        getPlaylists: () => state.playlists,
+        onSelect: (name) => selectPlaylist(name),
+        onCreate: async () => {
+            const name = prompt("Название нового плейлиста:");
+            if (!name?.trim()) return null;
+            await api.createPlaylist({ name: name.trim() });
+            state.playlists[name.trim()] = { title: name.trim(), videos: {} };
+            return name.trim();
+        },
+        onDelete: async (name) => {
+            await api.deletePlaylist(name);
+            delete state.playlists[name];
+            if (state.selectedPlaylist === name) {
+                state.selectedPlaylist = null;
+                player.setPlaylist([], null);
+            }
+        },
+        onRename: async (oldName, newName) => {
+            await api.renamePlaylist(oldName, newName);
+            state.playlists[newName] = state.playlists[oldName];
+            delete state.playlists[oldName];
+            if (state.selectedPlaylist === oldName) {
+                state.selectedPlaylist = newName;
+                setPlaylistTriggerLabel(newName);
+            }
+        },
+        // tags
+        getAllTags: () => state.allTags,
+        getActiveTagFilter: () => state.activeTagFilter,
+        getTagFilterMode: () => state.tagFilterMode,
+        onTagFilterChange: (tags, mode) => {
+            state.activeTagFilter = tags;
+            state.tagFilterMode = mode;
+            applyTagFilterAndRefresh();
+        },
+    });
+
     await sanitizeBrokenPlaylists();
 
     // Загрузка видео по ссылке (одной или нескольким)
@@ -445,6 +445,8 @@ async function init() {
     function updatePauseOverlay(isPaused) {
         document.getElementById("pauseOverlay").classList.toggle("visible", isPaused);
     }
+
+
 }
 
 init().catch(console.error);

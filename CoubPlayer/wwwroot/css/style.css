@@ -822,18 +822,23 @@ body {
   box-shadow: 0 0 20px rgba(255, 90, 95, 0.45) !important;
 }
 
-/* Оверлей (прозрачный, только закрывает по клику вне панели) */
+/* .pl-editor-overlay.show {
+  pointer-events: auto;
+} */
+/* ─── Базовый оверлей для всех pl-editor-* панелей ──────────────────────── */
 .pl-editor-overlay {
   position: fixed;
   inset: 0;
   z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   pointer-events: none;
-  /* НЕ затемняем фон — видео остаётся видимым */
 }
 
-/* .pl-editor-overlay.show {
+.pl-editor-overlay.show {
   pointer-events: auto;
-} */
+}
 
 /* ─── Сама панель ──────────────────────────────────────────── */
 .pl-editor-panel {
@@ -1744,4 +1749,47 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+/* ─── Sorting panel tabs ────────────────────────────────────────────────── */
+
+.pl-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 12px 20px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  flex-shrink: 0;
+}
+
+.pl-tabs button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 16px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition);
+  margin-bottom: -1px;
+}
+
+.pl-tabs button:hover {
+  color: var(--text);
+}
+
+.pl-tabs button.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.pl-tab-icon {
+  font-size: 12px;
+  opacity: 0.8;
+}
+.pl-tab-hidden {
+  display: none !important;
 }

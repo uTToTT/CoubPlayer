@@ -266,73 +266,32 @@
       </div>
     </div>
 
-    <div
-      id="tagFilterOverlay"
-      class="pl-editor-overlay pl-editor-overlay--modal"
-    >
-      <div id="tagFilterPanel" class="pl-editor-panel pl-fullscreen-panel">
+    <!-- SORTING panel: плейлисты + теги в одном окне -->
+    <div id="sortingOverlay" class="pl-editor-overlay pl-editor-overlay--modal">
+      <div id="sortingPanel" class="pl-editor-panel pl-fullscreen-panel">
         <div class="pl-editor-header">
           <div class="pl-editor-header-text">
-            <div class="pl-editor-title">Фильтр по тегам</div>
-            <div class="pl-editor-subtitle" id="tagFilterSubtitle">
-              Все видео
+            <div class="pl-editor-title" id="sortingTitle">Плейлисты</div>
+            <div class="pl-editor-subtitle" id="sortingSubtitle">
+              Выберите плейлист
             </div>
           </div>
-          <div class="tag-filter-mode" id="tagFilterModeGroup">
+          <div class="tag-filter-mode" id="tagFilterModeGroup" hidden>
             <button data-mode="any" class="active">Любой из</button>
             <button data-mode="all">Все сразу</button>
           </div>
-          <button class="pl-editor-close" id="tagFilterClose">✕</button>
+          <button class="pl-editor-close" id="sortingClose">✕</button>
         </div>
-        <div class="pl-editor-search">
-          <svg class="pl-search-icon" viewBox="0 0 20 20" fill="none">
-            <circle
-              cx="9"
-              cy="9"
-              r="6"
-              stroke="currentColor"
-              stroke-width="1.8"
-            />
-            <path
-              d="M13.5 13.5 17 17"
-              stroke="currentColor"
-              stroke-width="1.8"
-              stroke-linecap="round"
-            />
-          </svg>
-          <input
-            id="tagFilterSearch"
-            class="pl-search-input"
-            type="text"
-            placeholder="Найти тег…"
-            autocomplete="off"
-          />
-        </div>
-        <div class="pl-editor-list pl-selector-grid" id="tagFilterList"></div>
-        <div class="pl-editor-footer">
-          <button class="pl-new-btn" id="tagFilterClearBtn">
-            ✕ Сбросить фильтр
+
+        <div class="pl-tabs" id="sortingTabs">
+          <button data-tab="playlists" class="active">
+            <span class="pl-tab-icon">◈</span> Плейлисты
+          </button>
+          <button data-tab="tags">
+            <span class="pl-tab-icon">🏷</span> Теги
           </button>
         </div>
-      </div>
-    </div>
 
-    <!-- PLAYLIST SELECTOR panel -->
-    <div
-      id="playlistSelectorOverlay"
-      class="pl-editor-overlay pl-editor-overlay--modal"
-    >
-      <div
-        id="playlistSelectorPanel"
-        class="pl-editor-panel pl-fullscreen-panel"
-      >
-        <div class="pl-editor-header">
-          <div class="pl-editor-header-text">
-            <div class="pl-editor-title">Плейлисты</div>
-            <div class="pl-editor-subtitle">Выберите плейлист</div>
-          </div>
-          <button class="pl-editor-close" id="plSelectorClose">✕</button>
-        </div>
         <div class="pl-editor-search">
           <svg class="pl-search-icon" viewBox="0 0 20 20" fill="none">
             <circle
@@ -350,18 +309,31 @@
             />
           </svg>
           <input
-            id="plSelectorSearch"
+            id="sortingSearch"
             class="pl-search-input"
             type="text"
             placeholder="Найти плейлист…"
             autocomplete="off"
           />
-          <button class="pl-search-clear hidden" id="plSelectorClear">✕</button>
+          <button class="pl-search-clear hidden" id="sortingSearchClear">
+            ✕
+          </button>
         </div>
+
         <div class="pl-editor-list pl-selector-grid" id="plSelectorList"></div>
-        <div class="pl-editor-footer">
+        <div
+          class="pl-editor-list pl-selector-grid pl-tab-hidden"
+          id="tagFilterList"
+        ></div>
+
+        <div class="pl-editor-footer" id="sortingFooterPlaylists">
           <button class="pl-new-btn" id="plSelectorNewBtn">
             <span class="pl-new-icon">＋</span> Создать плейлист
+          </button>
+        </div>
+        <div class="pl-editor-footer pl-tab-hidden" id="sortingFooterTags">
+          <button class="pl-new-btn" id="tagFilterClearBtn">
+            ✕ Сбросить фильтр
           </button>
         </div>
       </div>
