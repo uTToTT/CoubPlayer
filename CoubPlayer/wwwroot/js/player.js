@@ -3,6 +3,7 @@
 // Вся логика сортировки перенесена в playlist.js.
 
 import { markVideoViewed } from "./api.js";
+import { setLastVideoForPlaylist, getLastVideoForPlaylist } from "./state.js";
 
 export class Player {
     /**
@@ -16,7 +17,7 @@ export class Player {
         this.bgVideo = bgVideoEl;
 
         this.activeIdx = 0; // индекс активного буфера (0 или 1)
-        this.index = 0;     // индекс текущего элемента в playlist
+        this.index = 0;     // индекс текущего элемента в playlist (только runtime, не персистится)
         this.playlist = [];
         this.currentPlaylistName = null;
 
@@ -50,6 +51,20 @@ export class Player {
     setPlaylist(list, playlistName = null) {
         this.playlist = list;
         if (playlistName !== null) this.currentPlaylistName = playlistName;
+    }
+
+    /**
+     * Находит индекс, с которого нужно начать воспроизведение для текущего
+     * плейлиста (this.currentPlaylistName), основываясь на id последнего
+     * просмотренного ролика в state. Если сохранённого id нет, либо ролик
+     * больше не встречается в списке (например, был удалён из плейлиста),
+     * возвращает 0.
+     */
+    getStartIndex() {
+        const savedId = getLastVideoForPlaylist(this.currentPlaylistName);
+        if (savedId == null) return 0;
+        const idx = this.playlist.findIndex((item) => item.id === savedId);
+        return idx === -1 ? 0 : idx;
     }
 
     setVolume(value) {
@@ -332,6 +347,8 @@ export class Player {
     }
 
     _notifyChange(item) {
+        // Персистим id ролика (а не индекс!) отдельно для текущего плейлиста
+        setLastVideoForPlaylist(this.currentPlaylistName, item.id);
         if (this.onVideoChange) this.onVideoChange(item);
     }
 

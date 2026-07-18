@@ -5,9 +5,7 @@
 const STORAGE_KEY = "coub_player_state";
 
 // Только эти поля персистим — playlists и coubMap не нужны (они с сервера)
-const PERSIST_KEYS = ["selectedPlaylist", "sortType", "sortDirection", "randomSeed", "volume", "videoIndex"];
-
-
+const PERSIST_KEYS = ["selectedPlaylist", "sortType", "sortDirection", "randomSeed", "volume", "lastVideoByPlaylist"];
 
 function loadPersistedState() {
     try {
@@ -38,7 +36,8 @@ const _state = {
     sortDirection: persisted.sortDirection ?? "asc",
     randomSeed: persisted.randomSeed ?? 42,
     volume: persisted.volume ?? 50,
-    videoIndex: persisted.videoIndex ?? 0,
+    // { [playlistId]: coubId } — последний просмотренный ролик для каждого плейлиста отдельно
+    lastVideoByPlaylist: persisted.lastVideoByPlaylist ?? {},
 };
 
 export const state = new Proxy(_state, {
@@ -48,3 +47,27 @@ export const state = new Proxy(_state, {
         return true;
     },
 });
+
+/**
+ * Запоминает последний ролик для конкретного плейлиста.
+ * lastVideoByPlaylist — объект, поэтому мутировать его "на месте" нельзя:
+ * Proxy отслеживает только присваивание в state.<key>, а не изменение
+ * содержимого вложенного объекта. Поэтому пересобираем объект целиком
+ * и переприсваиваем — это гарантированно сохранится в localStorage.
+ */
+export function setLastVideoForPlaylist(playlistId, coubId) {
+    if (playlistId == null || coubId == null) return;
+    state.lastVideoByPlaylist = {
+        ...state.lastVideoByPlaylist,
+        [playlistId]: coubId,
+    };
+}
+
+/**
+ * Возвращает id последнего просмотренного ролика для плейлиста,
+ * либо null, если для него ещё ничего не сохранено.
+ */
+export function getLastVideoForPlaylist(playlistId) {
+    if (playlistId == null) return null;
+    return state.lastVideoByPlaylist[playlistId] ?? null;
+}

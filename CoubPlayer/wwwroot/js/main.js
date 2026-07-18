@@ -63,7 +63,7 @@ function pickDefaultPlaylist() {
 
 // ─── Actions ──────────────────────────────────────────────────────────────────
 
-async function selectPlaylist(name, startIndex = 0) {
+async function selectPlaylist(name) {
     state.selectedPlaylist = name;
     setPlaylistTriggerLabel(name);
 
@@ -73,15 +73,25 @@ async function selectPlaylist(name, startIndex = 0) {
     if (!resolved.length) { alert("Playlist empty!"); return; }
 
     player.setPlaylist(resolved, name);
+    // Стартовый индекс резолвится по id последнего просмотренного ролика
+    // для ЭТОГО плейлиста (player.currentPlaylistName уже установлен строкой выше)
+    const startIndex = player.getStartIndex();
     await player.playPaused(startIndex);
 }
 
 async function applySorting() {
     if (!state.selectedPlaylist) return;
+
+    // Запоминаем id текущего ролика ДО пересборки списка — после сортировки
+    // порядок меняется, но мы хотим остаться на том же видео, а не прыгать на 0
+    const currentId = currentVideo()?.id ?? null;
+
     await refreshData();
     const resolved = getResolvedPlaylist(state.selectedPlaylist);
     player.setPlaylist(resolved, state.selectedPlaylist);
-    await player.playPaused(0);
+
+    const idx = currentId ? resolved.findIndex((v) => v.id === currentId) : -1;
+    await player.playPaused(idx === -1 ? 0 : idx);
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
@@ -193,25 +203,24 @@ async function init() {
         player.goToIndex(videoIndexInput.value);
     });
 
-    // Колбэк смены видео
+    // Колбэк смены видео.
+    // Персист последнего ролика (по id, для конкретного плейлиста) делает сам
+    // Player._notifyChange — тут его дублировать не нужно.
     player.onVideoChange = (item) => {
         updateVideoInfo(player.index, item.title, player.playlist.length);
         syncEditorToVideo(item);
-        state.videoIndex = player.index; // ← сохраняем
     };
 
     player.activeVideo.addEventListener("play", () => updatePauseOverlay(false));
     player.activeVideo.addEventListener("pause", () => updatePauseOverlay(true));
 
-    // Запуск дефолтного плейлиста
+    // Запуск дефолтного плейлиста.
+    // Стартовый индекс для него резолвится уже внутри selectPlaylist() по id.
     const defaultName = (state.selectedPlaylist && state.playlists[state.selectedPlaylist])
         ? state.selectedPlaylist
         : pickDefaultPlaylist();
     if (defaultName) {
-        const startIndex = (defaultName === state.selectedPlaylist)
-            ? (state.videoIndex ?? 0)
-            : 0;
-        await selectPlaylist(defaultName, startIndex);
+        await selectPlaylist(defaultName);
     }
 
     player.onPlayStateChange = (isPaused) => updatePauseOverlay(isPaused);
