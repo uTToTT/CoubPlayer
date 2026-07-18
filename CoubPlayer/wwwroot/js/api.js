@@ -74,3 +74,18 @@ export async function downloadCoubs(playlist, urls) {
     const res = await post(`/api/playlists/${encodeURIComponent(playlist)}/download`, { urls });
     return res.json();
 }
+
+/**
+ * Докачивает свежие ролики из личной ленты liked/bookmarks пользователя Coub
+ * (требует access token — remember_token из cookie авторизованной сессии).
+ * Ролики добавляются в одноимённый плейлист ("liked" или "bookmarks"),
+ * который создаётся автоматически, если его ещё нет.
+ * @param {"liked"|"bookmarks"} category
+ * @param {string} token
+ * @param {number} limit — сколько новейших роликов ленты забрать за этот запуск
+ * @returns {Promise<Array<{id: string, title?: string, success: boolean, error?: string, alreadyExisted?: boolean}>>}
+ */
+export async function syncFavorites(category, token, limit) {
+    const res = await post("/api/playlists/sync", { category, token, limit });
+    return res.json();
+}

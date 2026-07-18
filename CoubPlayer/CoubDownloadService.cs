@@ -201,35 +201,14 @@ namespace CoubPlayer.Services
 
         // ─── HTTP-хелперы ──────────────────────────────────────────────────────
 
-        /// <summary>
-        /// Отправляет запрос с ретраями при 429 (Too Many Requests).
-        /// Если сервер прислал Retry-After — ждём именно столько, иначе растущую паузу.
-        /// При других кодах ошибки (404, 500 и т.п.) ретраев не делаем — там смысла нет.
-        /// </summary>
-        private static async Task<HttpResponseMessage> SendWithRetryAsync(
-            HttpClient client, string url, string userAgent, int maxRetries = 3)
-        {
-            for (var attempt = 0; ; attempt++)
-            {
-                using var req = new HttpRequestMessage(HttpMethod.Get, url);
-                req.Headers.UserAgent.ParseAdd(userAgent);
-
-                var res = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
-
-                if (res.StatusCode != System.Net.HttpStatusCode.TooManyRequests || attempt >= maxRetries)
-                    return res;
-
-                var wait = res.Headers.RetryAfter?.Delta
-                    ?? TimeSpan.FromSeconds(5 * (attempt + 1)); // 5с, 10с, 15с — на случай, если сервер не подсказал
-
-                res.Dispose();
-                await Task.Delay(wait);
-            }
-        }
-
         private static async Task<string> GetStringAsync(HttpClient client, string url, string userAgent)
         {
-            using var res = await SendWithRetryAsync(client, url, userAgent);
+            using var res = await HttpRetryHelper.SendWithRetryAsync(client, () =>
+            {
+                var req = new HttpRequestMessage(HttpMethod.Get, url);
+                req.Headers.UserAgent.ParseAdd(userAgent);
+                return req;
+            });
             res.EnsureSuccessStatusCode();
             return await res.Content.ReadAsStringAsync();
         }
@@ -237,7 +216,12 @@ namespace CoubPlayer.Services
         private static async Task DownloadFileAsync(
             HttpClient client, string url, string destPath, string userAgent)
         {
-            using var res = await SendWithRetryAsync(client, url, userAgent);
+            using var res = await HttpRetryHelper.SendWithRetryAsync(client, () =>
+            {
+                var req = new HttpRequestMessage(HttpMethod.Get, url);
+                req.Headers.UserAgent.ParseAdd(userAgent);
+                return req;
+            });
             res.EnsureSuccessStatusCode();
             await using var fs = new FileStream(destPath, FileMode.Create, FileAccess.Write, FileShare.None);
             await res.Content.CopyToAsync(fs);

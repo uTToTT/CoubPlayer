@@ -10,7 +10,14 @@ namespace CoubPlayer
             builder.Services.AddControllers();
             builder.Services.AddHttpClient();
             builder.Services.AddSingleton<CoubDownloadService>();
+            builder.Services.AddSingleton<CoubTimelineService>();
             var app = builder.Build();
+
+            // ѕереносит старые ролики (скачанные консольным CoubDownloader в wwwroot/Coubs)
+            // в новую раскладку wwwroot/Data/Coubs и переписывает пути в coub_list.json.
+            // »демпотентно Ч безопасно вызывать при каждом старте.
+            CoubLibraryMigrator.MigrateOldPaths();
+
             app.UseStaticFiles();
             app.MapControllers();
 

@@ -34,10 +34,7 @@
         letter-spacing: 0.2px;
         cursor: pointer;
         white-space: nowrap;
-        transition:
-          background 0.2s ease,
-          border-color 0.2s ease,
-          transform 0.15s ease;
+        transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
       }
 
       .download-btn:hover {
@@ -74,10 +71,34 @@
           border-radius: 50%;
         }
       }
+
+      .rt-clock {
+        position: fixed;
+        top: 10px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 50;
+        padding: 6px 16px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        background: rgba(10, 14, 20, 0.5);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        color: #e8f4ff;
+        font-variant-numeric: tabular-nums;
+        font-size: 14px;
+        font-weight: 500;
+        letter-spacing: 0.5px;
+        pointer-events: none;
+        user-select: none;
+      }
     </style>
   </head>
 
   <body tabindex="-1">
+    <!-- Часы реального времени -->
+    <div id="realTimeClock" class="rt-clock">--:--:--</div>
+
     <!-- Фоновое видео -->
     <video id="bgVideo" autoplay muted loop></video>
 
@@ -134,9 +155,7 @@
       <div class="top-controls-left">
         <button class="pl-trigger-btn" id="playlistTriggerBtn">
           <span class="pl-trigger-icon">◈</span>
-          <span class="pl-trigger-label" id="playlistTriggerLabel"
-            >Playlist</span
-          >
+          <span class="pl-trigger-label" id="playlistTriggerLabel">Playlist</span>
           <svg class="pl-trigger-chevron" viewBox="0 0 12 12" fill="none">
             <path
               d="M2 4l4 4 4-4"
@@ -156,6 +175,24 @@
         >
           <span class="download-btn-icon">⬇</span>
           <span class="download-btn-label">По ссылке</span>
+        </button>
+
+        <!-- Докачка свежих liked/bookmarks с coub.com (нужен access token) -->
+        <button
+          id="syncLikedBtn"
+          class="download-btn"
+          title="Догрузить новые лайкнутые ролики с coub.com"
+        >
+          <span class="download-btn-icon">🔄</span>
+          <span class="download-btn-label">Liked</span>
+        </button>
+        <button
+          id="syncBookmarksBtn"
+          class="download-btn"
+          title="Догрузить новые закладки с coub.com"
+        >
+          <span class="download-btn-icon">🔄</span>
+          <span class="download-btn-label">Bookmarks</span>
         </button>
       </div>
 

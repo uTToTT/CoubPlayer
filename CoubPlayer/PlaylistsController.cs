@@ -25,10 +25,14 @@ namespace CoubPlayer
         private static readonly object _coubListLock = new();
 
         private readonly CoubDownloadService _downloadService;
+        private readonly CoubTimelineService _timelineService;
 
-        public PlaylistsController(CoubDownloadService downloadService)
+        private static readonly string[] SyncCategories = { "liked", "bookmarks" };
+
+        public PlaylistsController(CoubDownloadService downloadService, CoubTimelineService timelineService)
         {
             _downloadService = downloadService;
+            _timelineService = timelineService;
         }
 
         #region Icons
@@ -322,17 +326,81 @@ namespace CoubPlayer
                     return NotFound("Playlist not found");
             }
 
+            var results = await DownloadUrlsIntoPlaylistAsync(playlist, req.Urls);
+            return Ok(results);
+        }
+
+        /// <summary>
+        /// Докачивает свежие ролики из личной ленты liked/bookmarks пользователя
+        /// (через приватный timeline API Coub, требует access token) и добавляет
+        /// их в одноимённый плейлист ("liked" или "bookmarks" — как их узнаёт и
+        /// main.js в pickDefaultPlaylist). Плейлист создаётся, если его ещё нет.
+        /// Limit ограничивает, сколько НОВЕЙШИХ роликов ленты забрать за этот запуск
+        /// (а не сколько реально новых будет добавлено — уже скачанные просто
+        /// пропускаются, так же как при повторном вызове /download с теми же ссылками).
+        /// </summary>
+        [HttpPost("sync")]
+        public async Task<IActionResult> SyncFavorites([FromBody] SyncRequest req)
+        {
+            if (!SyncCategories.Contains(req.Category))
+                return BadRequest("Category must be 'liked' or 'bookmarks'");
+
+            if (string.IsNullOrWhiteSpace(req.Token))
+                return BadRequest("Token is required");
+
+            var limit = req.Limit <= 0 ? 25 : Math.Min(req.Limit, 1000);
+
+            // Плейлист для категории создаём, если его ещё нет
+            ExecuteLocked(data =>
+            {
+                if (!data.ContainsKey(req.Category))
+                {
+                    data[req.Category] = new Playlist
+                    {
+                        title = req.Category,
+                        videos = new Dictionary<string, VideoMeta>()
+                    };
+                }
+                return Ok();
+            });
+
+            List<string> permalinks;
+            try
+            {
+                permalinks = await _timelineService.GetPermalinksAsync(req.Category, req.Token, limit);
+            }
+            catch (InvalidOperationException ex)
+            {
+                // Неверный токен, неизвестная категория и т.п. — это ошибка запроса, не сервера
+                return BadRequest(ex.Message);
+            }
+
+            if (permalinks.Count == 0)
+                return Ok(new List<CoubDownloadResult>());
+
+            var results = await DownloadUrlsIntoPlaylistAsync(req.Category, permalinks);
+            return Ok(results);
+        }
+
+        /// <summary>
+        /// Общая логика для /download и /sync: последовательно скачивает ролики
+        /// (с паузой и джиттером между ними — см. комментарий внутри), регистрирует
+        /// каждый в coub_list.json и добавляет в указанный плейлист.
+        /// </summary>
+        private async Task<List<CoubDownloadResult>> DownloadUrlsIntoPlaylistAsync(
+            string playlist, List<string> urls)
+        {
             var results = new List<CoubDownloadResult>();
             var first = true;
             var jitter = new Random();
 
-            foreach (var url in req.Urls)
+            foreach (var url in urls)
             {
                 // Пауза между запросами к API Coub — без неё на больших батчах (сотни роликов)
                 // велик риск временной блокировки по IP. 2.5с — эмпирическое значение
                 // из оригинального CoubDownloader, + случайный джиттер 0-800мс, чтобы
                 // интервалы не были идеально ровными.
-                if (!first) await Task.Delay(2000 + jitter.Next(0, 800));
+                if (!first) await Task.Delay(2500 + jitter.Next(0, 800));
                 first = false;
 
                 var result = await _downloadService.DownloadAsync(url);
@@ -367,7 +435,7 @@ namespace CoubPlayer
                 });
             }
 
-            return Ok(results);
+            return results;
         }
     }
 }

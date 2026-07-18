@@ -25,6 +25,21 @@ const videoIndexInput = document.getElementById("videoIndexInput");
 const editPlaylistsBtn = document.getElementById("editPlaylistsBtn");
 const downloadCoubsBtn = document.getElementById("downloadCoubsBtn");
 const downloadCoubsBtnLabel = downloadCoubsBtn.querySelector(".download-btn-label");
+const syncLikedBtn = document.getElementById("syncLikedBtn");
+const syncBookmarksBtn = document.getElementById("syncBookmarksBtn");
+const realTimeClock = document.getElementById("realTimeClock");
+
+function updateClock() {
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, "0");
+    const mm = String(now.getMinutes()).padStart(2, "0");
+    const ss = String(now.getSeconds()).padStart(2, "0");
+    realTimeClock.textContent = `${hh}:${mm}:${ss}`;
+}
+
+// Часы не зависят от загрузки плейлистов/плеера — запускаем сразу
+updateClock();
+setInterval(updateClock, 1000);
 
 // ─── Player ───────────────────────────────────────────────────────────────────
 
@@ -94,6 +109,72 @@ async function applySorting() {
 
     const idx = currentId ? resolved.findIndex((v) => v.id === currentId) : -1;
     await player.playPaused(idx === -1 ? 0 : idx);
+}
+
+/**
+ * Докачивает свежие ролики из личной ленты liked/bookmarks с coub.com.
+ * Требует access token (remember_token из cookie авторизованной сессии на coub.com) —
+ * запрашивается один раз через prompt() и дальше хранится в state (localStorage).
+ * @param {"liked"|"bookmarks"} category
+ * @param {HTMLButtonElement} btn — кнопка, на которой показывать состояние загрузки
+ */
+async function syncFavorites(category, btn) {
+    if (!state.coubAccessToken) {
+        const token = prompt(
+            "Нужен access token для доступа к вашим liked/bookmarks на coub.com.\n" +
+            "Это значение cookie remember_token (посмотреть можно в DevTools → " +
+            "Application → Cookies на coub.com, залогинившись там).\n\n" +
+            "Токен сохранится локально в этом браузере."
+        );
+        if (!token?.trim()) return;
+        state.coubAccessToken = token.trim();
+    }
+
+    const limitRaw = prompt(
+        `Сколько новейших роликов из "${category}" забрать за этот раз?`,
+        "25"
+    );
+    if (!limitRaw?.trim()) return;
+
+    const limit = parseInt(limitRaw, 10);
+    if (!Number.isFinite(limit) || limit <= 0) {
+        alert("Некорректное число.");
+        return;
+    }
+
+    const label = btn.querySelector(".download-btn-label");
+    const originalLabel = label.textContent;
+    btn.disabled = true;
+    label.textContent = "Загрузка…";
+
+    try {
+        const results = await api.syncFavorites(category, state.coubAccessToken, limit);
+        const ok = results.filter((r) => r.success);
+        const failed = results.filter((r) => !r.success);
+
+        let msg = `"${category}": добавлено ${ok.length} из ${results.length}.`;
+        if (failed.length) {
+            msg += "\n\nНе удалось:\n" + failed.map((f) => `${f.id}: ${f.error}`).join("\n");
+        }
+        alert(msg);
+
+        // Плейлист category мог быть только что создан сервером впервые —
+        // подтягиваем актуальный список плейлистов и, если он сейчас открыт, перезагружаем
+        await refreshData();
+        if (state.selectedPlaylist === category) {
+            await selectPlaylist(category);
+        }
+    } catch (err) {
+        alert("Ошибка синхронизации: " + err.message);
+        // Если сервер пожаловался на токен — сбрасываем сохранённый, чтобы он не долбил
+        // сервер повторно тем же неверным значением при следующей попытке
+        if (/token/i.test(err.message)) {
+            state.coubAccessToken = null;
+        }
+    } finally {
+        btn.disabled = false;
+        label.textContent = originalLabel;
+    }
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
@@ -235,6 +316,16 @@ async function init() {
             downloadCoubsBtn.disabled = false;
             downloadCoubsBtnLabel.textContent = originalLabel;
         }
+    });
+
+    syncLikedBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        syncFavorites("liked", syncLikedBtn);
+    });
+
+    syncBookmarksBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        syncFavorites("bookmarks", syncBookmarksBtn);
     });
 
     // Клик по фону = пауза (игнорируем панели и контролы)
