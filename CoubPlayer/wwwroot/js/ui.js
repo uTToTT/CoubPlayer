@@ -44,9 +44,9 @@ export function initPlaylistSelector({ getPlaylists, onSelect, onCreate, onDelet
 
     selectorClose.addEventListener("click", closeSelector);
 
-    selectorOverlay.addEventListener("click", (e) => {
-        if (!selectorPanel.contains(e.target)) closeSelector();
-    });
+    // selectorOverlay.addEventListener("click", (e) => {
+    //     if (!selectorPanel.contains(e.target)) closeSelector();
+    // });
 
     selectorSearch.addEventListener("input", () => {
         const q = selectorSearch.value.trim();
@@ -162,6 +162,7 @@ async function buildSelectorRow(name, data) {
         if (!e.target.closest(".pl-row-actions")) {
             _selectorSelected = name;
             closeSelector();
+
             setPlaylistTriggerLabel(name);
             _onSelectPlaylist(name);
         }
@@ -495,9 +496,9 @@ export function initPlaylistEditor({ getPlaylists, onToggle, onCreatePlaylist })
 
     editorClose.addEventListener("click", closeEditor);
 
-    editorOverlay.addEventListener("click", (e) => {
-        if (!editorPanel.contains(e.target)) closeEditor();
-    });
+    // editorOverlay.addEventListener("click", (e) => {
+    //     if (!editorPanel.contains(e.target)) closeEditor();
+    // });
 
     editorSearch.addEventListener("input", () => {
         const q = editorSearch.value.trim();
@@ -524,24 +525,65 @@ export function initPlaylistEditor({ getPlaylists, onToggle, onCreatePlaylist })
     document.addEventListener("keydown", (e) => {
         if (e.key === "Escape" && editorOverlay.classList.contains("show")) closeEditor();
     });
+
+    const NAV_EXEMPT_SELECTORS = [
+        "#prev", "#next", "#restart", "#fullscreen",
+        "#videoIndexWrapper", ".volume-slider", "#copyLinkBtn",
+    ];
+
+    function isNavExempt(target) {
+        return NAV_EXEMPT_SELECTORS.some((sel) => target.closest(sel));
+    }
+
+    document.addEventListener("click", (e) => {
+        if (editorOverlay.classList.contains("show")
+            && !editorPanel.contains(e.target)
+            && !isNavExempt(e.target)) {
+            closeEditor();
+        }
+        if (selectorOverlay.classList.contains("show")
+            && !selectorPanel.contains(e.target)
+            && !isNavExempt(e.target)) {
+            closeSelector();
+        }
+    });
 }
 
 export function openPlaylistEditor(video, playlists) {
+    const wasOpen = editorOverlay.classList.contains("show");
+
     _currentVideoId = video.id;
     _currentTitle = video.title || video.id;
     _playlists = playlists;
 
     editorSubtitle.textContent = _currentTitle;
-    editorSearch.value = "";
-    editorClear.classList.add("hidden");
-    renderEditorRows("");
+
+    // Поиск сбрасываем только при настоящем открытии панели (была закрыта).
+    // Если панель уже была открыта (например, просто сменилось видео —
+    // вызов пришёл из syncEditorToVideo), сохраняем то, что ввёл пользователь.
+    if (!wasOpen) {
+        editorSearch.value = "";
+        editorClear.classList.add("hidden");
+    }
+
+    renderEditorRows(editorSearch.value.trim());
 
     editorOverlay.classList.add("show");
-    requestAnimationFrame(() => editorSearch.focus());
+
+    if (!wasOpen) {
+        requestAnimationFrame(() => editorSearch.focus());
+    }
 }
 
 export function closeEditor() {
     editorOverlay.classList.remove("show");
+    // Очищаем поиск именно при закрытии — по требованию.
+    editorSearch.value = "";
+    editorClear.classList.add("hidden");
+}
+
+export function isAnyPanelOpen() {
+    return editorOverlay.classList.contains("show") || selectorOverlay.classList.contains("show");
 }
 
 export function togglePlaylistEditor(video, playlists) {

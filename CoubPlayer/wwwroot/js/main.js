@@ -16,7 +16,8 @@ import {
     initPlaylistEditor,
     togglePlaylistEditor,
     syncEditorToVideo,
-    sanitizeBrokenPlaylists
+    sanitizeBrokenPlaylists,
+    isAnyPanelOpen,
 } from "./ui.js";
 
 // ─── DOM ──────────────────────────────────────────────────────────────────────
@@ -330,10 +331,13 @@ async function init() {
 
     // Клик по фону = пауза (игнорируем панели и контролы)
     document.body.addEventListener("click", (e) => {
+        // Если открыта панель (редактор/селектор плейлистов) — не трогаем паузу.
+        // Закрытие панели по клику мимо неё обрабатывает document-listener в ui.js.
+        if (isAnyPanelOpen()) return;
+
         const ignore = [
             ".button", ".fullscreen-btn", ".bottom-controls",
             "#videoIndexWrapper", ".top-controls",
-            ".pl-editor-overlay",
         ];
         if (!ignore.some((sel) => e.target.closest(sel))) player.togglePause();
     });
