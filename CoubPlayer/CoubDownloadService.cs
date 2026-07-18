@@ -34,9 +34,6 @@ namespace CoubPlayer.Services
         private readonly string _dataDir = Path.Combine(
             Directory.GetCurrentDirectory(), "wwwroot", "Data", "Coubs");
 
-        private const string UserAgent =
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
-
         public CoubDownloadService(IHttpClientFactory httpClientFactory)
         {
             _httpClientFactory = httpClientFactory;
@@ -84,10 +81,13 @@ namespace CoubPlayer.Services
             var videoPath = Path.Combine(folder, "video.mp4");
 
             var client = _httpClientFactory.CreateClient();
+            // Один UA на весь ролик (метаданные + видео + аудио) —
+            // ротируется только между разными роликами, а не внутри одного
+            var userAgent = CoubUserAgents.GetRandomAgent();
 
             try
             {
-                var json = await GetStringAsync(client, $"https://coub.com/api/v2/coubs/{id}");
+                var json = await GetStringAsync(client, $"https://coub.com/api/v2/coubs/{id}", userAgent);
                 var data = JObject.Parse(json);
                 var title = data["title"]?.ToString() ?? id;
 
@@ -128,13 +128,13 @@ namespace CoubPlayer.Services
 
                 Directory.CreateDirectory(folder);
 
-                await DownloadFileAsync(client, videoUrl, videoPath);
+                await DownloadFileAsync(client, videoUrl, videoPath, userAgent);
 
                 string? audioRel = null;
                 if (audioUrl != null)
                 {
                     var audioPath = Path.Combine(folder, $"audio.{audioExt}");
-                    await DownloadFileAsync(client, audioUrl, audioPath);
+                    await DownloadFileAsync(client, audioUrl, audioPath, userAgent);
                     audioRel = $"/Data/Coubs/{id}/audio.{audioExt}";
                 }
 
@@ -201,20 +201,43 @@ namespace CoubPlayer.Services
 
         // ─── HTTP-хелперы ──────────────────────────────────────────────────────
 
-        private static async Task<string> GetStringAsync(HttpClient client, string url)
+        /// <summary>
+        /// Отправляет запрос с ретраями при 429 (Too Many Requests).
+        /// Если сервер прислал Retry-After — ждём именно столько, иначе растущую паузу.
+        /// При других кодах ошибки (404, 500 и т.п.) ретраев не делаем — там смысла нет.
+        /// </summary>
+        private static async Task<HttpResponseMessage> SendWithRetryAsync(
+            HttpClient client, string url, string userAgent, int maxRetries = 3)
         {
-            using var req = new HttpRequestMessage(HttpMethod.Get, url);
-            req.Headers.UserAgent.ParseAdd(UserAgent);
-            using var res = await client.SendAsync(req);
+            for (var attempt = 0; ; attempt++)
+            {
+                using var req = new HttpRequestMessage(HttpMethod.Get, url);
+                req.Headers.UserAgent.ParseAdd(userAgent);
+
+                var res = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
+
+                if (res.StatusCode != System.Net.HttpStatusCode.TooManyRequests || attempt >= maxRetries)
+                    return res;
+
+                var wait = res.Headers.RetryAfter?.Delta
+                    ?? TimeSpan.FromSeconds(5 * (attempt + 1)); // 5с, 10с, 15с — на случай, если сервер не подсказал
+
+                res.Dispose();
+                await Task.Delay(wait);
+            }
+        }
+
+        private static async Task<string> GetStringAsync(HttpClient client, string url, string userAgent)
+        {
+            using var res = await SendWithRetryAsync(client, url, userAgent);
             res.EnsureSuccessStatusCode();
             return await res.Content.ReadAsStringAsync();
         }
 
-        private static async Task DownloadFileAsync(HttpClient client, string url, string destPath)
+        private static async Task DownloadFileAsync(
+            HttpClient client, string url, string destPath, string userAgent)
         {
-            using var req = new HttpRequestMessage(HttpMethod.Get, url);
-            req.Headers.UserAgent.ParseAdd(UserAgent);
-            using var res = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
+            using var res = await SendWithRetryAsync(client, url, userAgent);
             res.EnsureSuccessStatusCode();
             await using var fs = new FileStream(destPath, FileMode.Create, FileAccess.Write, FileShare.None);
             await res.Content.CopyToAsync(fs);

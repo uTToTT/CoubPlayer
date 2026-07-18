@@ -324,11 +324,15 @@ namespace CoubPlayer
 
             var results = new List<CoubDownloadResult>();
             var first = true;
+            var jitter = new Random();
 
             foreach (var url in req.Urls)
             {
-                // Небольшая пауза между запросами к API Coub, чтобы не долбить его пачкой
-                if (!first) await Task.Delay(300);
+                // Пауза между запросами к API Coub — без неё на больших батчах (сотни роликов)
+                // велик риск временной блокировки по IP. 2.5с — эмпирическое значение
+                // из оригинального CoubDownloader, + случайный джиттер 0-800мс, чтобы
+                // интервалы не были идеально ровными.
+                if (!first) await Task.Delay(2000 + jitter.Next(0, 800));
                 first = false;
 
                 var result = await _downloadService.DownloadAsync(url);
