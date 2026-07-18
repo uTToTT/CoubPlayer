@@ -1464,22 +1464,6 @@ body {
 
 /* ─── Tag Filter Button & Panel ────────────────────────────────────────── */
 
-.tag-filter-count {
-  min-width: 16px;
-  height: 16px;
-  padding: 0 5px;
-  border-radius: 8px;
-  background: var(--accent);
-  color: #fff;
-  font-size: 10px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: "JetBrains Mono", monospace;
-  flex-shrink: 0;
-}
-
 .tag-filter-mode {
   display: flex;
   gap: 6px;
@@ -1788,4 +1772,91 @@ body {
 }
 .pl-tab-hidden {
   display: none !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   DOWNLOAD DROPDOWN — группировка кнопок загрузки
+   ═══════════════════════════════════════════════════════════ */
+
+.dl-dropdown {
+  position: relative;
+}
+
+.dl-dropdown-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dl-dropdown-chevron {
+  width: 9px;
+  height: 9px;
+  flex-shrink: 0;
+  opacity: 0.7;
+  transition: transform var(--transition);
+}
+
+.dl-dropdown.open .dl-dropdown-chevron {
+  transform: rotate(180deg);
+}
+
+.dl-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 220px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-radius: var(--radius-md);
+  background: rgba(10, 10, 14, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: var(--blur);
+  box-shadow: var(--shadow-lg);
+  z-index: 100;
+  transform-origin: top left;
+  transform: translateY(-6px) scale(0.97);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity var(--transition),
+    transform var(--transition);
+}
+
+.dl-dropdown-menu:not(.hidden) {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.dl-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  text-align: left;
+  transition: all var(--transition);
+}
+
+.dl-dropdown-item:hover {
+  background: var(--accent-dim);
+  color: var(--accent-hover);
+}
+
+.dl-dropdown-item-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+  width: 16px;
+  text-align: center;
 }

@@ -14,6 +14,7 @@
 
 
 
+
 // ─── Video Info ───────────────────────────────────────────────────────────────
 
 const videoTitleLabel = document.getElementById("videoTitleLabel");
@@ -645,9 +646,6 @@ const tagFilterClearBtn = document.getElementById("tagFilterClearBtn");
 
 const playlistTriggerBtn = document.getElementById("playlistTriggerBtn");
 const playlistTriggerLabel = document.getElementById("playlistTriggerLabel");
-const tagFilterBtn = document.getElementById("tagFilterBtn");
-const tagFilterLabel = document.getElementById("tagFilterLabel");
-const tagFilterCount = document.getElementById("tagFilterCount");
 
 const INVALID_CHARS = /[\/\\:*?"<>|]/;
 const SANITIZE_CHARS = /[\/\\:*?"<>|]/g;
@@ -690,14 +688,11 @@ export function initSortingPanel({
     _getTagMode = getTagFilterMode;
     _onTagFilterChange = onTagFilterChange;
 
-    // Триггеры — открывают одно окно на нужной вкладке
+    // Триггер — открывает окно (вкладка "Плейлисты" по умолчанию;
+    // на "Теги" переключаются уже внутри окна через табы)
     playlistTriggerBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         openSortingPanel("playlists");
-    });
-    tagFilterBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        openSortingPanel("tags");
     });
 
     sortingClose.addEventListener("click", closeSortingPanel);
@@ -753,19 +748,12 @@ export function initSortingPanel({
         if (
             sortingOverlay.classList.contains("show") &&
             !sortingPanel.contains(e.target) &&
-            !e.target.closest("#playlistTriggerBtn") &&
-            !e.target.closest("#tagFilterBtn")
+            !e.target.closest("#playlistTriggerBtn")
         ) {
             closeSortingPanel();
         }
     });
 
-    // Начальное состояние бейджа тег-фильтра на кнопке (без открытия окна)
-    const initialActive = getActiveTagFilter();
-    tagFilterCount.hidden = initialActive.length === 0;
-    tagFilterCount.textContent = initialActive.length;
-    tagFilterLabel.textContent = initialActive.length ? `${initialActive.length} тег(ов)` : "Все теги";
-    tagFilterBtn.classList.toggle("tag-filter-btn--active", initialActive.length > 0);
 }
 
 function openSortingPanel(tab) {
@@ -1128,10 +1116,6 @@ function buildTagTile(tag, count) {
 }
 
 function notifyTagFilterChange() {
-    tagFilterCount.hidden = _activeTags.length === 0;
-    tagFilterCount.textContent = _activeTags.length;
-    tagFilterLabel.textContent = _activeTags.length ? `${_activeTags.length} тег(ов)` : "Все теги";
-    tagFilterBtn.classList.toggle("tag-filter-btn--active", _activeTags.length > 0);
     updateSortingSubtitle();
     _onTagFilterChange?.([..._activeTags], _tagMode);
 }

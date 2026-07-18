@@ -139,7 +139,6 @@
       </button>
       <button id="restart" class="control-btn" title="Перезапустить">↺</button>
 
-      <!-- NEW -->
       <button id="editTagsBtn" class="control-btn" title="Теги видео">
         🏷
       </button>
@@ -152,8 +151,6 @@
         ✎
       </button>
     </div>
-
-    <!-- TAG FILTER panel -->
 
     <!-- VIDEO TAGS panel -->
     <div id="videoTagsOverlay" class="pl-editor-overlay">
@@ -200,33 +197,53 @@
           </svg>
         </button>
 
-        <!-- Кнопка загрузки видео по ссылке -->
-        <button
-          id="downloadCoubsBtn"
-          class="download-btn"
-          title="Добавить видео по ссылке"
-        >
-          <span class="download-btn-icon">⬇</span>
-          <span class="download-btn-label">По ссылке</span>
-        </button>
-
-        <!-- Докачка свежих liked/bookmarks с coub.com (нужен access token) -->
-        <button
-          id="syncLikedBtn"
-          class="download-btn"
-          title="Догрузить новые лайкнутые ролики с coub.com"
-        >
-          <span class="download-btn-icon">🔄</span>
-          <span class="download-btn-label">Liked</span>
-        </button>
-        <button
-          id="syncBookmarksBtn"
-          class="download-btn"
-          title="Догрузить новые закладки с coub.com"
-        >
-          <span class="download-btn-icon">🔄</span>
-          <span class="download-btn-label">Bookmarks</span>
-        </button>
+        <!-- Группа загрузки видео: по ссылке / liked / bookmarks -->
+        <div class="dl-dropdown" id="dlDropdown">
+          <button
+            id="dlDropdownBtn"
+            class="download-btn dl-dropdown-trigger"
+            type="button"
+            title="Добавить видео"
+          >
+            <span class="download-btn-icon">⬇</span>
+            <span class="download-btn-label">Загрузить</span>
+            <svg class="dl-dropdown-chevron" viewBox="0 0 12 12" fill="none">
+              <path
+                d="M2 4l4 4 4-4"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </button>
+          <div class="dl-dropdown-menu hidden" id="dlDropdownMenu">
+            <button
+              id="downloadCoubsBtn"
+              class="dl-dropdown-item"
+              title="Добавить видео по ссылке"
+            >
+              <span class="dl-dropdown-item-icon">⬇</span>
+              По ссылке
+            </button>
+            <button
+              id="syncLikedBtn"
+              class="dl-dropdown-item"
+              title="Догрузить новые лайкнутые ролики с coub.com"
+            >
+              <span class="dl-dropdown-item-icon">🔄</span>
+              Liked
+            </button>
+            <button
+              id="syncBookmarksBtn"
+              class="dl-dropdown-item"
+              title="Догрузить новые закладки с coub.com"
+            >
+              <span class="dl-dropdown-item-icon">🔄</span>
+              Bookmarks
+            </button>
+          </div>
+        </div>
       </div>
 
       <div class="sort-bar">
@@ -243,26 +260,6 @@
           class="hidden"
           title="Seed"
         />
-
-        <!-- NEW: tag filter -->
-        <button
-          id="tagFilterBtn"
-          class="pl-trigger-btn"
-          title="Фильтр по тегам"
-        >
-          <span class="pl-trigger-icon">🏷</span>
-          <span class="pl-trigger-label" id="tagFilterLabel">Все теги</span>
-          <span id="tagFilterCount" class="tag-filter-count" hidden>0</span>
-          <svg class="pl-trigger-chevron" viewBox="0 0 12 12" fill="none">
-            <path
-              d="M2 4l4 4 4-4"
-              stroke="currentColor"
-              stroke-width="1.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-          </svg>
-        </button>
       </div>
     </div>
 
@@ -403,5 +400,44 @@
     </div>
 
     <script type="module" src="js/main.js"></script>
+
+    <!-- Тоггл выпадающего списка кнопок загрузки (чисто UI, не трогает логику main.js) -->
+    <script>
+      (function () {
+        var wrap = document.getElementById("dlDropdown");
+        var btn = document.getElementById("dlDropdownBtn");
+        var menu = document.getElementById("dlDropdownMenu");
+        if (!wrap || !btn || !menu) return;
+
+        function closeMenu() {
+          menu.classList.add("hidden");
+          wrap.classList.remove("open");
+        }
+        function toggleMenu(e) {
+          e.stopPropagation();
+          var willOpen = menu.classList.contains("hidden");
+          closeMenu();
+          if (willOpen) {
+            menu.classList.remove("hidden");
+            wrap.classList.add("open");
+          }
+        }
+
+        btn.addEventListener("click", toggleMenu);
+
+        // Закрывать список после выбора любого из пунктов
+        menu.querySelectorAll(".dl-dropdown-item").forEach(function (item) {
+          item.addEventListener("click", closeMenu);
+        });
+
+        // Закрывать по клику вне и по Escape
+        document.addEventListener("click", function (e) {
+          if (!wrap.contains(e.target)) closeMenu();
+        });
+        document.addEventListener("keydown", function (e) {
+          if (e.key === "Escape") closeMenu();
+        });
+      })();
+    </script>
   </body>
 </html>
