@@ -1681,8 +1681,8 @@ body {
 /* Галочка выбранной плитки — верхний правый угол */
 .pl-tile .pl-row-check {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: 18px;
+  right: 18px;
   z-index: 2;
 }
 .pl-tile--active .pl-row-check {
