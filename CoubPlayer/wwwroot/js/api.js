@@ -63,3 +63,14 @@ export async function renamePlaylist(oldName, newName) {
     await post(`/api/playlists/${encodeURIComponent(oldName)}/rename`, { newName });
 }
 
+/**
+ * Скачивает один или несколько coub-роликов по ссылкам (или голым id)
+ * и добавляет их в указанный плейлист.
+ * @param {string} playlist
+ * @param {string[]} urls
+ * @returns {Promise<Array<{id: string, title?: string, success: boolean, error?: string, alreadyExisted?: boolean}>>}
+ */
+export async function downloadCoubs(playlist, urls) {
+    const res = await post(`/api/playlists/${encodeURIComponent(playlist)}/download`, { urls });
+    return res.json();
+}

@@ -1,5 +1,5 @@
 using System.Diagnostics;
-
+using CoubPlayer.Services;
 namespace CoubPlayer
 {
     public class Program
@@ -7,23 +7,21 @@ namespace CoubPlayer
         public static void Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
-
             builder.Services.AddControllers();
-
+            builder.Services.AddHttpClient();
+            builder.Services.AddSingleton<CoubDownloadService>();
             var app = builder.Build();
-
             app.UseStaticFiles();
             app.MapControllers();
 
-           
             var url = "http://localhost:5000/index.html";
             try
             {
-                
+
                 var psi = new ProcessStartInfo
                 {
                     FileName = url,
-                    UseShellExecute = true 
+                    UseShellExecute = true
                 };
                 Process.Start(psi);
             }
@@ -31,7 +29,6 @@ namespace CoubPlayer
             {
                 Console.WriteLine($"Не удалось открыть браузер. Перейдите вручную на {url}");
             }
-
             app.Run();
         }
     }

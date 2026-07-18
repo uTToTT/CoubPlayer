@@ -23,6 +23,8 @@ import {
 
 const videoIndexInput = document.getElementById("videoIndexInput");
 const editPlaylistsBtn = document.getElementById("editPlaylistsBtn");
+const downloadCoubsBtn = document.getElementById("downloadCoubsBtn");
+const downloadCoubsBtnLabel = downloadCoubsBtn.querySelector(".download-btn-label");
 
 // ─── Player ───────────────────────────────────────────────────────────────────
 
@@ -188,6 +190,53 @@ async function init() {
         editPlaylistsBtn.blur();
     });
     await sanitizeBrokenPlaylists();
+
+    // Загрузка видео по ссылке (одной или нескольким)
+    downloadCoubsBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+
+        if (!state.selectedPlaylist) {
+            alert("Сначала выберите плейлист, куда добавлять видео.");
+            return;
+        }
+
+        const raw = prompt(
+            "Вставьте ссылку на coub (https://coub.com/view/...) " +
+            "или несколько ссылок через пробел/запятую/перенос строки:"
+        );
+        if (!raw?.trim()) return;
+
+        const urls = raw.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
+        if (!urls.length) return;
+
+        const originalLabel = downloadCoubsBtnLabel.textContent;
+        downloadCoubsBtn.disabled = true;
+        downloadCoubsBtnLabel.textContent = urls.length > 1 ? `0/${urls.length}…` : "Загрузка…";
+
+        try {
+            const results = await api.downloadCoubs(state.selectedPlaylist, urls);
+            const ok = results.filter((r) => r.success);
+            const failed = results.filter((r) => !r.success);
+
+            let msg = `Добавлено: ${ok.length} из ${urls.length}.`;
+            if (failed.length) {
+                msg += "\n\nНе удалось:\n" + failed.map((f) => `${f.id}: ${f.error}`).join("\n");
+            }
+            alert(msg);
+
+            if (ok.length > 0) {
+                // Плейлист изменился на сервере — перезагружаем его в плеере.
+                // Стартовый индекс всё так же резолвится по id последнего просмотренного видео.
+                await selectPlaylist(state.selectedPlaylist);
+            }
+        } catch (err) {
+            alert("Ошибка загрузки: " + err.message);
+        } finally {
+            downloadCoubsBtn.disabled = false;
+            downloadCoubsBtnLabel.textContent = originalLabel;
+        }
+    });
+
     // Клик по фону = пауза (игнорируем панели и контролы)
     document.body.addEventListener("click", (e) => {
         const ignore = [

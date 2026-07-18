@@ -4,6 +4,77 @@
     <meta charset="UTF-8" />
     <title>Coub Player</title>
     <link rel="stylesheet" href="css/style.css" />
+
+    <!--
+      Стиль кнопки "Добавить по ссылке" вынесен сюда отдельным блоком,
+      чтобы не трогать существующий style.css. При желании можно перенести
+      эти правила туда же — они самодостаточны и ни на что не завязаны,
+      кроме структуры .top-controls-left / .download-btn ниже.
+    -->
+    <style>
+      .top-controls-left {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .download-btn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 14px;
+        border-radius: 999px;
+        border: 1px solid rgba(120, 200, 255, 0.35);
+        background: rgba(20, 30, 40, 0.55);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        color: #d8f0ff;
+        font-size: 13px;
+        font-weight: 500;
+        letter-spacing: 0.2px;
+        cursor: pointer;
+        white-space: nowrap;
+        transition:
+          background 0.2s ease,
+          border-color 0.2s ease,
+          transform 0.15s ease;
+      }
+
+      .download-btn:hover {
+        background: rgba(60, 140, 200, 0.35);
+        border-color: rgba(140, 210, 255, 0.7);
+        transform: translateY(-1px);
+      }
+
+      .download-btn:active {
+        transform: translateY(0);
+      }
+
+      .download-btn:disabled {
+        opacity: 0.5;
+        cursor: default;
+        transform: none;
+      }
+
+      .download-btn-icon {
+        font-size: 15px;
+        line-height: 1;
+      }
+
+      .download-btn-label {
+        line-height: 1;
+      }
+
+      @media (max-width: 640px) {
+        .download-btn-label {
+          display: none;
+        }
+        .download-btn {
+          padding: 8px;
+          border-radius: 50%;
+        }
+      }
+    </style>
   </head>
 
   <body tabindex="-1">
@@ -58,21 +129,35 @@
       </button>
     </div>
 
-    <!-- Верхняя панель (плейлист + сортировка) -->
+    <!-- Верхняя панель (плейлист + загрузка по ссылке + сортировка) -->
     <div class="top-controls panel">
-      <button class="pl-trigger-btn" id="playlistTriggerBtn">
-        <span class="pl-trigger-icon">◈</span>
-        <span class="pl-trigger-label" id="playlistTriggerLabel">Playlist</span>
-        <svg class="pl-trigger-chevron" viewBox="0 0 12 12" fill="none">
-          <path
-            d="M2 4l4 4 4-4"
-            stroke="currentColor"
-            stroke-width="1.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
-      </button>
+      <div class="top-controls-left">
+        <button class="pl-trigger-btn" id="playlistTriggerBtn">
+          <span class="pl-trigger-icon">◈</span>
+          <span class="pl-trigger-label" id="playlistTriggerLabel"
+            >Playlist</span
+          >
+          <svg class="pl-trigger-chevron" viewBox="0 0 12 12" fill="none">
+            <path
+              d="M2 4l4 4 4-4"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </button>
+
+        <!-- Кнопка загрузки видео по ссылке -->
+        <button
+          id="downloadCoubsBtn"
+          class="download-btn"
+          title="Добавить видео по ссылке"
+        >
+          <span class="download-btn-icon">⬇</span>
+          <span class="download-btn-label">По ссылке</span>
+        </button>
+      </div>
 
       <div class="sort-bar">
         <div class="sort-group" id="sortTypeGroup">

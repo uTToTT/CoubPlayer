@@ -1,8 +1,10 @@
 ﻿using CoubPlayer.Meta;
 using CoubPlayer.Requests;
+using CoubPlayer.Services;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
 using SkiaSharp;
+using System.Linq;
 
 namespace CoubPlayer
 {
@@ -13,16 +15,26 @@ namespace CoubPlayer
         private readonly string _path = Path.Combine(
             Directory.GetCurrentDirectory(), "wwwroot", "Data", "playlists.json");
 
+        private readonly string _coubListPath = Path.Combine(
+            Directory.GetCurrentDirectory(), "wwwroot", "Data", "coub_list.json");
+
         private readonly string _iconsPath = Path.Combine(
             Directory.GetCurrentDirectory(), "wwwroot", "Data", "icons");
 
         private static readonly object _lock = new();
+        private static readonly object _coubListLock = new();
 
+        private readonly CoubDownloadService _downloadService;
+
+        public PlaylistsController(CoubDownloadService downloadService)
+        {
+            _downloadService = downloadService;
+        }
 
         #region Icons
 
         [HttpPost("{playlist}/icon")]
-        public  IActionResult SetIcon([FromRoute] string playlist, IFormFile file)
+        public IActionResult SetIcon([FromRoute] string playlist, IFormFile file)
         {
             if (file == null || file.Length == 0)
                 return BadRequest("No file");
@@ -235,6 +247,123 @@ namespace CoubPlayer
 
                 return Ok();
             });
+        }
+
+        /// <summary>
+        /// Добавляет или обновляет запись ролика в coub_list.json — именно оттуда
+        /// loader.js строит coubMap ({id, video, audio}), по которому плеер
+        /// резолвит реальные src для video/audio. Без этого шага скачанные файлы
+        /// физически лежат на диске, но плеер их не найдёт.
+        /// </summary>
+        private void UpsertCoubListEntry(CoubDownloadResult result)
+        {
+            if (string.IsNullOrEmpty(result.Video)) return;
+
+            lock (_coubListLock)
+            {
+                List<CoubListEntry> list;
+                if (System.IO.File.Exists(_coubListPath))
+                {
+                    var json = System.IO.File.ReadAllText(_coubListPath);
+                    list = JsonConvert.DeserializeObject<List<CoubListEntry>>(json) ?? new List<CoubListEntry>();
+                }
+                else
+                {
+                    list = new List<CoubListEntry>();
+                }
+
+                var existing = list.FirstOrDefault(c => c.id == result.Id);
+                if (existing != null)
+                {
+                    existing.video = result.Video;
+                    existing.audio = result.Audio ?? existing.audio;
+                }
+                else
+                {
+                    list.Add(new CoubListEntry
+                    {
+                        id = result.Id,
+                        video = result.Video,
+                        audio = result.Audio ?? ""
+                    });
+                }
+
+                var newJson = JsonConvert.SerializeObject(list, Formatting.Indented);
+                var tempPath = _coubListPath + ".tmp";
+                System.IO.File.WriteAllText(tempPath, newJson);
+
+                if (System.IO.File.Exists(_coubListPath))
+                    System.IO.File.Replace(tempPath, _coubListPath, null);
+                else
+                    System.IO.File.Move(tempPath, _coubListPath);
+            }
+        }
+
+        /// <summary>
+        /// Скачивает один или несколько coub-роликов по ссылкам и добавляет их
+        /// в указанный плейлист. Ролики, уже присутствующие в плейлисте,
+        /// повторно не добавляются (но при этом не переcкачиваются, если уже
+        /// лежат на диске — см. CoubDownloadService.AlreadyExisted).
+        /// </summary>
+        [HttpPost("{playlist}/download")]
+        public async Task<IActionResult> DownloadAndAdd(
+            [FromRoute] string playlist, [FromBody] DownloadCoubsRequest req)
+        {
+            if (req.Urls == null || req.Urls.Count == 0)
+                return BadRequest("No links provided");
+
+            // Проверяем существование плейлиста один раз до скачивания —
+            // чтобы не тратить время на загрузку видео впустую
+            lock (_lock)
+            {
+                var json = System.IO.File.ReadAllText(_path);
+                var data = JsonConvert.DeserializeObject<Dictionary<string, Playlist>>(json)!;
+                if (!data.ContainsKey(playlist))
+                    return NotFound("Playlist not found");
+            }
+
+            var results = new List<CoubDownloadResult>();
+            var first = true;
+
+            foreach (var url in req.Urls)
+            {
+                // Небольшая пауза между запросами к API Coub, чтобы не долбить его пачкой
+                if (!first) await Task.Delay(300);
+                first = false;
+
+                var result = await _downloadService.DownloadAsync(url);
+                results.Add(result);
+
+                if (!result.Success) continue;
+
+                // 1. Регистрируем ролик в coub_list.json (coubMap для плеера)
+                UpsertCoubListEntry(result);
+
+                // 2. Добавляем в конкретный плейлист
+                ExecuteLocked(data =>
+                {
+                    if (!data.ContainsKey(playlist)) return NotFound();
+
+                    var pl = data[playlist];
+
+                    // Не добавляем повторно, если ролик уже есть в этом плейлисте
+                    if (pl.videos.ContainsKey(result.Id))
+                        return Ok();
+
+                    foreach (var video in pl.videos.Values)
+                        video.order += 1;
+
+                    pl.videos[result.Id] = new VideoMeta
+                    {
+                        title = result.Title ?? result.Id,
+                        order = 0
+                    };
+
+                    return Ok();
+                });
+            }
+
+            return Ok(results);
         }
     }
 }
