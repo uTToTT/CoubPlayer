@@ -233,7 +233,9 @@ async function syncFavorites(category, btn) {
         return;
     }
 
-    const label = btn.querySelector(".download-btn-label");
+    // Универсально: используем вложенный .download-btn-label, если он есть,
+    // иначе работаем с текстом самой кнопки
+    const label = btn.querySelector(".download-btn-label") || btn;
     const originalLabel = label.textContent;
     btn.disabled = true;
     label.textContent = "Загрузка…";
@@ -249,16 +251,12 @@ async function syncFavorites(category, btn) {
         }
         alert(msg);
 
-        // Плейлист category мог быть только что создан сервером впервые —
-        // подтягиваем актуальный список плейлистов и, если он сейчас открыт, перезагружаем
         await refreshData();
         if (state.selectedPlaylist === category) {
             await selectPlaylist(category);
         }
     } catch (err) {
         alert("Ошибка синхронизации: " + err.message);
-        // Если сервер пожаловался на токен — сбрасываем сохранённый, чтобы он не долбил
-        // сервер повторно тем же неверным значением при следующей попытке
         if (/token/i.test(err.message)) {
             state.coubAccessToken = null;
         }
