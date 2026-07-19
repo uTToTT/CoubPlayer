@@ -27,16 +27,35 @@ import {
 const ALL_PLAYLIST_NAME = "Все";
 
 /**
+ * Собирает карту id -> title, обходя все реальные плейлисты пользователя.
+ * coub_list.json (state.coubMap) тайтлов не хранит — они есть только
+ * внутри записей videos[id].title в playlists.json.
+ * Если один и тот же ролик встречается в нескольких плейлистах с разными
+ * названиями (маловероятно, но возможно), побеждает первое найденное.
+ */
+function buildTitleMap() {
+    const titles = {};
+    for (const [name, pl] of Object.entries(state.playlists)) {
+        if (name === ALL_PLAYLIST_NAME) continue; // сам ещё не построен на этом шаге
+        for (const [id, meta] of Object.entries(pl.videos || {})) {
+            if (!titles[id] && meta.title) titles[id] = meta.title;
+        }
+    }
+    return titles;
+}
+
+/**
  * Виртуальный плейлист "Все" — не хранится на сервере, собирается
  * на лету из coubMap. Содержит все скачанные ролики независимо от
  * того, в каком реальном плейлисте они состоят.
  */
 function buildAllPlaylist() {
+    const titleMap = buildTitleMap();
     const videos = {};
     let order = 0;
     for (const [id, coub] of Object.entries(state.coubMap)) {
         videos[id] = {
-            title: coub.title || id,
+            title: titleMap[id] || coub.title || id,
             order: order++,
             lastViewed: null,
         };
