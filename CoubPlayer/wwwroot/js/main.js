@@ -22,6 +22,7 @@ import {
     setVideoTagsTarget,
     refreshTagsDatalist,
     initSeekBar,
+    initGoToStartButton,
 } from "./ui.js";
 
 const ALL_PLAYLIST_NAME = "Все";
@@ -326,7 +327,7 @@ async function init() {
             if (state.activeTagFilter.length) await applyTagFilterAndRefresh();
         },
     });
-
+    initGoToStartButton(() => player.goToIndex(1));
     // ── Выбор плейлиста (Pinterest-style) ────────────────────────────────────
 
     // ── Редактор плейлистов для видео (Pinterest-style) ───────────────────────
@@ -415,6 +416,26 @@ async function init() {
             state.activeTagFilter = tags;
             state.tagFilterMode = mode;
             applyTagFilterAndRefresh();
+        },
+        onRenameTag: async (oldTag, newTag) => {
+            await api.renameTag(oldTag, newTag);
+            await refreshAllTags();
+            refreshTagsDatalist(state.allTags);
+            if (state.activeTagFilter.includes(oldTag)) {
+                state.activeTagFilter = state.activeTagFilter.map((t) =>
+                    t === oldTag ? newTag : t
+                );
+                await applyTagFilterAndRefresh();
+            }
+        },
+        onDeleteTag: async (tag) => {
+            await api.deleteTag(tag);
+            await refreshAllTags();
+            refreshTagsDatalist(state.allTags);
+            if (state.activeTagFilter.includes(tag)) {
+                state.activeTagFilter = state.activeTagFilter.filter((t) => t !== tag);
+                await applyTagFilterAndRefresh();
+            }
         },
     });
 

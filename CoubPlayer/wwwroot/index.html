@@ -18,25 +18,25 @@
         gap: 6px;
         padding: 8px 14px;
         border-radius: 999px;
-        border: 1px solid rgba(120, 200, 255, 0.35);
-        background: rgba(20, 30, 40, 0.55);
+        border: 1px solid rgba(244, 63, 94, 0.28);
+        background: rgba(16, 8, 14, 0.55);
         backdrop-filter: blur(10px);
         -webkit-backdrop-filter: blur(10px);
-        color: #d8f0ff;
+        color: #f4eef1;
         font-size: 13px;
         font-weight: 500;
         letter-spacing: 0.2px;
         cursor: pointer;
         white-space: nowrap;
         transition:
-          background 0.2s ease,
-          border-color 0.2s ease,
+          background 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+          border-color 0.2s cubic-bezier(0.22, 1, 0.36, 1),
           transform 0.15s ease;
       }
 
       .download-btn:hover {
-        background: rgba(60, 140, 200, 0.35);
-        border-color: rgba(140, 210, 255, 0.7);
+        background: rgba(244, 63, 94, 0.22);
+        border-color: rgba(251, 113, 133, 0.65);
         transform: translateY(-1px);
       }
 
@@ -77,11 +77,11 @@
         z-index: 50;
         padding: 6px 16px;
         border-radius: 999px;
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        background: rgba(10, 14, 20, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(16, 8, 14, 0.5);
         backdrop-filter: blur(10px);
         -webkit-backdrop-filter: blur(10px);
-        color: #e8f4ff;
+        color: #f4eef1;
         font-variant-numeric: tabular-nums;
         font-size: 14px;
         font-weight: 500;
@@ -108,14 +108,47 @@
     <audio id="audio" loop></audio>
 
     <!-- Боковые кнопки навигации -->
-    <button id="prev" class="button">⯇</button>
-    <button id="next" class="button">⯈</button>
+    <button id="prev" class="button" data-icon="prev">
+      <span class="icon-slot" data-icon-name="prev">
+        <span class="icon-fallback">⯇</span>
+        <img class="icon-custom" alt="" draggable="false" />
+      </span>
+    </button>
+    <button id="next" class="button" data-icon="next">
+      <span class="icon-slot" data-icon-name="next">
+        <span class="icon-fallback">⯈</span>
+        <img class="icon-custom" alt="" draggable="false" />
+      </span>
+    </button>
 
     <!-- Кнопка полноэкранного режима -->
-    <button id="fullscreen" class="fullscreen-btn" type="button">⛶</button>
+    <button
+      id="fullscreen"
+      class="fullscreen-btn"
+      type="button"
+      data-icon="fullscreen"
+    >
+      <span class="icon-slot" data-icon-name="fullscreen">
+        <span class="icon-fallback">⛶</span>
+        <img class="icon-custom" alt="" draggable="false" />
+      </span>
+    </button>
 
     <!-- Счётчик видео -->
     <div id="videoIndexWrapper" class="panel">
+      <button
+        id="goToStartBtn"
+        class="video-index-start-btn"
+        type="button"
+        title="В начало плейлиста"
+        data-icon="start"
+      >
+        <span class="icon-slot" data-icon-name="start">
+          <span class="icon-fallback">⏮</span>
+          <img class="icon-custom" alt="" draggable="false" />
+        </span>
+      </button>
+      <span class="video-index-sep"></span>
       <input id="videoIndexInput" type="number" min="1" />
       <span id="videoTotal"></span>
     </div>
@@ -134,29 +167,64 @@
         value="50"
         class="volume-slider"
       />
-      <button id="copyLinkBtn" class="control-btn" title="Копировать ссылку">
-        🔗
+      <button
+        id="copyLinkBtn"
+        class="control-btn"
+        title="Копировать ссылку"
+        data-icon="copy-link"
+      >
+        <span class="icon-slot" data-icon-name="copy-link">
+          <span class="icon-fallback">🔗</span>
+          <img class="icon-custom" alt="" draggable="false" />
+          <span class="icon-check">✓</span>
+        </span>
       </button>
-      <button id="restart" class="control-btn" title="Перезапустить">↺</button>
+      <button
+        id="restart"
+        class="control-btn"
+        title="Перезапустить"
+        data-icon="restart"
+      >
+        <span class="icon-slot" data-icon-name="restart">
+          <span class="icon-fallback">↺</span>
+          <img class="icon-custom" alt="" draggable="false" />
+        </span>
+      </button>
 
-      <button id="editTagsBtn" class="control-btn" title="Теги видео">
-        🏷
+      <button
+        id="editTagsBtn"
+        class="control-btn"
+        title="Теги видео"
+        data-icon="tags"
+      >
+        <span class="icon-slot" data-icon-name="tags">
+          <span class="icon-fallback">🏷</span>
+          <img class="icon-custom" alt="" draggable="false" />
+        </span>
       </button>
 
       <button
         id="editPlaylistsBtn"
         class="control-btn control-btn--accent"
         title="Добавить в плейлист"
+        data-icon="playlist-add"
       >
-        ✎
+        <span class="icon-slot" data-icon-name="playlist-add">
+          <span class="icon-fallback">✎</span>
+          <img class="icon-custom" alt="" draggable="false" />
+        </span>
       </button>
 
       <button
         id="openFolderBtn"
         class="control-btn"
         title="Открыть папку с файлами"
+        data-icon="folder"
       >
-        📁
+        <span class="icon-slot" data-icon-name="folder">
+          <span class="icon-fallback">📁</span>
+          <img class="icon-custom" alt="" draggable="false" />
+        </span>
       </button>
     </div>
 
@@ -191,7 +259,12 @@
     <div class="top-controls panel">
       <div class="top-controls-left">
         <button class="pl-trigger-btn" id="playlistTriggerBtn">
-          <span class="pl-trigger-icon">◈</span>
+          <span class="pl-trigger-icon">
+            <span class="icon-slot" data-icon-name="playlist">
+              <span class="icon-fallback">◈</span>
+              <img class="icon-custom" alt="" draggable="false" />
+            </span>
+          </span>
           <span class="pl-trigger-label" id="playlistTriggerLabel"
             >Playlist</span
           >
@@ -214,7 +287,12 @@
             type="button"
             title="Добавить видео"
           >
-            <span class="download-btn-icon">⬇</span>
+            <span class="download-btn-icon">
+              <span class="icon-slot" data-icon-name="download">
+                <span class="icon-fallback">⬇</span>
+                <img class="icon-custom" alt="" draggable="false" />
+              </span>
+            </span>
             <span class="download-btn-label">Загрузить</span>
             <svg class="dl-dropdown-chevron" viewBox="0 0 12 12" fill="none">
               <path
@@ -232,7 +310,12 @@
               class="dl-dropdown-item"
               title="Добавить видео по ссылке"
             >
-              <span class="dl-dropdown-item-icon">⬇</span>
+              <span class="dl-dropdown-item-icon">
+                <span class="icon-slot" data-icon-name="link">
+                  <span class="icon-fallback">⬇</span>
+                  <img class="icon-custom" alt="" draggable="false" />
+                </span>
+              </span>
               По ссылке
             </button>
             <button
@@ -240,7 +323,12 @@
               class="dl-dropdown-item"
               title="Догрузить новые лайкнутые ролики с coub.com"
             >
-              <span class="dl-dropdown-item-icon">🔄</span>
+              <span class="dl-dropdown-item-icon">
+                <span class="icon-slot" data-icon-name="sync-liked">
+                  <span class="icon-fallback">🔄</span>
+                  <img class="icon-custom" alt="" draggable="false" />
+                </span>
+              </span>
               Liked
             </button>
             <button
@@ -248,7 +336,12 @@
               class="dl-dropdown-item"
               title="Догрузить новые закладки с coub.com"
             >
-              <span class="dl-dropdown-item-icon">🔄</span>
+              <span class="dl-dropdown-item-icon">
+                <span class="icon-slot" data-icon-name="sync-bookmarks">
+                  <span class="icon-fallback">🔄</span>
+                  <img class="icon-custom" alt="" draggable="false" />
+                </span>
+              </span>
               Bookmarks
             </button>
           </div>
@@ -301,10 +394,22 @@
 
         <div class="pl-tabs" id="sortingTabs">
           <button data-tab="playlists" class="active">
-            <span class="pl-tab-icon">◈</span> Плейлисты
+            <span class="pl-tab-icon">
+              <span class="icon-slot" data-icon-name="playlist">
+                <span class="icon-fallback">◈</span>
+                <img class="icon-custom" alt="" draggable="false" />
+              </span>
+            </span>
+            Плейлисты
           </button>
           <button data-tab="tags">
-            <span class="pl-tab-icon">🏷</span> Теги
+            <span class="pl-tab-icon">
+              <span class="icon-slot" data-icon-name="tags">
+                <span class="icon-fallback">🏷</span>
+                <img class="icon-custom" alt="" draggable="false" />
+              </span>
+            </span>
+            Теги
           </button>
         </div>
 
@@ -344,7 +449,13 @@
 
         <div class="pl-editor-footer" id="sortingFooterPlaylists">
           <button class="pl-new-btn" id="plSelectorNewBtn">
-            <span class="pl-new-icon">＋</span> Создать плейлист
+            <span class="pl-new-icon">
+              <span class="icon-slot" data-icon-name="add">
+                <span class="icon-fallback">＋</span>
+                <img class="icon-custom" alt="" draggable="false" />
+              </span>
+            </span>
+            Создать плейлист
           </button>
         </div>
         <div class="pl-editor-footer pl-tab-hidden" id="sortingFooterTags">
@@ -411,7 +522,12 @@
         <!-- Футер: кнопка нового плейлиста -->
         <div class="pl-editor-footer">
           <button class="pl-new-btn" id="plNewBtn">
-            <span class="pl-new-icon">＋</span>
+            <span class="pl-new-icon">
+              <span class="icon-slot" data-icon-name="add">
+                <span class="icon-fallback">＋</span>
+                <img class="icon-custom" alt="" draggable="false" />
+              </span>
+            </span>
             Создать новый плейлист
           </button>
         </div>
@@ -458,5 +574,8 @@
         });
       })();
     </script>
+
+    <!-- Подстановка нарисованных иконок из /icons (см. css/style.css, блок CUSTOM ICONS) -->
+    <script src="js/icons.js"></script>
   </body>
 </html>

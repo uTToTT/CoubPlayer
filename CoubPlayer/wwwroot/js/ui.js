@@ -10,7 +10,17 @@ import { getRecentPlaylists, addRecentPlaylist, getRecentTags, addRecentTag } fr
 
 
 
+// ─── Go To Start Button ───────────────────────────────────────────────────────
 
+const goToStartBtn = document.getElementById("goToStartBtn");
+
+export function initGoToStartButton(onClick) {
+    goToStartBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        onClick();
+        goToStartBtn.blur();
+    });
+}
 
 
 
@@ -52,6 +62,7 @@ export function initVolumeSlider(onChange, initialValue = 50) {
 // ─── Copy Link Button ─────────────────────────────────────────────────────────
 
 const copyLinkBtn = document.getElementById("copyLinkBtn");
+const copyLinkIconSlot = copyLinkBtn.querySelector(".icon-slot");
 
 export function initCopyLinkBtn(getCurrentVideoId) {
     copyLinkBtn.addEventListener("click", async () => {
@@ -59,8 +70,10 @@ export function initCopyLinkBtn(getCurrentVideoId) {
         if (!id) return;
         try {
             await navigator.clipboard.writeText(`https://coub.com/view/${id}`);
-            copyLinkBtn.textContent = "✓";
-            setTimeout(() => (copyLinkBtn.textContent = "🔗"), 1200);
+            copyLinkIconSlot.classList.add("icon-slot--success");
+            setTimeout(() => {
+                copyLinkIconSlot.classList.remove("icon-slot--success");
+            }, 1200);
         } catch (e) {
             console.error("Clipboard error:", e);
         }
@@ -744,6 +757,8 @@ let _onTagFilterChange = null;
 let _getAllTags = null;
 let _getActiveTags = null;
 let _getTagMode = null;
+let _onRenameTag = null;   // NEW
+let _onDeleteTag = null;   // NEW
 
 let _activeSortingTab = "playlists";
 
@@ -752,6 +767,7 @@ export function initSortingPanel({
     getPlaylists, onSelect, onCreate, onDelete, onRename,
     // tags
     getAllTags, getActiveTagFilter, getTagFilterMode, onTagFilterChange,
+    onRenameTag, onDeleteTag,   // NEW
 }) {
     _onSelectPlaylist = onSelect;
     _onCreateFromSelector = onCreate;
@@ -763,6 +779,8 @@ export function initSortingPanel({
     _getActiveTags = getActiveTagFilter;
     _getTagMode = getTagFilterMode;
     _onTagFilterChange = onTagFilterChange;
+    _onRenameTag = onRenameTag;   // NEW
+    _onDeleteTag = onDeleteTag;   // NEW
 
     // Триггер — открывает окно (вкладка "Плейлисты" по умолчанию;
     // на "Теги" переключаются уже внутри окна через табы)
@@ -1195,7 +1213,8 @@ function buildTagTile(tag, count) {
     check.className = "pl-row-check";
     tile.appendChild(check);
 
-    tile.addEventListener("click", () => {
+    tile.addEventListener("click", (e) => {
+        if (e.target.closest(".pl-row-actions")) return;
         const idx = _activeTags.indexOf(tag);
         if (idx === -1) _activeTags.push(tag);
         else _activeTags.splice(idx, 1);
@@ -1203,7 +1222,114 @@ function buildTagTile(tag, count) {
         notifyTagFilterChange();
     });
 
+    const actions = document.createElement("div");
+    actions.className = "pl-row-actions";
+
+    const renameBtn = document.createElement("button");
+    renameBtn.className = "pl-row-action-btn pl-row-rename-btn";
+    renameBtn.title = "Переименовать тег";
+    renameBtn.innerHTML = `<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" width="13" height="13"><path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.757l8.61-8.61z" stroke="currentColor" stroke-width="1.2"/></svg>`;
+    renameBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        startInlineRenameTag(tile, tag, nameEl);
+    });
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.className = "pl-row-action-btn pl-row-delete-btn";
+    deleteBtn.title = "Удалить тег";
+    deleteBtn.innerHTML = `<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" width="13" height="13"><path d="M2 4h12M5 4V2.5A.5.5 0 0 1 5.5 2h5a.5.5 0 0 1 .5.5V4M6 7v5M10 7v5M3 4l.8 9.6A.5.5 0 0 0 4.3 14h7.4a.5.5 0 0 0 .5-.4L13 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>`;
+    deleteBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        await handleDeleteTag(tag, tile);
+    });
+
+    actions.appendChild(renameBtn);
+    actions.appendChild(deleteBtn);
+    tile.appendChild(actions);
+
     return tile;
+}
+
+async function handleDeleteTag(tag, tile) {
+    if (!confirm(`Удалить тег «${tag}» из всех видео?`)) return;
+
+    try {
+        await _onDeleteTag(tag);
+        _allTagsCache = _allTagsCache.filter((t) => t.tag !== tag);
+        _activeTags = _activeTags.filter((t) => t !== tag);
+        tile.remove();
+        updateSortingSubtitle();
+        showToast(`Тег «${tag}» удалён`);
+
+        if (!_allTagsCache.length) renderTagFilterRows(sortingSearch.value.trim());
+    } catch (err) {
+        showToast("⚠ Ошибка удаления тега");
+        console.error("Delete tag error:", err);
+    }
+}
+
+function startInlineRenameTag(tile, oldTag, nameEl) {
+    tile.classList.add("pl-row--editing");
+
+    const input = document.createElement("input");
+    input.className = "pl-row-rename-input";
+    input.value = oldTag;
+    input.maxLength = 40;
+
+    nameEl.replaceWith(input);
+    input.focus();
+    input.select();
+
+    let committed = false;
+
+    const cancel = () => {
+        if (committed) return;
+        committed = true;
+        input.replaceWith(nameEl);
+        tile.classList.remove("pl-row--editing");
+    };
+
+    const commit = async () => {
+        if (committed) return;
+        committed = true;
+
+        const newTag = input.value.trim();
+        input.replaceWith(nameEl);
+        tile.classList.remove("pl-row--editing");
+
+        if (!newTag || newTag === oldTag) return;
+
+        if (_allTagsCache.some(({ tag }) => tag === newTag)) {
+            showToast("⚠ Тег с таким именем уже существует");
+            return;
+        }
+
+        try {
+            await _onRenameTag(oldTag, newTag);
+
+            const entry = _allTagsCache.find(({ tag }) => tag === oldTag);
+            if (entry) entry.tag = newTag;
+
+            const idx = _activeTags.indexOf(oldTag);
+            if (idx !== -1) _activeTags[idx] = newTag;
+
+            nameEl.textContent = newTag;
+            showToast(`Тег переименован в «${newTag}»`);
+            renderTagFilterRows(sortingSearch.value.trim());
+        } catch (err) {
+            showToast("⚠ Ошибка переименования тега");
+            console.error("Rename tag error:", err);
+        }
+    };
+
+    input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); commit(); }
+        if (e.key === "Escape") { e.preventDefault(); cancel(); }
+        e.stopPropagation();
+    });
+    input.addEventListener("blur", commit);
+    input.addEventListener("mousedown", (e) => e.stopPropagation());
+    input.addEventListener("click", (e) => e.stopPropagation());
 }
 
 function notifyTagFilterChange() {

@@ -1,23 +1,37 @@
 /* ============================================================
-   COUB PLAYER — Design System
+   COUB PLAYER — Design System (Night / Rose-Pink)
    Шрифт: DM Sans (основной) + JetBrains Mono (числа/моно)
-   Акцент: #ff5a5f | Стекло: rgba(255,255,255,0.06)
+   Primary:   #f43f5e (rose-500)  | hover #fb7185 | deep #9f1239
+   Secondary: #ec4899 (pink-500)  | hover #f472b6
+   Поверхности: чёрный с тёплым розовым подтоном, стекло
+   rgba(16,8,14,0.55) + blur(18px) saturate(180%)
    ============================================================ */
 
 @import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap");
 
 /* ─── Переменные ─────────────────────────────────────────── */
 :root {
-  --accent: #ff5a5f;
-  --accent-dim: rgba(255, 90, 95, 0.18);
-  --accent-hover: #ff7a7e;
+  /* Primary — TailwindCSS rose */
+  --accent: #f43f5e; /* rose-500 */
+  --accent-dim: rgba(244, 63, 94, 0.18);
+  --accent-hover: #fb7185; /* rose-400 */
+  --accent-deep: #9f1239; /* rose-800, pressed / borders */
 
-  --glass: rgba(10, 10, 12, 0.55);
+  /* Secondary — TailwindCSS pink, used for tags / secondary accents */
+  --accent-2: #ec4899; /* pink-500 */
+  --accent-2-dim: rgba(236, 72, 153, 0.16);
+  --accent-2-hover: #f472b6; /* pink-400 */
+
+  /* Night surface — near-black with a faint rose undertone */
+  --bg-0: #0a070a;
+  --bg-1: #120810;
+  --glass: rgba(16, 8, 14, 0.55);
   --glass-border: rgba(255, 255, 255, 0.08);
   --glass-hover: rgba(255, 255, 255, 0.07);
+  --glass-strong: rgba(15, 8, 13, 0.97);
 
-  --text: #f0f0f0;
-  --text-muted: rgba(255, 255, 255, 0.4);
+  --text: #f4eef1;
+  --text-muted: rgba(244, 238, 241, 0.4);
 
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -26,9 +40,13 @@
 
   --blur: blur(18px) saturate(180%);
   --shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-  --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.7);
+  --shadow-lg: 0 24px 64px rgba(0, 0, 0, 0.7);
+  --glow: 0 0 20px rgba(244, 63, 94, 0.4);
 
-  --transition: 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+  /* Единая кривая для всех "плавных появлений" */
+  --transition: 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  --transition-panel: 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+  --transition-bounce: 0.34s cubic-bezier(0.34, 1.4, 0.64, 1);
 }
 
 /* ─── Reset ──────────────────────────────────────────────── */
@@ -40,9 +58,29 @@
   padding: 0;
 }
 
+html {
+  background: var(--bg-0);
+}
+
+#bgVideo,
+.video-wrapper video {
+  background-color: #170a12; /* тёмно-розовый — подложка под кадром, пока видео не отрисовалось */
+}
+
 body {
   font-family: "DM Sans", system-ui, sans-serif;
-  background: #0a0a0c;
+  background:
+    radial-gradient(
+      ellipse 80% 60% at 15% 0%,
+      rgba(244, 63, 94, 0.07),
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse 70% 55% at 100% 100%,
+      rgba(236, 72, 153, 0.06),
+      transparent 60%
+    ),
+    linear-gradient(180deg, var(--bg-1) 0%, var(--bg-0) 100%);
   color: var(--text);
   overflow: hidden;
   user-select: none;
@@ -150,7 +188,7 @@ body {
   color: #fff;
   border-color: transparent;
   transform: scale(1.1);
-  box-shadow: 0 0 20px rgba(255, 90, 95, 0.4);
+  box-shadow: 0 0 20px rgba(244, 63, 94, 0.4);
 }
 
 /* ─── Top Controls ───────────────────────────────────────── */
@@ -213,7 +251,7 @@ body {
   gap: 2px;
   padding: 6px;
   border-radius: var(--radius-md);
-  background: rgba(10, 10, 14, 0.95);
+  background: var(--glass-strong);
   border: 1px solid var(--glass-border);
   backdrop-filter: var(--blur);
   box-shadow: var(--shadow-lg);
@@ -309,7 +347,7 @@ body {
 .sort-group button.active {
   background: var(--accent-dim);
   color: var(--accent);
-  border-color: rgba(255, 90, 95, 0.3);
+  border-color: rgba(244, 63, 94, 0.3);
 }
 
 #seedInput {
@@ -327,7 +365,7 @@ body {
 
 #seedInput:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(255, 90, 95, 0.15);
+  box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.15);
 }
 
 /* ─── Bottom Controls ────────────────────────────────────── */
@@ -373,7 +411,7 @@ body {
   background: var(--accent);
   border-color: transparent;
   transform: scale(1.1);
-  box-shadow: 0 0 16px rgba(255, 90, 95, 0.35);
+  box-shadow: 0 0 16px rgba(244, 63, 94, 0.35);
 }
 
 .control-btn:active {
@@ -460,7 +498,7 @@ body {
 
 #videoIndexInput:focus {
   border-color: var(--accent);
-  background: rgba(255, 90, 95, 0.08);
+  background: rgba(244, 63, 94, 0.08);
 }
 
 #videoTotal {
@@ -507,7 +545,7 @@ body {
 .playlist-editor-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(6, 3, 5, 0.6);
   backdrop-filter: blur(6px);
   z-index: 50;
   display: flex;
@@ -515,7 +553,7 @@ body {
   justify-content: center;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.2s ease;
+  transition: opacity var(--transition-panel);
 }
 
 .playlist-editor-overlay.show {
@@ -527,7 +565,7 @@ body {
 .edit-playlist-frame {
   width: min(440px, 92vw);
   max-height: min(580px, 88vh);
-  background: rgba(12, 12, 16, 0.97);
+  background: var(--glass-strong);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-xl);
   box-shadow:
@@ -539,8 +577,8 @@ body {
   transform: scale(0.94) translateY(10px);
   opacity: 0;
   transition:
-    transform 0.24s cubic-bezier(0.34, 1.45, 0.64, 1),
-    opacity 0.18s ease;
+    transform var(--transition-bounce),
+    opacity var(--transition);
 }
 
 .playlist-editor-overlay.show .edit-playlist-frame {
@@ -638,9 +676,9 @@ body {
 }
 
 .editor-search-input:focus {
-  border-color: rgba(255, 90, 95, 0.4);
-  background: rgba(255, 90, 95, 0.04);
-  box-shadow: 0 0 0 3px rgba(255, 90, 95, 0.1);
+  border-color: rgba(244, 63, 94, 0.4);
+  background: rgba(244, 63, 94, 0.04);
+  box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.1);
 }
 
 /* Список */
@@ -692,7 +730,7 @@ body {
 
 .playlist-row.is-checked {
   background: var(--accent-dim);
-  border-color: rgba(255, 90, 95, 0.2);
+  border-color: rgba(244, 63, 94, 0.2);
 }
 
 .playlist-row.is-readonly {
@@ -795,7 +833,7 @@ body {
 .btn-save:hover {
   background: var(--accent-hover);
   transform: translateY(-1px);
-  box-shadow: 0 4px 16px rgba(255, 90, 95, 0.4);
+  box-shadow: 0 4px 16px rgba(244, 63, 94, 0.4);
 }
 
 .btn-save:active {
@@ -819,7 +857,7 @@ body {
 }
 .control-btn--accent:hover {
   background: var(--accent-hover) !important;
-  box-shadow: 0 0 20px rgba(255, 90, 95, 0.45) !important;
+  box-shadow: 0 0 20px rgba(244, 63, 94, 0.45) !important;
 }
 
 /* .pl-editor-overlay.show {
@@ -845,7 +883,7 @@ body {
   width: 280px;
   max-height: min(520px, 80vh);
 
-  background: rgba(13, 13, 17, 0.97);
+  background: var(--glass-strong);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 20px;
   box-shadow:
@@ -858,8 +896,8 @@ body {
   overflow: hidden;
 
   transition:
-    transform 0.32s cubic-bezier(0.34, 1.28, 0.64, 1),
-    opacity 0.22s ease;
+    transform var(--transition-panel),
+    opacity var(--transition);
   opacity: 0;
   pointer-events: none;
   z-index: 61;
@@ -963,9 +1001,9 @@ body {
 }
 
 .pl-search-input:focus {
-  border-color: rgba(255, 90, 95, 0.45);
-  background: rgba(255, 90, 95, 0.05);
-  box-shadow: 0 0 0 3px rgba(255, 90, 95, 0.1);
+  border-color: rgba(244, 63, 94, 0.45);
+  background: rgba(244, 63, 94, 0.05);
+  box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.1);
 }
 
 .pl-search-clear {
@@ -1075,7 +1113,7 @@ body {
 .pl-row.pl-row--checked .pl-row-check {
   background: var(--accent);
   border-color: var(--accent);
-  box-shadow: 0 0 12px rgba(255, 90, 95, 0.5);
+  box-shadow: 0 0 12px rgba(244, 63, 94, 0.5);
   transform: scale(1.1);
 }
 
@@ -1103,7 +1141,7 @@ body {
 
 .pl-row.pl-row--checked .pl-row-icon {
   background: var(--accent-dim);
-  border-color: rgba(255, 90, 95, 0.2);
+  border-color: rgba(244, 63, 94, 0.2);
 }
 
 /* Текстовый блок */
@@ -1283,7 +1321,7 @@ body {
 .pl-row--active .pl-row-check {
   background: var(--accent);
   border-color: var(--accent);
-  box-shadow: 0 0 10px rgba(255, 90, 95, 0.4);
+  box-shadow: 0 0 10px rgba(244, 63, 94, 0.4);
 }
 
 .pl-row--active .pl-row-check::after {
@@ -1331,6 +1369,18 @@ body {
     background 0.14s,
     color 0.14s,
     border-color 0.14s;
+  box-shadow:
+    0 1px 4px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+
+.pl-row-action-btn svg {
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.6));
+}
+
+.pl-row-delete-btn:hover svg,
+.pl-row-rename-btn:hover svg {
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8));
 }
 
 .pl-row-action-btn:hover {
@@ -1357,7 +1407,7 @@ body {
   font-weight: 600;
   padding: 2px 7px;
   outline: none;
-  box-shadow: 0 0 0 2px rgba(255, 90, 95, 0.18);
+  box-shadow: 0 0 0 2px rgba(244, 63, 94, 0.18);
 }
 
 /* While editing, hide the check circle */
@@ -1485,7 +1535,7 @@ body {
 .tag-filter-mode button.active {
   background: var(--accent-dim);
   color: var(--accent);
-  border-color: rgba(255, 90, 95, 0.3);
+  border-color: rgba(244, 63, 94, 0.3);
 }
 
 /* ─── Video Tags Panel ──────────────────────────────────────────────────── */
@@ -1508,9 +1558,9 @@ body {
   gap: 5px;
   padding: 5px 6px 5px 10px;
   border-radius: 999px;
-  background: var(--accent-dim);
-  border: 1px solid rgba(255, 90, 95, 0.25);
-  color: var(--accent);
+  background: var(--accent-2-dim);
+  border: 1px solid rgba(236, 72, 153, 0.3);
+  color: var(--accent-2-hover);
   font-size: 12px;
   font-weight: 500;
 }
@@ -1530,7 +1580,7 @@ body {
   transition: all 0.15s ease;
 }
 .tag-chip-remove:hover {
-  background: var(--accent);
+  background: var(--accent-2);
   color: #fff;
 }
 
@@ -1552,30 +1602,30 @@ body {
   outline: none;
 }
 .video-tags-add input:focus {
-  border-color: rgba(255, 90, 95, 0.45);
-  box-shadow: 0 0 0 3px rgba(255, 90, 95, 0.1);
+  border-color: rgba(236, 72, 153, 0.45);
+  box-shadow: 0 0 0 3px rgba(236, 72, 153, 0.1);
 }
 .video-tags-add button {
   width: 34px;
   border-radius: 10px;
   border: none;
-  background: var(--accent);
+  background: var(--accent-2);
   color: #fff;
   font-size: 16px;
   cursor: pointer;
   transition: background 0.15s ease;
 }
 .video-tags-add button:hover {
-  background: var(--accent-hover);
+  background: var(--accent-2-hover);
 }
 /* ─── Playlist Selector — fullscreen modal ─────────────────────────────── */
 
 .pl-editor-overlay--modal {
-  background: rgba(5, 5, 8, 0);
-  transition: background 0.25s ease;
+  background: rgba(6, 3, 5, 0);
+  transition: background var(--transition-panel);
 }
 .pl-editor-overlay--modal.show {
-  background: rgba(5, 5, 8, 0.72);
+  background: rgba(6, 3, 5, 0.75);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
   pointer-events: auto;
@@ -1591,8 +1641,8 @@ body {
   max-height: 88vh;
   transform: translate(-50%, -50%) scale(0.96);
   transition:
-    transform 0.28s cubic-bezier(0.34, 1.2, 0.64, 1),
-    opacity 0.2s ease;
+    transform var(--transition-panel),
+    opacity var(--transition);
 }
 .pl-editor-overlay.show .pl-fullscreen-panel {
   transform: translate(-50%, -50%) scale(1);
@@ -1646,7 +1696,7 @@ body {
   transform: translateY(-2px);
 }
 .pl-tile--active {
-  border-color: rgba(255, 90, 95, 0.45);
+  border-color: rgba(244, 63, 94, 0.45);
   background: var(--accent-dim);
 }
 
@@ -1688,7 +1738,7 @@ body {
 .pl-tile--active .pl-row-check {
   background: var(--accent);
   border-color: var(--accent);
-  box-shadow: 0 0 12px rgba(255, 90, 95, 0.5);
+  box-shadow: 0 0 12px rgba(244, 63, 94, 0.5);
 }
 .pl-tile--active .pl-row-check::after {
   opacity: 1;
@@ -1702,7 +1752,9 @@ body {
   margin-left: 0;
   z-index: 2;
 }
-
+.pl-tile:hover .pl-row-actions {
+  opacity: 1;
+}
 /* Скрываем бейджи во время инлайн-переименования (startInlineRename
    вешает именно этот класс — pl-row--editing, никаких доп. правок JS не нужно) */
 .pl-tile.pl-row--editing .pl-row-check,
@@ -1810,7 +1862,7 @@ body {
   flex-direction: column;
   gap: 2px;
   border-radius: var(--radius-md);
-  background: rgba(10, 10, 14, 0.97);
+  background: var(--glass-strong);
   border: 1px solid rgba(255, 255, 255, 0.1);
   backdrop-filter: var(--blur);
   box-shadow: var(--shadow-lg);
@@ -1969,7 +2021,114 @@ body {
   transition: all 0.15s ease;
 }
 .tag-chip--suggest:hover {
-  background: var(--accent-dim);
-  border-color: rgba(255, 90, 95, 0.3);
+  background: var(--accent-2-dim);
+  border-color: rgba(236, 72, 153, 0.3);
+  color: var(--accent-2-hover);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CUSTOM ICONS — подстановка нарисованных иконок вместо эмодзи
+   Как использовать:
+     1. Положите свои иконки (SVG или PNG, лучше на прозрачном
+        фоне) в папку /icons рядом с index.html.
+     2. Назовите файл так же, как атрибут data-icon у кнопки,
+        например data-icon="restart" → icons/restart.svg
+        (полный список имён — в js/icons.js, блок ICON_MAP).
+     3. Обновите страницу — icons.js сам найдёт файл и подменит
+        эмодзи иконкой. Если файла нет, эмодзи останется как есть,
+        ничего не сломается.
+   ═══════════════════════════════════════════════════════════ */
+
+.icon-slot .icon-check {
+  display: none;
+}
+
+.icon-slot.icon-slot--success .icon-fallback,
+.icon-slot.icon-slot--success .icon-custom {
+  display: none;
+}
+
+.icon-slot.icon-slot--success .icon-check {
+  display: block;
   color: var(--accent);
+}
+.icon-slot {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1em;
+  height: 1em;
+  line-height: 1;
+}
+
+.icon-slot .icon-fallback {
+  display: block;
+}
+
+.icon-slot .icon-custom {
+  display: none;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  /* SVG-иконки одним цветом наследуют текущий цвет кнопки */
+  filter: drop-shadow(0 0 0 transparent);
+}
+
+.icon-slot.icon-slot--loaded .icon-fallback {
+  display: none;
+}
+
+.icon-slot.icon-slot--loaded .icon-custom {
+  display: block;
+}
+
+/* Кнопки с иконками — задаём читаемый размер картинки под каждый контекст */
+.control-btn .icon-slot,
+.fullscreen-btn .icon-slot,
+.button .icon-slot {
+  width: 1.05em;
+  height: 1.05em;
+}
+
+.dl-dropdown-item-icon .icon-slot,
+.pl-trigger-icon .icon-slot,
+.pl-tab-icon .icon-slot,
+.pl-new-icon .icon-slot {
+  width: 1em;
+  height: 1em;
+}
+
+.download-btn-icon .icon-slot {
+  width: 1.1em;
+  height: 1.1em;
+}
+.video-index-start-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0;
+  transition: all var(--transition);
+}
+
+.video-index-start-btn:hover {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.video-index-start-btn:active {
+  transform: scale(0.9);
+}
+
+.video-index-start-btn .icon-slot {
+  width: 1em;
+  height: 1em;
 }

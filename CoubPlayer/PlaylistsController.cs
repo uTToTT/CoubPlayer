@@ -402,7 +402,7 @@ namespace CoubPlayer
                 // велик риск временной блокировки по IP. 2.5с — эмпирическое значение
                 // из оригинального CoubDownloader, + случайный джиттер 0-800мс, чтобы
                 // интервалы не были идеально ровными.
-                if (!first) await Task.Delay(2500 + jitter.Next(0, 800));
+                if (!first) await Task.Delay(1500 + jitter.Next(0, 800));
                 first = false;
 
                 var result = await _downloadService.DownloadAsync(url);

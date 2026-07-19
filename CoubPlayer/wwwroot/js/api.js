@@ -125,3 +125,14 @@ export async function searchCoubsByTags(tags, mode = "any") {
 export async function openCoubFolder(id) {
     await post(`/api/coubs/${encodeURIComponent(id)}/open-folder`, {});
 }
+
+export async function renameTag(oldTag, newTag) {
+    await post(`/api/tags/${encodeURIComponent(oldTag)}/rename`, { newName: newTag });
+}
+
+export async function deleteTag(tag) {
+    const res = await fetch(`/api/tags/${encodeURIComponent(tag)}`, {
+        method: "DELETE",
+    });
+    if (!res.ok) throw new Error(`Delete tag failed: ${await res.text()}`);
+}
