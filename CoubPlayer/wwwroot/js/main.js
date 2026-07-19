@@ -24,6 +24,26 @@ import {
     initSeekBar,
 } from "./ui.js";
 
+const ALL_PLAYLIST_NAME = "Все";
+
+/**
+ * Виртуальный плейлист "Все" — не хранится на сервере, собирается
+ * на лету из coubMap. Содержит все скачанные ролики независимо от
+ * того, в каком реальном плейлисте они состоят.
+ */
+function buildAllPlaylist() {
+    const videos = {};
+    let order = 0;
+    for (const [id, coub] of Object.entries(state.coubMap)) {
+        videos[id] = {
+            title: coub.title || id,
+            order: order++,
+            lastViewed: null,
+        };
+    }
+    return { videos };
+}
+
 // ─── DOM ──────────────────────────────────────────────────────────────────────
 
 const videoIndexInput = document.getElementById("videoIndexInput");
@@ -64,6 +84,7 @@ async function refreshData() {
     const data = await loadData();
     state.playlists = data.playlists;
     state.coubMap = data.coubMap;
+    state.playlists[ALL_PLAYLIST_NAME] = buildAllPlaylist();
 }
 
 // Кэш id роликов, прошедших текущий тег-фильтр. null = фильтр не активен.
@@ -329,6 +350,7 @@ async function init() {
             return name.trim();
         },
         onDelete: async (name) => {
+            if (name === ALL_PLAYLIST_NAME) return;
             await api.deletePlaylist(name);
             delete state.playlists[name];
             if (state.selectedPlaylist === name) {
@@ -337,6 +359,7 @@ async function init() {
             }
         },
         onRename: async (oldName, newName) => {
+            if (oldName === ALL_PLAYLIST_NAME) return;
             await api.renamePlaylist(oldName, newName);
             state.playlists[newName] = state.playlists[oldName];
             delete state.playlists[oldName];

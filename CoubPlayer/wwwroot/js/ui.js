@@ -126,7 +126,7 @@ export function initSortBar(onChange, initial = {}) {
 // PLAYLIST EDITOR — Pinterest-style (add/remove video from playlists)
 // ═════════════════════════════════════════════════════════════════════════════
 
-const READONLY_PLAYLISTS = ["bookmarks", "liked"];
+const READONLY_PLAYLISTS = ["bookmarks", "liked", "Все"];
 
 const editorOverlay = document.getElementById("playlistEditorOverlay");
 const editorPanel = document.getElementById("playlistEditorPanel");
@@ -649,7 +649,7 @@ const playlistTriggerLabel = document.getElementById("playlistTriggerLabel");
 
 const INVALID_CHARS = /[\/\\:*?"<>|]/;
 const SANITIZE_CHARS = /[\/\\:*?"<>|]/g;
-const READONLY_SELECTOR = ["bookmarks", "liked"];
+const READONLY_SELECTOR = ["bookmarks", "liked", "Все"];
 
 // state — playlists
 let _selectorPlaylists = {};
