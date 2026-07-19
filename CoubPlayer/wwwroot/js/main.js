@@ -21,6 +21,7 @@ import {
     initVideoTagsEditor,
     setVideoTagsTarget,
     refreshTagsDatalist,
+    initSeekBar,
 } from "./ui.js";
 
 // ─── DOM ──────────────────────────────────────────────────────────────────────
@@ -244,6 +245,18 @@ async function init() {
     // Ссылка
     initCopyLinkBtn(() => currentVideo()?.id);
 
+    const seekBar = initSeekBar((ratio) => {
+        const duration = player.getDuration();
+        if (!duration) return;
+        player.seek(ratio * duration);
+    });
+
+    function seekLoop() {
+        seekBar.update(player.getCurrentTime(), player.getDuration());
+        requestAnimationFrame(seekLoop);
+    }
+    requestAnimationFrame(seekLoop);
+
     // Сортировка
     initSortBar((type, direction, seed) => {
         state.sortType = type;
@@ -409,7 +422,7 @@ async function init() {
 
         const ignore = [
             ".button", ".fullscreen-btn", ".bottom-controls",
-            "#videoIndexWrapper", ".top-controls",
+            "#videoIndexWrapper", ".top-controls", "#seekBarWrapper",
         ];
         if (!ignore.some((sel) => e.target.closest(sel))) player.togglePause();
     });

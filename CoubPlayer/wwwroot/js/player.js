@@ -36,6 +36,38 @@ export class Player {
 
     // ─── Публичный API ────────────────────────────────────────────────────────
 
+    getCurrentTime() {
+        return this.audio.currentTime || 0;
+    }
+
+    getDuration() {
+        const d = this.audio.duration;
+        return isFinite(d) ? d : 0;
+    }
+
+    /**
+     * Перемотка. Ведущий трек — audio. Видео (основной буфер и фон)
+     * зациклены и короче аудио, поэтому синкаем их по модулю своей длительности.
+     * @param {number} time — секунды
+     */
+    seek(time) {
+        const duration = this.getDuration();
+        if (!duration) return;
+
+        const clamped = Math.max(0, Math.min(duration, time));
+        this.audio.currentTime = clamped;
+
+        const videoDur = this.activeVideo.duration;
+        if (videoDur && isFinite(videoDur) && videoDur > 0) {
+            this.activeVideo.currentTime = clamped % videoDur;
+        }
+
+        const bgDur = this.bgVideo.duration;
+        if (bgDur && isFinite(bgDur) && bgDur > 0) {
+            this.bgVideo.currentTime = clamped % bgDur;
+        }
+    }
+
     get activeVideo() {
         return this.videoEls[this.activeIdx];
     }

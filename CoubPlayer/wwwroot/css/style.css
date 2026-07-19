@@ -1860,3 +1860,80 @@ body {
   width: 16px;
   text-align: center;
 }
+
+/* ─── Seek Bar ───────────────────────────────────────────── */
+.seek-bar-wrapper {
+  position: fixed;
+  bottom: 68px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(70vw, 900px);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 16px;
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: var(--blur);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow);
+  z-index: 20;
+  opacity: 0.15;
+  transition: opacity 0.4s ease;
+}
+
+.seek-bar-wrapper:hover {
+  opacity: 1;
+}
+
+.seek-bar-track {
+  position: relative;
+  flex: 1;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.15);
+  cursor: pointer;
+}
+
+.seek-bar-wrapper:hover .seek-bar-track,
+.seek-bar-track.seek-bar-track--dragging {
+  height: 6px;
+}
+
+.seek-bar-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+.seek-bar-thumb {
+  position: absolute;
+  top: 50%;
+  left: 0%;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  transform: translate(-50%, -50%) scale(0);
+  transition: transform 0.15s ease;
+  pointer-events: none;
+}
+
+.seek-bar-wrapper:hover .seek-bar-thumb,
+.seek-bar-track--dragging ~ .seek-bar-thumb {
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.seek-bar-time {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  user-select: none;
+}

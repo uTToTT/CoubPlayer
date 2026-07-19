@@ -1129,3 +1129,72 @@ export function isAnyPanelOpen() {
         videoTagsOverlay.classList.contains("show")
     );
 }
+
+// ─── Seek Bar ─────────────────────────────────────────────────────────────
+
+const seekBarTrack = document.getElementById("seekBarTrack");
+const seekBarFill = document.getElementById("seekBarFill");
+const seekBarThumb = document.getElementById("seekBarThumb");
+const seekBarCurrent = document.getElementById("seekBarCurrent");
+const seekBarDuration = document.getElementById("seekBarDuration");
+
+function formatTime(sec) {
+    if (!isFinite(sec) || sec < 0) sec = 0;
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+export function initSeekBar(onSeek) {
+    let dragging = false;
+
+    const ratioFromEvent = (e) => {
+        const rect = seekBarTrack.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    };
+
+    const setVisual = (ratio) => {
+        seekBarFill.style.width = `${ratio * 100}%`;
+        seekBarThumb.style.left = `${ratio * 100}%`;
+    };
+
+    const startDrag = (e) => {
+        dragging = true;
+        seekBarTrack.classList.add("seek-bar-track--dragging");
+        drag(e);
+        e.preventDefault();
+    };
+
+    const drag = (e) => {
+        if (!dragging) return;
+        const ratio = ratioFromEvent(e);
+        setVisual(ratio);
+        onSeek(ratio);
+    };
+
+    const endDrag = (e) => {
+        if (!dragging) return;
+        dragging = false;
+        seekBarTrack.classList.remove("seek-bar-track--dragging");
+        onSeek(ratioFromEvent(e));
+    };
+
+    seekBarTrack.addEventListener("mousedown", startDrag);
+    seekBarTrack.addEventListener("touchstart", startDrag, { passive: false });
+    document.addEventListener("mousemove", drag);
+    document.addEventListener("touchmove", drag, { passive: false });
+    document.addEventListener("mouseup", endDrag);
+    document.addEventListener("touchend", endDrag);
+
+    return {
+        isDragging: () => dragging,
+        update(current, duration) {
+            if (dragging) return;
+            const ratio = duration > 0 ? current / duration : 0;
+            setVisual(ratio);
+            seekBarCurrent.textContent = formatTime(current);
+            seekBarDuration.textContent = formatTime(duration);
+        },
+    };
+}
