@@ -409,11 +409,15 @@ function emojiForPlaylist(name) {
 // ─── Кастомные иконки плейлистов  ───────────────────────────────
 
 
-const _iconTimestamps = {}; // { [name]: timestamp }
+// Таймстамп сессии — гарантирует cache-bust после каждой перезагрузки страницы,
+// даже если пользователь не менял иконку в этой сессии
+const _sessionCacheBust = Date.now();
+
+const _iconTimestamps = {}; // { [name]: timestamp } — обновляется при загрузке новой иконки
 
 function iconUrlForPlaylist(name) {
-    const t = _iconTimestamps[name] || "";
-    return `/Data/icons/${encodeURIComponent(name)}.webp${t ? "?t=" + t : ""}`;
+    const t = _iconTimestamps[name] || _sessionCacheBust;
+    return `/Data/icons/${encodeURIComponent(name)}.webp?t=${t}`;
 }
 
 // Проверяем существует ли иконка — через Image onload/onerror

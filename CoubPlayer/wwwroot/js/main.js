@@ -48,6 +48,7 @@ function buildAllPlaylist() {
 
 const videoIndexInput = document.getElementById("videoIndexInput");
 const editPlaylistsBtn = document.getElementById("editPlaylistsBtn");
+const openFolderBtn = document.getElementById("openFolderBtn");
 const downloadCoubsBtn = document.getElementById("downloadCoubsBtn");
 const downloadCoubsBtnLabel = downloadCoubsBtn.querySelector(".download-btn-label");
 const syncLikedBtn = document.getElementById("syncLikedBtn");
@@ -340,6 +341,21 @@ async function init() {
         togglePlaylistEditor(video, state.playlists);
         editPlaylistsBtn.blur();
     });
+    openFolderBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const video = currentVideo();
+        if (!video) {
+            alert("Нет текущего видео!");
+            return;
+        }
+        try {
+            await api.openCoubFolder(video.id);
+        } catch (err) {
+            alert("Не удалось открыть папку: " + err.message);
+        }
+        openFolderBtn.blur();
+    });
+
 
     // ── Единая панель: Плейлисты + Теги ──────────────────────────────────────
     initSortingPanel({

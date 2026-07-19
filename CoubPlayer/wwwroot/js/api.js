@@ -121,3 +121,7 @@ export async function searchCoubsByTags(tags, mode = "any") {
     if (!res.ok) throw new Error("Tag search failed");
     return res.json();
 }
+
+export async function openCoubFolder(id) {
+    await post(`/api/coubs/${encodeURIComponent(id)}/open-folder`, {});
+}
