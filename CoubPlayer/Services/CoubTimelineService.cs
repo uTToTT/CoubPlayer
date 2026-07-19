@@ -32,8 +32,6 @@ namespace CoubPlayer.Services
                 throw new InvalidOperationException("Не указан access token (remember_token)");
 
             var isUnlimited = limit < 0;
-            // Внутренние сравнения ("result.Count < limit") ведём против int.MaxValue,
-            // а не против -1 — так весь остальной код (циклы, брейки) не нужно дублировать
             var effectiveLimit = isUnlimited ? int.MaxValue : limit;
 
             var template = category switch
@@ -42,6 +40,8 @@ namespace CoubPlayer.Services
                 "bookmarks" => "https://coub.com/api/v2/timeline/favourites?order_by=date&per_page={0}&page={1}",
                 _ => throw new InvalidOperationException($"Неизвестная категория: {category}")
             };
+
+            Console.WriteLine($"[timeline:{category}] Начало выгрузки ленты (лимит: {(isUnlimited ? "без ограничений" : limit.ToString())})");
 
             var client = _httpClientFactory.CreateClient();
             var userAgent = CoubUserAgents.GetRandomAgent();
@@ -55,6 +55,8 @@ namespace CoubPlayer.Services
             {
                 var url = string.Format(template, PageSize, page);
 
+                Console.WriteLine($"[timeline:{category}] Страница {page}{(totalPages != null ? $"/{totalPages}" : "")}, получено ссылок: {result.Count}");
+
                 using var res = await HttpRetryHelper.SendWithRetryAsync(client, () =>
                 {
                     var req = new HttpRequestMessage(HttpMethod.Get, url);
@@ -64,7 +66,10 @@ namespace CoubPlayer.Services
                 });
 
                 if (res.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                {
+                    Console.WriteLine($"[timeline:{category}] ОШИБКА: неверный или просроченный токен");
                     throw new InvalidOperationException("Неверный или просроченный access token");
+                }
 
                 res.EnsureSuccessStatusCode();
 
@@ -74,8 +79,12 @@ namespace CoubPlayer.Services
                 totalPages ??= data["total_pages"]?.Value<int>();
 
                 if (data["coubs"] is not JArray coubs || coubs.Count == 0)
+                {
+                    Console.WriteLine($"[timeline:{category}] Страница {page} пуста, останавливаемся");
                     break;
+                }
 
+                var addedOnPage = 0;
                 foreach (var coub in coubs)
                 {
                     if (result.Count >= effectiveLimit) break;
@@ -86,8 +95,13 @@ namespace CoubPlayer.Services
 
                     var permalink = coub["permalink"]?.ToString();
                     if (!string.IsNullOrEmpty(permalink))
+                    {
                         result.Add(permalink);
+                        addedOnPage++;
+                    }
                 }
+
+                Console.WriteLine($"[timeline:{category}] Страница {page}: добавлено {addedOnPage} (репосты пропущены)");
 
                 if (result.Count >= effectiveLimit) break;
                 if (page >= (totalPages ?? page) || page >= MaxApiPage) break;
@@ -95,6 +109,8 @@ namespace CoubPlayer.Services
                 page++;
                 await Task.Delay(2500 + jitter.Next(0, 800));
             }
+
+            Console.WriteLine($"[timeline:{category}] Выгрузка завершена: собрано {result.Count} ссылок");
 
             return result;
         }

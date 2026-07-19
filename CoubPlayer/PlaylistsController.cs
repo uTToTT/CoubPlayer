@@ -390,37 +390,51 @@ namespace CoubPlayer
         /// каждый в coub_list.json и добавляет в указанный плейлист.
         /// </summary>
         private async Task<List<CoubDownloadResult>> DownloadUrlsIntoPlaylistAsync(
-            string playlist, List<string> urls)
+    string playlist, List<string> urls)
         {
             var results = new List<CoubDownloadResult>();
-            var first = true;
             var jitter = new Random();
+            var total = urls.Count;
+            var index = 0;
+            var needsDelay = false; // ставим паузу только после реальной загрузки файлов, не после кэша
+
+            Console.WriteLine($"[{playlist}] Начало загрузки: {total} роликов");
 
             foreach (var url in urls)
             {
-                // Пауза между запросами к API Coub — без неё на больших батчах (сотни роликов)
-                // велик риск временной блокировки по IP. 2.5с — эмпирическое значение
-                // из оригинального CoubDownloader, + случайный джиттер 0-800мс, чтобы
-                // интервалы не были идеально ровными.
-                if (!first) await Task.Delay(1500 + jitter.Next(0, 800));
-                first = false;
+                index++;
+
+                if (needsDelay) await Task.Delay(1500 + jitter.Next(0, 800));
+
+                Console.WriteLine($"[{playlist}] ({index}/{total}) Обработка: {url}");
 
                 var result = await _downloadService.DownloadAsync(url);
                 results.Add(result);
 
-                if (!result.Success) continue;
+                // Пауза перед следующим роликом нужна, только если этот ролик реально
+                // качался с серверов Coub. Если он уже был на диске (AlreadyExisted)
+                // или скачивание не удалось до реальной загрузки файлов — паузу пропускаем,
+                // так как лишнего трафика к API/CDN не было и риска бана нет.
+                needsDelay = result.Success && !result.AlreadyExisted;
 
-                // 1. Регистрируем ролик в coub_list.json (coubMap для плеера)
+                if (!result.Success)
+                {
+                    Console.WriteLine($"[{playlist}] ({index}/{total}) ОШИБКА [{result.Id}]: {result.Error}");
+                    continue;
+                }
+
+                Console.WriteLine(result.AlreadyExisted
+                    ? $"[{playlist}] ({index}/{total}) Уже скачано ранее, пропускаем паузу: {result.Id} \"{result.Title}\""
+                    : $"[{playlist}] ({index}/{total}) Успешно скачано: {result.Id} \"{result.Title}\"");
+
                 UpsertCoubListEntry(result);
 
-                // 2. Добавляем в конкретный плейлист
                 ExecuteLocked(data =>
                 {
                     if (!data.ContainsKey(playlist)) return NotFound();
 
                     var pl = data[playlist];
 
-                    // Не добавляем повторно, если ролик уже есть в этом плейлисте
                     if (pl.videos.ContainsKey(result.Id))
                         return Ok();
 
@@ -436,6 +450,8 @@ namespace CoubPlayer
                     return Ok();
                 });
             }
+
+            Console.WriteLine($"[{playlist}] Загрузка завершена: успешно {results.Count(r => r.Success)}/{total}");
 
             return results;
         }
