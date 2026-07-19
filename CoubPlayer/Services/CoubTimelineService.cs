@@ -31,6 +31,11 @@ namespace CoubPlayer.Services
             if (string.IsNullOrWhiteSpace(token))
                 throw new InvalidOperationException("Не указан access token (remember_token)");
 
+            var isUnlimited = limit < 0;
+            // Внутренние сравнения ("result.Count < limit") ведём против int.MaxValue,
+            // а не против -1 — так весь остальной код (циклы, брейки) не нужно дублировать
+            var effectiveLimit = isUnlimited ? int.MaxValue : limit;
+
             var template = category switch
             {
                 "liked" => "https://coub.com/api/v2/timeline/likes?order_by=date&per_page={0}&page={1}",
@@ -46,7 +51,7 @@ namespace CoubPlayer.Services
             var page = 1;
             int? totalPages = null;
 
-            while (result.Count < limit)
+            while (result.Count < effectiveLimit)
             {
                 var url = string.Format(template, PageSize, page);
 
@@ -54,7 +59,6 @@ namespace CoubPlayer.Services
                 {
                     var req = new HttpRequestMessage(HttpMethod.Get, url);
                     req.Headers.UserAgent.ParseAdd(userAgent);
-                    // Личная лента требует cookie с access token'ом (как в Crawler.DownloadJson)
                     req.Headers.TryAddWithoutValidation("Cookie", $"remember_token={token}");
                     return req;
                 });
@@ -74,7 +78,7 @@ namespace CoubPlayer.Services
 
                 foreach (var coub in coubs)
                 {
-                    if (result.Count >= limit) break;
+                    if (result.Count >= effectiveLimit) break;
 
                     var recoubTo = coub["recoub_to"];
                     var isRepost = recoubTo != null && recoubTo.Type != JTokenType.Null;
@@ -85,11 +89,10 @@ namespace CoubPlayer.Services
                         result.Add(permalink);
                 }
 
-                if (result.Count >= limit) break;
+                if (result.Count >= effectiveLimit) break;
                 if (page >= (totalPages ?? page) || page >= MaxApiPage) break;
 
                 page++;
-                // Пауза между страницами ленты — та же логика, что и между скачиваниями роликов
                 await Task.Delay(2500 + jitter.Next(0, 800));
             }
 

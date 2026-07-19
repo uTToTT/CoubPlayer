@@ -732,6 +732,7 @@ const sortingFooterPlaylists = document.getElementById("sortingFooterPlaylists")
 const sortingFooterTags = document.getElementById("sortingFooterTags");
 const plSelectorNewBtn = document.getElementById("plSelectorNewBtn");
 const tagFilterClearBtn = document.getElementById("tagFilterClearBtn");
+const tagFilterDeleteAllBtn = document.getElementById("tagFilterDeleteAllBtn");
 
 const playlistTriggerBtn = document.getElementById("playlistTriggerBtn");
 const playlistTriggerLabel = document.getElementById("playlistTriggerLabel");
@@ -759,15 +760,14 @@ let _getActiveTags = null;
 let _getTagMode = null;
 let _onRenameTag = null;   // NEW
 let _onDeleteTag = null;   // NEW
+let _onDeleteAllTags = null;   // NEW
 
 let _activeSortingTab = "playlists";
 
 export function initSortingPanel({
-    // playlists
     getPlaylists, onSelect, onCreate, onDelete, onRename,
-    // tags
     getAllTags, getActiveTagFilter, getTagFilterMode, onTagFilterChange,
-    onRenameTag, onDeleteTag,   // NEW
+    onRenameTag, onDeleteTag, onDeleteAllTags,   // NEW
 }) {
     _onSelectPlaylist = onSelect;
     _onCreateFromSelector = onCreate;
@@ -779,8 +779,9 @@ export function initSortingPanel({
     _getActiveTags = getActiveTagFilter;
     _getTagMode = getTagFilterMode;
     _onTagFilterChange = onTagFilterChange;
-    _onRenameTag = onRenameTag;   // NEW
-    _onDeleteTag = onDeleteTag;   // NEW
+    _onRenameTag = onRenameTag;
+    _onDeleteTag = onDeleteTag;
+    _onDeleteAllTags = onDeleteAllTags;   // NEW
 
     // Триггер — открывает окно (вкладка "Плейлисты" по умолчанию;
     // на "Теги" переключаются уже внутри окна через табы)
@@ -817,7 +818,7 @@ export function initSortingPanel({
         syncTagModeButtons();
         notifyTagFilterChange();
     });
-
+    tagFilterDeleteAllBtn.addEventListener("click", handleDeleteAllTags);
     tagFilterClearBtn.addEventListener("click", () => {
         _activeTags = [];
         renderActiveTab(sortingSearch.value.trim());
@@ -1265,6 +1266,42 @@ async function handleDeleteTag(tag, tile) {
     } catch (err) {
         showToast("⚠ Ошибка удаления тега");
         console.error("Delete tag error:", err);
+    }
+}
+
+async function handleDeleteAllTags() {
+    if (!_allTagsCache.length) {
+        showToast("Тегов нет");
+        return;
+    }
+
+    const userInput = prompt(
+        `Удалить ВСЕ теги (${_allTagsCache.length}) со всех видео? Это действие необратимо.\n\nВведите "Delete" для подтверждения:`
+    );
+
+    if (userInput === null) {
+        // Пользователь нажал "Отмена"
+        return;
+    }
+
+    if (userInput.trim() !== "Delete") {
+        showToast("Удаление отменено: неверное подтверждение");
+        return;
+    }
+
+    tagFilterDeleteAllBtn.disabled = true;
+    try {
+        await _onDeleteAllTags();
+        _allTagsCache = [];
+        _activeTags = [];
+        renderTagFilterRows(sortingSearch.value.trim());
+        updateSortingSubtitle();
+        showToast("Все теги удалены");
+    } catch (err) {
+        showToast("⚠ Ошибка удаления тегов");
+        console.error("Delete all tags error:", err);
+    } finally {
+        tagFilterDeleteAllBtn.disabled = false;
     }
 }
 

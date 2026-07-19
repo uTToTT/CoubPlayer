@@ -44,6 +44,35 @@ public class CoubsController : ControllerBase
         return Ok(_coubListService.Search(wanted, mode));
     }
 
+    public class RenameTagRequest { public string NewName { get; set; } }
+
+    // POST /api/coubs/tags/{tag}/rename
+    [HttpPost("tags/{tag}/rename")]
+    public IActionResult RenameTagGlobally(string tag, [FromBody] RenameTagRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req?.NewName))
+            return BadRequest("newName не указан");
+
+        var count = _coubListService.RenameTagGlobally(tag, req.NewName);
+        return count == 0 ? NotFound() : Ok(new { renamed = count });
+    }
+
+    // DELETE /api/coubs/tags/{tag}
+    [HttpDelete("tags/{tag}")]
+    public IActionResult DeleteTagGlobally(string tag)
+    {
+        var count = _coubListService.DeleteTagGlobally(tag);
+        return count == 0 ? NotFound() : Ok(new { removed = count });
+    }
+
+    // DELETE /api/coubs/tags
+    [HttpDelete("tags")]
+    public IActionResult DeleteAllTags()
+    {
+        var count = _coubListService.DeleteAllTags();
+        return Ok(new { removed = count });
+    }
+
     /// <summary>
     /// Открывает папку с файлами ролика (video.mp4 / audio.*) в проводнике ОС,
     /// на которой запущен сервер. Работает только когда сервер и клиент — одна

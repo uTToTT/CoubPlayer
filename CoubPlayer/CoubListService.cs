@@ -125,5 +125,85 @@ namespace CoubPlayer.Services
             return JsonConvert.DeserializeObject<List<CoubListEntry>>(json) ?? new();
         }
         private void WriteAllUnsafe(List<CoubListEntry> list) => WriteAll(list);
+
+        /// <summary>
+        /// Переименовывает тег во всех роликах библиотеки.
+        /// Если у ролика уже есть тег с новым именем — старый просто убирается
+        /// (не плодим дубликаты после normalize).
+        /// </summary>
+        /// <returns>Число роликов, у которых тег был переименован</returns>
+        public int RenameTagGlobally(string rawOldTag, string rawNewTag)
+        {
+            var oldTag = Normalize(rawOldTag);
+            var newTag = Normalize(rawNewTag);
+            if (string.IsNullOrEmpty(oldTag) || string.IsNullOrEmpty(newTag)) return 0;
+
+            lock (_lock)
+            {
+                var list = ReadAllUnsafe();
+                var affected = 0;
+
+                foreach (var entry in list)
+                {
+                    if (entry.tags == null) continue;
+                    var hasOld = entry.tags.Any(t => string.Equals(t, oldTag, StringComparison.OrdinalIgnoreCase));
+                    if (!hasOld) continue;
+
+                    entry.tags.RemoveAll(t => string.Equals(t, oldTag, StringComparison.OrdinalIgnoreCase));
+                    if (!entry.tags.Contains(newTag, StringComparer.OrdinalIgnoreCase))
+                        entry.tags.Add(newTag);
+
+                    affected++;
+                }
+
+                if (affected > 0) WriteAllUnsafe(list);
+                return affected;
+            }
+        }
+
+        /// <summary>Удаляет тег со всех роликов библиотеки.</summary>
+        /// <returns>Число роликов, с которых тег был удалён</returns>
+        public int DeleteTagGlobally(string rawTag)
+        {
+            var tag = Normalize(rawTag);
+            if (string.IsNullOrEmpty(tag)) return 0;
+
+            lock (_lock)
+            {
+                var list = ReadAllUnsafe();
+                var affected = 0;
+
+                foreach (var entry in list)
+                {
+                    if (entry.tags == null) continue;
+                    var removed = entry.tags.RemoveAll(t => string.Equals(t, tag, StringComparison.OrdinalIgnoreCase));
+                    if (removed > 0) affected++;
+                }
+
+                if (affected > 0) WriteAllUnsafe(list);
+                return affected;
+            }
+        }
+
+        /// <summary>Удаляет вообще все теги со всех роликов библиотеки.</summary>
+        /// <returns>Число роликов, у которых были удалены теги</returns>
+        public int DeleteAllTags()
+        {
+            lock (_lock)
+            {
+                var list = ReadAllUnsafe();
+                var affected = 0;
+
+                foreach (var entry in list)
+                {
+                    if (entry.tags == null || entry.tags.Count == 0) continue;
+                    entry.tags.Clear();
+                    affected++;
+                }
+
+                if (affected > 0) WriteAllUnsafe(list);
+                return affected;
+            }
+        }
     }
 }

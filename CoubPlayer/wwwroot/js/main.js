@@ -221,14 +221,15 @@ async function syncFavorites(category, btn) {
     }
 
     const limitRaw = prompt(
-        `Сколько новейших роликов из "${category}" забрать за этот раз?`,
+        `Сколько новейших роликов из "${category}" забрать за этот раз?\n` +
+        `(введите -1, чтобы забрать все)`,
         "25"
     );
     if (!limitRaw?.trim()) return;
 
     const limit = parseInt(limitRaw, 10);
-    if (!Number.isFinite(limit) || limit <= 0) {
-        alert("Некорректное число.");
+    if (!Number.isFinite(limit) || (limit <= 0 && limit !== -1)) {
+        alert("Некорректное число. Введите положительное число или -1 для «всех».");
         return;
     }
 
@@ -436,6 +437,13 @@ async function init() {
                 state.activeTagFilter = state.activeTagFilter.filter((t) => t !== tag);
                 await applyTagFilterAndRefresh();
             }
+        },
+        onDeleteAllTags: async () => {
+            await api.deleteAllTags();
+            state.allTags = [];
+            refreshTagsDatalist([]);
+            state.activeTagFilter = [];
+            await applyTagFilterAndRefresh();
         },
     });
 
