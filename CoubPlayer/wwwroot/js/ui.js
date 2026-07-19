@@ -518,6 +518,7 @@ let _onGetCoubTags = null;
 let _onAddTag = null;
 let _onRemoveTag = null;
 let _onTagsChanged = null;
+let _suppressNextOverlayClose = false;
 
 export function initVideoTagsEditor({ getCoubTags, addTag, removeTag, getAllTags, onTagsChanged }) {
     _onGetCoubTags = getCoubTags;
@@ -526,6 +527,8 @@ export function initVideoTagsEditor({ getCoubTags, addTag, removeTag, getAllTags
     _onTagsChanged = onTagsChanged;
 
     refreshTagsDatalist(getAllTags());
+
+    videoTagsAddBtn.type = "button";
 
     editTagsBtn.addEventListener("click", async (e) => {
         e.stopPropagation();
@@ -545,6 +548,7 @@ export function initVideoTagsEditor({ getCoubTags, addTag, removeTag, getAllTags
     videoTagsInput.addEventListener("keydown", (e) => {
         if (e.key === "Enter") {
             e.preventDefault();
+            e.stopPropagation();
             commitAddTag();
         }
         e.stopPropagation();
@@ -557,11 +561,15 @@ export function initVideoTagsEditor({ getCoubTags, addTag, removeTag, getAllTags
     });
 
     document.addEventListener("click", (e) => {
+        if (_suppressNextOverlayClose) {           // NEW
+            _suppressNextOverlayClose = false;      // NEW
+            return;                                 // NEW
+        }
         if (
             videoTagsOverlay.classList.contains("show") &&
             !videoTagsPanel.contains(e.target) &&
             !e.target.closest("#editTagsBtn") &&
-            !isNavExempt(e.target)          // ← добавить эту строку
+            !isNavExempt(e.target)
         ) {
             videoTagsOverlay.classList.remove("show");
         }
@@ -621,6 +629,7 @@ function renderRecentTagSuggestions() {
 
 async function quickAddTag(tag) {
     if (!tag || !_tagsVideo || _tagsCurrent.includes(tag)) return;
+    _suppressNextOverlayClose = true; // NEW
     _tagsCurrent.push(tag);
     renderTagChips();
     renderRecentTagSuggestions();
@@ -675,6 +684,7 @@ async function commitAddTag() {
         return;
     }
 
+    _suppressNextOverlayClose = true; // NEW
     videoTagsInput.value = "";
     _tagsCurrent.push(tag);
     renderTagChips();
@@ -691,6 +701,8 @@ async function commitAddTag() {
         showToast("⚠ Не удалось добавить тег");
         console.error("Add tag error:", err);
     }
+
+    requestAnimationFrame(() => videoTagsInput.focus()); // NEW — сразу возвращаем фокус в поле для следующего тега
 }
 
 async function removeTagChip(tag, chipEl) {
