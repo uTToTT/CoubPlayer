@@ -74,6 +74,8 @@ const player = new Player(
     document.getElementById("bgVideo")
 );
 
+player.setVirtualPlaylistPredicate((name) => name === ALL_PLAYLIST_NAME);
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function currentVideo() {
@@ -250,6 +252,8 @@ async function init() {
     await refreshData();
     await refreshAllTags();
     await refreshTagFilterIds(); // фильтр мог сохраниться с прошлой сессии
+
+
 
     // Громкость
     const setVolumeSlider = initVolumeSlider(
@@ -481,8 +485,6 @@ async function init() {
     function updatePauseOverlay(isPaused) {
         document.getElementById("pauseOverlay").classList.toggle("visible", isPaused);
     }
-
-
 }
 
 init().catch(console.error);

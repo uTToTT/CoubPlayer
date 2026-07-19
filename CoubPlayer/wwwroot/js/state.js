@@ -82,3 +82,49 @@ export function getLastVideoForPlaylist(playlistId) {
     if (playlistId == null) return null;
     return state.lastVideoByPlaylist[playlistId] ?? null;
 }
+
+// ─── Recently used (плейлисты / теги) ──────────────────────────────────────
+
+const RECENT_PLAYLISTS_KEY = "coub_recentPlaylists";
+const RECENT_TAGS_KEY = "coub_recentTags";
+const RECENT_LIMIT = 5;
+
+function loadRecentList(key) {
+    try {
+        const raw = localStorage.getItem(key);
+        const arr = raw ? JSON.parse(raw) : [];
+        return Array.isArray(arr) ? arr : [];
+    } catch {
+        return [];
+    }
+}
+
+function saveRecentList(key, arr) {
+    try {
+        localStorage.setItem(key, JSON.stringify(arr));
+    } catch { }
+}
+
+function pushRecent(key, value) {
+    let arr = loadRecentList(key).filter((v) => v !== value);
+    arr.unshift(value);
+    arr = arr.slice(0, RECENT_LIMIT);
+    saveRecentList(key, arr);
+    return arr;
+}
+
+export function getRecentPlaylists() {
+    return loadRecentList(RECENT_PLAYLISTS_KEY);
+}
+
+export function addRecentPlaylist(name) {
+    return pushRecent(RECENT_PLAYLISTS_KEY, name);
+}
+
+export function getRecentTags() {
+    return loadRecentList(RECENT_TAGS_KEY);
+}
+
+export function addRecentTag(tag) {
+    return pushRecent(RECENT_TAGS_KEY, tag);
+}

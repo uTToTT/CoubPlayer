@@ -1937,3 +1937,39 @@ body {
   white-space: nowrap;
   user-select: none;
 }
+.pl-section-label {
+  padding: 8px 10px 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.video-tags-recent {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px 10px;
+}
+
+.video-tags-recent-label {
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, 0.35);
+  margin-right: 2px;
+}
+
+.tag-chip--suggest {
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.7);
+  padding: 5px 10px;
+  transition: all 0.15s ease;
+}
+.tag-chip--suggest:hover {
+  background: var(--accent-dim);
+  border-color: rgba(255, 90, 95, 0.3);
+  color: var(--accent);
+}

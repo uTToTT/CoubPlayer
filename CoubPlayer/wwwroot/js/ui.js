@@ -1,5 +1,5 @@
 // ui.js — весь рендеринг UI.
-
+import { getRecentPlaylists, addRecentPlaylist, getRecentTags, addRecentTag } from "./state.js";
 
 
 
@@ -136,6 +136,7 @@ const editorSearch = document.getElementById("plSearchInput");
 const editorClear = document.getElementById("plSearchClear");
 const editorList = document.getElementById("plEditorList");
 const editorNewBtn = document.getElementById("plNewBtn");
+const videoTagsRecent = document.getElementById("videoTagsRecent");
 
 const toast = document.createElement("div");
 toast.className = "pl-toast";
@@ -253,7 +254,7 @@ export function togglePlaylistEditor(video, playlists) {
 async function renderEditorRows(query) {
     editorList.innerHTML = "";
     const q = query.toLowerCase();
-    const entries = Object.entries(_playlists).filter(
+    let entries = Object.entries(_playlists).filter(
         ([name]) => !q || name.toLowerCase().includes(q)
     );
 
@@ -263,6 +264,31 @@ async function renderEditorRows(query) {
         empty.textContent = query ? "Ничего не найдено" : "Нет плейлистов";
         editorList.appendChild(empty);
         return;
+    }
+
+    // Без активного поиска — сначала недавно использованные плейлисты
+    if (!q) {
+        const recentNames = getRecentPlaylists().filter((n) => _playlists[n]);
+        const recentSet = new Set(recentNames);
+        const recentEntries = recentNames.map((name) => [name, _playlists[name]]);
+        const restEntries = entries.filter(([name]) => !recentSet.has(name));
+
+        if (recentEntries.length) {
+            const label = document.createElement("div");
+            label.className = "pl-section-label";
+            label.textContent = "Недавние";
+            editorList.appendChild(label);
+            for (const [name, data] of recentEntries) {
+                editorList.appendChild(await buildEditorRow(name, data));
+            }
+            if (restEntries.length) {
+                const label2 = document.createElement("div");
+                label2.className = "pl-section-label";
+                label2.textContent = "Все плейлисты";
+                editorList.appendChild(label2);
+            }
+        }
+        entries = restEntries;
     }
 
     for (const [name, data] of entries) {
@@ -338,6 +364,7 @@ async function handleToggle(row, name, data, countEl) {
 
     try {
         await _onToggle(name, add);
+        addRecentPlaylist(name);
     } catch (err) {
         row.classList.toggle("pl-row--checked", wasChecked);
         if (wasChecked) {
@@ -542,14 +569,55 @@ async function loadTagsForCurrentVideo() {
     if (!_tagsVideo) return;
     videoTagsSubtitle.textContent = _tagsVideo.title || _tagsVideo.id;
     videoTagsChips.innerHTML = `<div class="pl-empty">Загрузка…</div>`;
+    videoTagsRecent.innerHTML = "";
     try {
         const res = await _onGetCoubTags(_tagsVideo.id);
         const list = Array.isArray(res) ? res : res.tags || [];
         _tagsCurrent = list.map((t) => (typeof t === "string" ? t : t.tag));
         renderTagChips();
+        renderRecentTagSuggestions();
     } catch (err) {
         videoTagsChips.innerHTML = `<div class="pl-empty">Ошибка загрузки тегов</div>`;
         console.error("Tags load error:", err);
+    }
+}
+
+function renderRecentTagSuggestions() {
+    videoTagsRecent.innerHTML = "";
+    const recent = getRecentTags().filter((t) => !_tagsCurrent.includes(t));
+    if (!recent.length) return;
+
+    const label = document.createElement("span");
+    label.className = "video-tags-recent-label";
+    label.textContent = "Недавние:";
+    videoTagsRecent.appendChild(label);
+
+    for (const tag of recent) {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "tag-chip tag-chip--suggest";
+        chip.textContent = tag;
+        chip.addEventListener("click", () => quickAddTag(tag));
+        videoTagsRecent.appendChild(chip);
+    }
+}
+
+async function quickAddTag(tag) {
+    if (!tag || !_tagsVideo || _tagsCurrent.includes(tag)) return;
+    _tagsCurrent.push(tag);
+    renderTagChips();
+    renderRecentTagSuggestions();
+
+    try {
+        await _onAddTag(_tagsVideo.id, tag);
+        addRecentTag(tag);
+        _onTagsChanged?.();
+    } catch (err) {
+        _tagsCurrent = _tagsCurrent.filter((t) => t !== tag);
+        renderTagChips();
+        renderRecentTagSuggestions();
+        showToast("⚠ Не удалось добавить тег");
+        console.error("Add tag error:", err);
     }
 }
 
@@ -593,13 +661,16 @@ async function commitAddTag() {
     videoTagsInput.value = "";
     _tagsCurrent.push(tag);
     renderTagChips();
+    renderRecentTagSuggestions();
 
     try {
         await _onAddTag(_tagsVideo.id, tag);
+        addRecentTag(tag);
         _onTagsChanged?.();
     } catch (err) {
         _tagsCurrent = _tagsCurrent.filter((t) => t !== tag);
         renderTagChips();
+        renderRecentTagSuggestions();
         showToast("⚠ Не удалось добавить тег");
         console.error("Add tag error:", err);
     }
@@ -613,6 +684,7 @@ async function removeTagChip(tag, chipEl) {
     try {
         await _onRemoveTag(_tagsVideo.id, tag);
         _onTagsChanged?.();
+        renderRecentTagSuggestions();
     } catch (err) {
         _tagsCurrent = prev;
         renderTagChips();
@@ -823,9 +895,11 @@ function syncTagModeButtons() {
 async function renderSelectorRows(query) {
     plSelectorList.innerHTML = "";
     const q = query.toLowerCase();
-    const entries = Object.entries(_selectorPlaylists).filter(
+    let entries = Object.entries(_selectorPlaylists).filter(
         ([name]) => !q || name.toLowerCase().includes(q)
     );
+
+    entries = sortPlaylistEntries(entries); // ← добавили
 
     if (!entries.length) {
         const empty = document.createElement("div");
@@ -838,6 +912,19 @@ async function renderSelectorRows(query) {
     for (const [name, data] of entries) {
         plSelectorList.appendChild(await buildSelectorRow(name, data));
     }
+}
+
+const PRIORITY_ORDER = ["Все", "bookmarks", "liked"];
+
+function sortPlaylistEntries(entries) {
+    return entries.sort(([aName], [bName]) => {
+        const aIdx = PRIORITY_ORDER.indexOf(aName);
+        const bIdx = PRIORITY_ORDER.indexOf(bName);
+        if (aIdx === -1 && bIdx === -1) return 0; // стабильная сортировка сохранит остальной порядок
+        if (aIdx === -1) return 1;
+        if (bIdx === -1) return -1;
+        return aIdx - bIdx;
+    });
 }
 
 async function buildSelectorRow(name, data) {

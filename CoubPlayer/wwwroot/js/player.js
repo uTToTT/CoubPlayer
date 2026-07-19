@@ -26,6 +26,8 @@ export class Player {
         this.onPlayStateChange = null;
         this._generation = 0;
 
+        this.isVirtualPlaylist = () => false;
+
         this._activeAnimations = null;
         this._pendingOutgoing = null;
 
@@ -83,6 +85,16 @@ export class Player {
     setPlaylist(list, playlistName = null) {
         this.playlist = list;
         if (playlistName !== null) this.currentPlaylistName = playlistName;
+    }
+
+    /**
+     * Задаёт предикат, определяющий, является ли плейлист виртуальным
+     * (не хранится на сервере — например, "Все"). Для таких плейлистов
+     * не нужно дёргать /viewed, т.к. такого эндпоинта не существует.
+     * @param {(name: string | null) => boolean} predicate
+     */
+    setVirtualPlaylistPredicate(predicate) {
+        this.isVirtualPlaylist = predicate;
     }
 
     /**
@@ -386,6 +398,7 @@ export class Player {
 
     async _markViewed(item) {
         if (!this.currentPlaylistName || !item.id) return;
+        if (this.isVirtualPlaylist(this.currentPlaylistName)) return; // ← добавили
         try {
             await markVideoViewed(this.currentPlaylistName, item.id);
             item.lastViewed = new Date().toISOString();
