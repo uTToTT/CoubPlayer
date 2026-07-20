@@ -402,9 +402,9 @@ namespace CoubPlayer
             var jitter = new Random();
             var total = urls.Count;
             var index = 0;
-            var needsDelay = false; // ставим паузу только после реальной загрузки файлов, не после кэша
+            var needsDelay = false;
 
-            Console.WriteLine($"[{playlist}] Начало загрузки: {total} роликов");
+            ConsoleLog.Section($"ЗАГРУЗКА: {playlist} ({total} роликов)");
 
             foreach (var url in urls)
             {
@@ -412,26 +412,24 @@ namespace CoubPlayer
 
                 if (needsDelay) await Task.Delay(1500 + jitter.Next(0, 800));
 
-                Console.WriteLine($"[{playlist}] ({index}/{total}) Обработка: {url}");
+                var counter = $"[{index,4}/{total}]";
+                ConsoleLog.Info($"  {counter} {url}");
 
                 var result = await _downloadService.DownloadAsync(url);
                 results.Add(result);
 
-                // Пауза перед следующим роликом нужна, только если этот ролик реально
-                // качался с серверов Coub. Если он уже был на диске (AlreadyExisted)
-                // или скачивание не удалось до реальной загрузки файлов — паузу пропускаем,
-                // так как лишнего трафика к API/CDN не было и риска бана нет.
                 needsDelay = result.Success && !result.AlreadyExisted;
 
                 if (!result.Success)
                 {
-                    Console.WriteLine($"[{playlist}] ({index}/{total}) ОШИБКА [{result.Id}]: {result.Error}");
+                    ConsoleLog.Error($"  {counter} [{result.Id}] {result.Error}");
                     continue;
                 }
 
-                Console.WriteLine(result.AlreadyExisted
-                    ? $"[{playlist}] ({index}/{total}) Уже скачано ранее, пропускаем паузу: {result.Id} \"{result.Title}\""
-                    : $"[{playlist}] ({index}/{total}) Успешно скачано: {result.Id} \"{result.Title}\"");
+                if (result.AlreadyExisted)
+                    ConsoleLog.Muted($"  {counter} уже скачано ранее, пропускаем: {result.Id} \"{result.Title}\"");
+                else
+                    ConsoleLog.Success($"  {counter} {result.Id} \"{result.Title}\"");
 
                 UpsertCoubListEntry(result);
 
@@ -457,7 +455,9 @@ namespace CoubPlayer
                 });
             }
 
-            Console.WriteLine($"[{playlist}] Загрузка завершена: успешно {results.Count(r => r.Success)}/{total}");
+            ConsoleLog.Divider();
+            ConsoleLog.Success($"[{playlist}] Загрузка завершена: успешно {results.Count(r => r.Success)}/{total}");
+            ConsoleLog.Divider();
 
             return results;
         }

@@ -80,9 +80,29 @@ namespace CoubPlayer.Services
             var folder = Path.Combine(_dataDir, id);
             var videoPath = Path.Combine(folder, "video.mp4");
 
+            // Быстрый путь: если ролик уже скачан — не делаем сетевой запрос к API вообще.
+            // Раньше метаданные запрашивались всегда, даже для уже скачанных роликов,
+            // просто ради title — это и было узким местом (~10 роликов/сек на сетевую задержку).
+            if (File.Exists(videoPath))
+            {
+                string? existingAudio = null;
+                var mp3Path = Path.Combine(folder, "audio.mp3");
+                var m4aPath = Path.Combine(folder, "audio.m4a");
+                if (File.Exists(mp3Path)) existingAudio = $"/Data/Coubs/{id}/audio.mp3";
+                else if (File.Exists(m4aPath)) existingAudio = $"/Data/Coubs/{id}/audio.m4a";
+
+                return new CoubDownloadResult
+                {
+                    Id = id,
+                    Title = null, // заголовок не запрашивали — контроллер сам подставит id как фолбэк
+                    Success = true,
+                    AlreadyExisted = true,
+                    Video = $"/Data/Coubs/{id}/video.mp4",
+                    Audio = existingAudio
+                };
+            }
+
             var client = _httpClientFactory.CreateClient("Coub");
-            // Один UA на весь ролик (метаданные + видео + аудио) —
-            // ротируется только между разными роликами, а не внутри одного
             var userAgent = CoubUserAgents.GetRandomAgent();
 
             try
@@ -91,10 +111,10 @@ namespace CoubPlayer.Services
                 var data = JObject.Parse(json);
                 var title = data["title"]?.ToString() ?? id;
 
+                // Защита от гонки: файл мог появиться между проверкой выше и этим запросом
+                // (например, при параллельных вызовах DownloadAsync для одного id)
                 if (File.Exists(videoPath))
                 {
-                    // Уже скачано ранее (например, в другой плейлист) — файлы трогать не нужно,
-                    // но пути для coub_list.json всё равно нужно вернуть
                     string? existingAudio = null;
                     var mp3Path = Path.Combine(folder, "audio.mp3");
                     var m4aPath = Path.Combine(folder, "audio.m4a");

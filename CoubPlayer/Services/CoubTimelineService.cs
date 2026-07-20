@@ -48,7 +48,8 @@ namespace CoubPlayer.Services
                 _ => throw new InvalidOperationException($"Неизвестная категория: {category}")
             };
 
-            Console.WriteLine($"[timeline:{category}] Начало выгрузки ленты (лимит: {(isUnlimited ? "без ограничений" : limit.ToString())})");
+            ConsoleLog.Section($"TIMELINE: {category}");
+            ConsoleLog.Info($"  Лимит: {(isUnlimited ? "без ограничений" : limit.ToString())}");
 
             var client = _httpClientFactory.CreateClient("Coub");
             var jitter = new Random();
@@ -63,15 +64,14 @@ namespace CoubPlayer.Services
                 var userAgent = CoubUserAgents.GetRandomAgent();
                 var url = string.Format(template, PageSize, page);
 
-                Console.WriteLine($"[timeline:{category}] Страница {page}{(totalPages != null ? $"/{totalPages}" : "")}, получено ссылок: {result.Count}");
+                var pageLabel = totalPages != null ? $"{page,3}/{totalPages}" : $"{page,3}";
+                ConsoleLog.Page($"  [Стр. {pageLabel}]  собрано: {result.Count,-5} → запрос...");
 
                 using var res = await HttpRetryHelper.SendWithRetryAsync(client, () =>
-                {var client = _httpClientFactory.CreateClient("Coub");
+                {
                     var req = new HttpRequestMessage(HttpMethod.Get, url);
                     req.Headers.UserAgent.ParseAdd(userAgent);
                     req.Headers.TryAddWithoutValidation("Cookie", $"remember_token={token}");
-                    // Заголовки, приближающие запрос к обычному браузерному —
-                    // без них antibot-защита Coub чаще отбивает 403
                     req.Headers.TryAddWithoutValidation("Accept", "application/json");
                     req.Headers.TryAddWithoutValidation("Accept-Language", "en-US,en;q=0.9,ru;q=0.8");
                     req.Headers.TryAddWithoutValidation("Referer", "https://coub.com/");
@@ -83,30 +83,27 @@ namespace CoubPlayer.Services
                 {
                     consecutiveForbidden++;
 
-                    // 403 на самой первой странице — это ещё до того, как токен
-                    // хоть раз подтвердился успешным ответом, так что тут действительно
-                    // похоже на битый/просроченный токен, а не на антибот. Ретраить бессмысленно.
                     if (page == 1)
                     {
-                        Console.WriteLine($"[timeline:{category}] ОШИБКА: неверный или просроченный токен (403 на первой странице)");
+                        ConsoleLog.Error($"[{category}] Неверный или просроченный токен (403 на первой странице)");
                         throw new InvalidOperationException("Неверный или просроченный access token");
                     }
 
                     if (consecutiveForbidden > MaxConsecutiveForbidden)
                     {
-                        Console.WriteLine($"[timeline:{category}] ОШИБКА: {consecutiveForbidden} подряд 403 на странице {page} — похоже на устойчивую блокировку, прерываем");
+                        ConsoleLog.Error($"[{category}] {consecutiveForbidden} подряд 403 на странице {page} — похоже на устойчивую блокировку, прерываем");
                         throw new InvalidOperationException(
                             "Coub стабильно отдаёт 403 (похоже на антибот-блокировку по частоте запросов, " +
                             "а не на проблему с токеном). Попробуйте повторить синхронизацию позже.");
                     }
 
                     var backoff = 5000 * consecutiveForbidden + jitter.Next(0, 1500);
-                    Console.WriteLine($"[timeline:{category}] 403 на странице {page} (попытка {consecutiveForbidden}/{MaxConsecutiveForbidden}), похоже на временную антибот-блокировку — жду {backoff / 1000}с и повторяю");
+                    ConsoleLog.Warn($"  [Стр. {page}] 403 (попытка {consecutiveForbidden}/{MaxConsecutiveForbidden}) — жду {backoff / 1000}с и повторяю");
                     await Task.Delay(backoff);
-                    continue; // page не увеличиваем — повторяем эту же страницу
+                    continue;
                 }
 
-                consecutiveForbidden = 0; // сбрасываем счётчик после любого не-403 ответа
+                consecutiveForbidden = 0;
                 res.EnsureSuccessStatusCode();
 
                 var json = await res.Content.ReadAsStringAsync();
@@ -116,18 +113,19 @@ namespace CoubPlayer.Services
 
                 if (data["coubs"] is not JArray coubs || coubs.Count == 0)
                 {
-                    Console.WriteLine($"[timeline:{category}] Страница {page} пуста, останавливаемся");
+                    ConsoleLog.Muted($"  [Стр. {page}] пуста, останавливаемся");
                     break;
                 }
 
                 var addedOnPage = 0;
+                var repostsOnPage = 0;
                 foreach (var coub in coubs)
                 {
                     if (result.Count >= effectiveLimit) break;
 
                     var recoubTo = coub["recoub_to"];
                     var isRepost = recoubTo != null && recoubTo.Type != JTokenType.Null;
-                    if (isRepost) continue;
+                    if (isRepost) { repostsOnPage++; continue; }
 
                     var permalink = coub["permalink"]?.ToString();
                     if (!string.IsNullOrEmpty(permalink))
@@ -137,7 +135,7 @@ namespace CoubPlayer.Services
                     }
                 }
 
-                Console.WriteLine($"[timeline:{category}] Страница {page}: добавлено {addedOnPage} (репосты пропущены)");
+                ConsoleLog.Success($"  [Стр. {pageLabel}]  +{addedOnPage,-3} (репостов пропущено: {repostsOnPage})  всего: {result.Count}");
 
                 if (result.Count >= effectiveLimit) break;
                 if (page >= (totalPages ?? page) || page >= MaxApiPage) break;
@@ -146,7 +144,9 @@ namespace CoubPlayer.Services
                 await Task.Delay(2000 + jitter.Next(0, 800));
             }
 
-            Console.WriteLine($"[timeline:{category}] Выгрузка завершена: собрано {result.Count} ссылок");
+            ConsoleLog.Divider();
+            ConsoleLog.Success($"[{category}] Выгрузка завершена: собрано {result.Count} ссылок");
+            ConsoleLog.Divider();
 
             return result;
         }
