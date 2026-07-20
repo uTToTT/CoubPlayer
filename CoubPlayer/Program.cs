@@ -12,6 +12,13 @@ namespace CoubPlayer
             builder.Services.AddSingleton<CoubDownloadService>();
             builder.Services.AddSingleton<CoubTimelineService>();
             builder.Services.AddSingleton<CoubListService>();
+            builder.Services.AddHttpClient("Coub")
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+    {
+        UseCookies = false, // критично: не даём хендлеру подмешивать свой Set-Cookie
+                            // поверх ручного заголовка Cookie с remember_token
+        AutomaticDecompression = System.Net.DecompressionMethods.All
+    });
             var app = builder.Build();
 
             // Переносит старые ролики (скачанные консольным CoubDownloader в wwwroot/Coubs)

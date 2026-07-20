@@ -80,7 +80,7 @@ namespace CoubPlayer.Services
             var folder = Path.Combine(_dataDir, id);
             var videoPath = Path.Combine(folder, "video.mp4");
 
-            var client = _httpClientFactory.CreateClient();
+            var client = _httpClientFactory.CreateClient("Coub");
             // Один UA на весь ролик (метаданные + видео + аудио) —
             // ротируется только между разными роликами, а не внутри одного
             var userAgent = CoubUserAgents.GetRandomAgent();

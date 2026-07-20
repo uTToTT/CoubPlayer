@@ -350,7 +350,13 @@ namespace CoubPlayer
             if (string.IsNullOrWhiteSpace(req.Token))
                 return BadRequest("Token is required");
 
-            var limit = req.Limit <= 0 ? 25 : Math.Min(req.Limit, 1000);
+            int limit;
+            if (req.Limit == -1)
+                limit = -1;
+            else if (req.Limit <= 0)
+                limit = 25;
+            else
+                limit = req.Limit;
 
             // Плейлист для категории создаём, если его ещё нет
             ExecuteLocked(data =>
