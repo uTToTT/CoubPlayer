@@ -970,7 +970,7 @@ async function buildSelectorRow(name, data) {
     const tile = document.createElement("div");
     tile.className = "pl-tile" + (isActive ? " pl-tile--active" : "");
 
-    const thumb = await buildIconEl(name, true);
+    const thumb = await buildIconEl(name, false);
     thumb.classList.add("pl-tile-thumb");
     tile.appendChild(thumb);
 
@@ -1013,7 +1013,28 @@ async function buildSelectorRow(name, data) {
         e.stopPropagation();
         await handleSharePlaylist(name, data);
     });
+
     actions.appendChild(shareBtn);
+
+    const iconBtn = document.createElement("button");
+    iconBtn.className = "pl-row-action-btn pl-row-icon-btn";
+    iconBtn.title = "Изменить иконку";
+    iconBtn.innerHTML = `<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" width="13" height="13"><rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.2"/><circle cx="5.5" cy="5.5" r="1.2" fill="currentColor"/><path d="M2.5 11.5L6 8l2 2 3-3.5 2.5 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    iconBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        iconPick(name, (newUrl) => {
+            const thumb = tile.querySelector(".pl-row-icon");
+            if (thumb) {
+                thumb.innerHTML = "";
+                const img = document.createElement("img");
+                img.src = iconUrlForPlaylist(name);
+                img.alt = name;
+                img.style.cssText = "width:100%; height:100%; border-radius:6px; object-fit:cover; display:block;";
+                thumb.appendChild(img);
+            }
+        });
+    });
+    actions.appendChild(iconBtn);
 
     if (!isRO) {
         const renameBtn = document.createElement("button");
