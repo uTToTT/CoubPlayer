@@ -39,6 +39,23 @@ namespace CoubPlayer
 
         #region Icons
 
+        private void EnsurePlaylistsFileExists()
+        {
+            if (System.IO.File.Exists(_path)) return;
+
+            var dir = Path.GetDirectoryName(_path)!;
+            Directory.CreateDirectory(dir);
+
+            var emptyJson = JsonConvert.SerializeObject(new Dictionary<string, Playlist>(), Formatting.Indented);
+            var tempPath = _path + ".tmp";
+            System.IO.File.WriteAllText(tempPath, emptyJson);
+
+            if (System.IO.File.Exists(_path))
+                System.IO.File.Replace(tempPath, _path, null);
+            else
+                System.IO.File.Move(tempPath, _path);
+        }
+
         [HttpPost("{playlist}/icon")]
         public IActionResult SetIcon([FromRoute] string playlist, IFormFile file)
         {
@@ -98,6 +115,8 @@ namespace CoubPlayer
         {
             lock (_lock)
             {
+                EnsurePlaylistsFileExists();
+
                 var json = System.IO.File.ReadAllText(_path);
                 var data = JsonConvert.DeserializeObject<Dictionary<string, Playlist>>(json)!;
 
@@ -121,6 +140,7 @@ namespace CoubPlayer
         {
             lock (_lock)
             {
+                EnsurePlaylistsFileExists(); // NEW
                 var json = System.IO.File.ReadAllText(_path);
                 return Content(json, "application/json");
             }
