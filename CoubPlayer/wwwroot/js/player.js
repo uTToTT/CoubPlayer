@@ -1,27 +1,19 @@
 // player.js
-// Отвечает исключительно за воспроизведение: play, pause, switch, volume.
-// Вся логика сортировки перенесена в playlist.js.
-
 import { markVideoViewed } from "./api.js";
 import { setLastVideoForPlaylist, getLastVideoForPlaylist } from "./state.js";
 
 export class Player {
-    /**
-     * @param {HTMLVideoElement[]} videoEls — два буфера видео (A и B)
-     * @param {HTMLAudioElement} audioEl
-     * @param {HTMLVideoElement} bgVideoEl
-     */
     constructor(videoEls, audioEl, bgVideoEl) {
         this.videoEls = videoEls;
         this.audio = audioEl;
-        this.bgVideo = bgVideoEl;
+        this.bgCanvas = bgVideoEl;
+        this.bgCtx = this.bgCanvas.getContext("2d");
 
-        this.activeIdx = 0; // индекс активного буфера (0 или 1)
-        this.index = 0;     // индекс текущего элемента в playlist (только runtime, не персистится)
+        this.activeIdx = 0;
+        this.index = 0;
         this.playlist = [];
         this.currentPlaylistName = null;
 
-        /** @type {(() => void) | null} Вызывается при смене видео */
         this.onVideoChange = null;
         this.onPlayStateChange = null;
         this._generation = 0;
@@ -34,9 +26,24 @@ export class Player {
         window.addEventListener("resize", () => {
             this._fitVideo(this.activeVideo);
         });
+
+        this._bgRafId = null;
+        this._startBgLoop();
     }
 
-    // ─── Публичный API ────────────────────────────────────────────────────────
+    _startBgLoop() {
+        const draw = () => {
+            const v = this.activeVideo;
+            if (v.readyState >= 2 && v.videoWidth > 0) {
+                const canvas = this.bgCanvas;
+                if (canvas.width !== window.innerWidth) canvas.width = window.innerWidth;
+                if (canvas.height !== window.innerHeight) canvas.height = window.innerHeight;
+                this.bgCtx.drawImage(v, 0, 0, canvas.width, canvas.height);
+            }
+            this._bgRafId = requestAnimationFrame(draw);
+        };
+        draw();
+    }
 
     getCurrentTime() {
         return this.audio.currentTime || 0;
@@ -48,9 +55,9 @@ export class Player {
     }
 
     /**
-     * Перемотка. Ведущий трек — audio. Видео (основной буфер и фон)
-     * зациклены и короче аудио, поэтому синкаем их по модулю своей длительности.
-     * @param {number} time — секунды
+     * Перемотка. Ведущий трек — audio. Основной видео-буфер зациклен и короче
+     * аудио, синкаем его по модулю своей длительности. Canvas-фон синхронизировать
+     * не нужно — он каждый rAF рисует актуальный кадр activeVideo сам по себе.
      */
     seek(time) {
         const duration = this.getDuration();
@@ -63,11 +70,6 @@ export class Player {
         if (videoDur && isFinite(videoDur) && videoDur > 0) {
             this.activeVideo.currentTime = clamped % videoDur;
         }
-
-        const bgDur = this.bgVideo.duration;
-        if (bgDur && isFinite(bgDur) && bgDur > 0) {
-            this.bgVideo.currentTime = clamped % bgDur;
-        }
     }
 
     get activeVideo() {
@@ -78,32 +80,15 @@ export class Player {
         return this.videoEls[1 - this.activeIdx];
     }
 
-    /**
-     * @param {import("./playlist.js").ResolvedItem[]} list
-     * @param {string | null} playlistName
-     */
     setPlaylist(list, playlistName = null) {
         this.playlist = list;
         if (playlistName !== null) this.currentPlaylistName = playlistName;
     }
 
-    /**
-     * Задаёт предикат, определяющий, является ли плейлист виртуальным
-     * (не хранится на сервере — например, "Все"). Для таких плейлистов
-     * не нужно дёргать /viewed, т.к. такого эндпоинта не существует.
-     * @param {(name: string | null) => boolean} predicate
-     */
     setVirtualPlaylistPredicate(predicate) {
         this.isVirtualPlaylist = predicate;
     }
 
-    /**
-     * Находит индекс, с которого нужно начать воспроизведение для текущего
-     * плейлиста (this.currentPlaylistName), основываясь на id последнего
-     * просмотренного ролика в state. Если сохранённого id нет, либо ролик
-     * больше не встречается в списке (например, был удалён из плейлиста),
-     * возвращает 0.
-     */
     getStartIndex() {
         const savedId = getLastVideoForPlaylist(this.currentPlaylistName);
         if (savedId == null) return 0;
@@ -114,15 +99,14 @@ export class Player {
     setVolume(value) {
         const vol = Math.max(0, Math.min(1, value / 100));
         this.audio.volume = vol;
-        this.bgVideo.volume = vol;
         this.videoEls.forEach((v) => (v.volume = vol));
+        // bgCanvas беззвучен по определению — трогать нечего
     }
 
     getVolume() {
         return Math.round(this.audio.volume * 100);
     }
 
-    /** Запустить видео по индексу (первый запуск или после setPlaylist) */
     async play(index) {
         if (!this._isValidIndex(index)) return;
 
@@ -132,18 +116,15 @@ export class Player {
         this.index = index;
         const item = this.playlist[index];
 
-        // Сбрасываем оба буфера в видимое состояние
         this.videoEls.forEach((v) => {
             v.style.opacity = "1";
             v.style.filter = "";
             v.style.display = "block";
         });
-        // Прячем неактивный буфер
         this.nextVideo.style.display = "none";
 
         this.activeVideo.src = item.video;
         this.audio.src = item.audio;
-        this.bgVideo.src = item.video;
 
         await this._playAll();
         this._notifyChange(item);
@@ -164,7 +145,7 @@ export class Player {
     }
 
     async goToIndex(userIndex) {
-        const index = Number(userIndex) - 1; // пользователь вводит 1..N
+        const index = Number(userIndex) - 1;
         if (!Number.isNaN(index)) await this._switchTo(index);
     }
 
@@ -186,19 +167,13 @@ export class Player {
 
     async restart() {
         this.activeVideo.currentTime = 0;
-        this.bgVideo.currentTime = 0;
         this.audio.currentTime = 0;
         await this._resumeAll();
     }
 
-    // ─── Приватные методы ─────────────────────────────────────────────────────
-
-    /** Переключение через двойной буфер */
     async _switchTo(newIndex) {
         if (!this._isValidIndex(newIndex)) return;
 
-        // Отменяем предыдущую анимацию и инкрементируем поколение.
-        // Все колбэки предыдущего вызова увидят устаревший токен и выйдут.
         this._cancelTransition();
         const generation = ++this._generation;
 
@@ -206,27 +181,21 @@ export class Player {
         const incoming = this.nextVideo;
         const outgoing = this.activeVideo;
 
-        // ── 1. Подготовка incoming: в DOM, но полностью прозрачный ───────────
         incoming.src = newItem.video;
         incoming.style.opacity = "0";
         incoming.style.filter = "blur(12px)";
         incoming.style.display = "block";
 
         this.audio.src = newItem.audio;
-        this._animateBg();
 
-        // ── 2. Swap буфера ────────────────────────────────────────────────────
         outgoing.pause();
         this.activeIdx = 1 - this.activeIdx;
         this.index = newIndex;
 
-        // ── 3. Запуск воспроизведения — await может занять время, за которое
-        //       придёт следующий _switchTo. После await проверяем токен.
         await this._playAll();
 
-        if (generation !== this._generation) return; // устарели — выходим
+        if (generation !== this._generation) return;
 
-        // ── 4. Параллельный crossfade ─────────────────────────────────────────
         const DURATION = 320;
         const EASING = "cubic-bezier(0.4, 0, 0.2, 1)";
 
@@ -250,8 +219,6 @@ export class Player {
         this._pendingOutgoing = outgoing;
 
         fadeIn.finished.then(() => {
-            // Проверяем токен — если устарел, DOM уже привёл в порядок
-            // следующий _switchTo через _cancelTransition(). Не трогаем ничего.
             if (generation !== this._generation) return;
 
             incoming.style.opacity = "1";
@@ -267,27 +234,6 @@ export class Player {
         this._markViewed(newItem);
     }
 
-    _animateBg() {
-        const bg = this.bgVideo;
-
-        if (this._bgAnimation) {
-            this._bgAnimation.cancel();
-            this._bgAnimation = null;
-        }
-
-        // Просто плавно перемаргиваем — src уже обновит _syncBg
-        const anim = bg.animate(
-            [{ opacity: 0.6 }, { opacity: 1 }],
-            { duration: 300, easing: "ease", fill: "forwards" }
-        );
-
-        this._bgAnimation = anim;
-        anim.finished.then(() => {
-            bg.style.opacity = "1";
-            this._bgAnimation = null;
-        }).catch(() => { });
-    }
-
     _cancelTransition() {
         if (this._activeAnimations) {
             this._activeAnimations.forEach((a) => a.cancel());
@@ -295,7 +241,6 @@ export class Player {
         }
 
         if (this._pendingOutgoing) {
-            // Мгновенно скрываем outgoing — он больше не нужен
             this._pendingOutgoing.style.display = "none";
             this._pendingOutgoing.style.opacity = "1";
             this._pendingOutgoing.style.filter = "";
@@ -330,15 +275,11 @@ export class Player {
     async _playAll() {
         try {
             this.activeVideo.muted = true;
-            this.bgVideo.muted = true;
             this._fitVideo(this.activeVideo);
             await this.activeVideo.play();
             this.activeVideo.addEventListener("play", () => this.onPlayStateChange?.(false), { once: false });
             this.activeVideo.addEventListener("pause", () => this.onPlayStateChange?.(true), { once: false });
             this.audio.play().catch(() => { });
-
-            // Синхронизируем bg с основным видео
-            this._syncBg();
             this.onPlayStateChange?.(false);
         } catch (err) {
             console.warn("Playback error:", err);
@@ -347,7 +288,6 @@ export class Player {
 
     _pauseAll() {
         this.activeVideo.pause();
-        this.bgVideo.pause();
         this.audio.pause();
         this.onPlayStateChange?.(true);
     }
@@ -355,35 +295,14 @@ export class Player {
     async _resumeAll() {
         try {
             this.activeVideo.muted = true;
-            this.bgVideo.muted = true;
             await this.activeVideo.play();
             this.activeVideo.addEventListener("play", () => this.onPlayStateChange?.(false), { once: false });
             this.activeVideo.addEventListener("pause", () => this.onPlayStateChange?.(true), { once: false });
             this.audio.play().catch(() => { });
-            this._syncBg();
             this.onPlayStateChange?.(false);
         } catch (err) {
             console.warn("Resume error:", err);
         }
-    }
-
-    _syncBg() {
-        const bg = this.bgVideo;
-        const main = this.activeVideo;
-
-        // Один и тот же src — просто выравниваем время
-        if (bg.src === main.src) {
-            bg.currentTime = main.currentTime;
-            bg.play().catch(() => { });
-            return;
-        }
-
-        // Новый src — ждём готовности и синхронизируем
-        bg.src = main.src;
-        bg.addEventListener("canplay", () => {
-            bg.currentTime = main.currentTime;
-            bg.play().catch(() => { });
-        }, { once: true });
     }
 
     _isValidIndex(index) {
@@ -391,14 +310,13 @@ export class Player {
     }
 
     _notifyChange(item) {
-        // Персистим id ролика (а не индекс!) отдельно для текущего плейлиста
         setLastVideoForPlaylist(this.currentPlaylistName, item.id);
         if (this.onVideoChange) this.onVideoChange(item);
     }
 
     async _markViewed(item) {
         if (!this.currentPlaylistName || !item.id) return;
-        if (this.isVirtualPlaylist(this.currentPlaylistName)) return; // ← добавили
+        if (this.isVirtualPlaylist(this.currentPlaylistName)) return;
         try {
             await markVideoViewed(this.currentPlaylistName, item.id);
             item.lastViewed = new Date().toISOString();

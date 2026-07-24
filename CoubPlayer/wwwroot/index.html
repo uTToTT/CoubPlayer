@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <title>Coub Player</title>
     <link rel="stylesheet" href="css/style.css" />
-
+    <link rel="icon" type="image/png" href="Data/icons/player_icon.png" />
     <style>
       .top-controls-left {
         display: flex;
@@ -139,7 +139,8 @@
     <div id="realTimeClock" class="rt-clock">--:--:--</div>
 
     <!-- Фоновое видео -->
-    <video id="bgVideo" autoplay muted loop></video>
+    <!-- на -->
+    <canvas id="bgVideo"></canvas>
 
     <!-- Видео буферы -->
     <div class="video-wrapper">
