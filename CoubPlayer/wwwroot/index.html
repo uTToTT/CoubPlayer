@@ -89,6 +89,48 @@
         pointer-events: none;
         user-select: none;
       }
+
+      .import-pl-step textarea {
+        width: 100%;
+        resize: vertical;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 8px;
+        color: #f4eef1;
+        padding: 8px 10px;
+        font: inherit;
+        margin-bottom: 10px;
+      }
+      .import-pl-info {
+        margin-bottom: 12px;
+        font-size: 13px;
+        color: #d9cfd4;
+      }
+      .import-pl-merge-note {
+        margin-top: 6px;
+        color: #f4b740;
+      }
+      .import-pl-name-label {
+        display: block;
+        font-size: 13px;
+        margin-bottom: 14px;
+      }
+      .import-pl-name-label input {
+        display: block;
+        width: 100%;
+        margin-top: 6px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 8px;
+        color: #f4eef1;
+        padding: 8px 10px;
+        font: inherit;
+      }
+      .import-pl-actions {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+      }
     </style>
   </head>
 
@@ -344,6 +386,19 @@
               </span>
               Bookmarks
             </button>
+            <button
+              id="importPlaylistBtn"
+              class="dl-dropdown-item"
+              title="Загрузить сторонний плейлист"
+            >
+              <span class="dl-dropdown-item-icon">
+                <span class="icon-slot" data-icon-name="import">
+                  <span class="icon-fallback">📥</span>
+                  <img class="icon-custom" alt="" draggable="false" />
+                </span>
+              </span>
+              Сторонний плейлист
+            </button>
           </div>
         </div>
       </div>
@@ -583,5 +638,61 @@
 
     <!-- Подстановка нарисованных иконок из /icons (см. css/style.css, блок CUSTOM ICONS) -->
     <script src="js/icons.js"></script>
+
+    <!-- IMPORT PLAYLIST panel -->
+    <div
+      id="importPlaylistOverlay"
+      class="pl-editor-overlay pl-editor-overlay--modal"
+    >
+      <div id="importPlaylistPanel" class="pl-editor-panel">
+        <div class="pl-editor-header">
+          <div class="pl-editor-header-text">
+            <div class="pl-editor-title">Загрузить сторонний плейлист</div>
+            <div class="pl-editor-subtitle">Вставьте код плейлиста</div>
+          </div>
+          <button class="pl-editor-close" id="importPlaylistClose">✕</button>
+        </div>
+
+        <div class="import-pl-step" id="importStepInput">
+          <textarea
+            id="importPlaylistInput"
+            placeholder="Вставьте код плейлиста (CPSHARE1:...)"
+            rows="4"
+          ></textarea>
+          <button class="pl-new-btn" id="importPlaylistParseBtn">
+            Разобрать
+          </button>
+        </div>
+
+        <div class="import-pl-step hidden" id="importStepPreview">
+          <div class="import-pl-info">
+            <div>Видео в плейлисте: <b id="importPlaylistCount">0</b></div>
+            <div
+              id="importPlaylistMergeNote"
+              class="import-pl-merge-note hidden"
+            ></div>
+          </div>
+          <label class="import-pl-name-label">
+            Название плейлиста:
+            <input id="importPlaylistName" type="text" maxlength="80" />
+          </label>
+          <div class="import-pl-actions">
+            <button class="pl-new-btn" id="importPlaylistBackBtn">
+              ← Назад
+            </button>
+            <button
+              class="pl-new-btn pl-new-btn--accent"
+              id="importPlaylistConfirmBtn"
+            >
+              Импортировать
+            </button>
+          </div>
+        </div>
+
+        <div class="import-pl-step hidden" id="importStepProgress">
+          <div id="importPlaylistProgressText">Импорт…</div>
+        </div>
+      </div>
+    </div>
   </body>
 </html>

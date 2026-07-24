@@ -1,6 +1,6 @@
 // ui.js — весь рендеринг UI.
 import { getRecentPlaylists, addRecentPlaylist, getRecentTags, addRecentTag } from "./state.js";
-
+import { encodePlaylistShare, decodePlaylistShare } from "./share.js";
 
 
 
@@ -1002,10 +1002,20 @@ async function buildSelectorRow(name, data) {
         _onSelectPlaylist(name);
     });
 
-    if (!isRO) {
-        const actions = document.createElement("div");
-        actions.className = "pl-row-actions";
+    const actions = document.createElement("div");
+    actions.className = "pl-row-actions";
 
+    const shareBtn = document.createElement("button");
+    shareBtn.className = "pl-row-action-btn pl-row-share-btn";
+    shareBtn.title = "Поделиться плейлистом";
+    shareBtn.innerHTML = `<span class="icon-slot" data-icon-name="share"><span class="icon-fallback">📤</span><img class="icon-custom" alt="" draggable="false" /></span>`;
+    shareBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        await handleSharePlaylist(name, data);
+    });
+    actions.appendChild(shareBtn);
+
+    if (!isRO) {
         const renameBtn = document.createElement("button");
         renameBtn.className = "pl-row-action-btn pl-row-rename-btn";
         renameBtn.title = "Переименовать";
@@ -1026,10 +1036,21 @@ async function buildSelectorRow(name, data) {
 
         actions.appendChild(renameBtn);
         actions.appendChild(deleteBtn);
-        tile.appendChild(actions);
     }
 
+    tile.appendChild(actions);
+
     return tile;
+}
+
+async function handleSharePlaylist(name, data) {
+    const code = encodePlaylistShare(name, data.videos || {});
+    try {
+        await navigator.clipboard.writeText(code);
+        showToast(`✓ Код плейлиста «${name}» скопирован`);
+    } catch {
+        prompt("Скопируйте код плейлиста вручную:", code);
+    }
 }
 
 export async function sanitizeBrokenPlaylists() {
@@ -1392,7 +1413,8 @@ export function isAnyPanelOpen() {
     return (
         editorOverlay.classList.contains("show") ||
         sortingOverlay.classList.contains("show") ||
-        videoTagsOverlay.classList.contains("show")
+        videoTagsOverlay.classList.contains("show") ||
+        importOverlay.classList.contains("show") // NEW
     );
 }
 
@@ -1463,4 +1485,129 @@ export function initSeekBar(onSeek) {
             seekBarDuration.textContent = formatTime(duration);
         },
     };
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// IMPORT PLAYLIST — загрузка стороннего плейлиста по коду
+// ═════════════════════════════════════════════════════════════════════════════
+
+const importOverlay = document.getElementById("importPlaylistOverlay");
+const importPanel = document.getElementById("importPlaylistPanel");
+const importClose = document.getElementById("importPlaylistClose");
+const importInput = document.getElementById("importPlaylistInput");
+const importParseBtn = document.getElementById("importPlaylistParseBtn");
+const importStepInput = document.getElementById("importStepInput");
+const importStepPreview = document.getElementById("importStepPreview");
+const importStepProgress = document.getElementById("importStepProgress");
+const importCountEl = document.getElementById("importPlaylistCount");
+const importMergeNote = document.getElementById("importPlaylistMergeNote");
+const importNameInput = document.getElementById("importPlaylistName");
+const importBackBtn = document.getElementById("importPlaylistBackBtn");
+const importConfirmBtn = document.getElementById("importPlaylistConfirmBtn");
+const importProgressText = document.getElementById("importPlaylistProgressText");
+const importPlaylistBtn = document.getElementById("importPlaylistBtn");
+
+let _importPayload = null;
+let _getPlaylistsForImport = null;
+let _onImportConfirm = null;
+
+export function initImportPlaylist({ getPlaylists, onImport }) {
+    _getPlaylistsForImport = getPlaylists;
+    _onImportConfirm = onImport;
+
+    importPlaylistBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openImportOverlay();
+    });
+
+    importClose.addEventListener("click", closeImportOverlay);
+
+    importParseBtn.addEventListener("click", () => {
+        try {
+            _importPayload = decodePlaylistShare(importInput.value);
+        } catch (err) {
+            showToast("⚠ " + err.message);
+            return;
+        }
+        showPreviewStep();
+    });
+
+    importNameInput.addEventListener("input", updateMergeNote);
+    importBackBtn.addEventListener("click", () => showStep("input"));
+
+    importConfirmBtn.addEventListener("click", async () => {
+        if (!_importPayload) return;
+        const targetName = importNameInput.value.trim();
+        if (!targetName) {
+            showToast("⚠ Укажите название плейлиста");
+            return;
+        }
+
+        showStep("progress");
+        importProgressText.textContent = "Импорт…";
+
+        try {
+            const summary = await _onImportConfirm(targetName, _importPayload.items);
+            closeImportOverlay();
+            showToast(
+                `✓ «${targetName}»: добавлено ${summary.addedLocally}, скачано ${summary.downloaded}` +
+                (summary.failedDownloads ? `, ошибок ${summary.failedDownloads}` : "")
+            );
+        } catch (err) {
+            showStep("preview");
+            showToast("⚠ Ошибка импорта: " + err.message);
+        }
+    });
+
+    document.addEventListener("keydown", (e) => {
+        if (e.target.matches("input, textarea")) return;
+        if (e.key === "Escape" && importOverlay.classList.contains("show")) closeImportOverlay();
+    });
+
+    document.addEventListener("click", (e) => {
+        if (
+            importOverlay.classList.contains("show") &&
+            !importPanel.contains(e.target) &&
+            !e.target.closest("#importPlaylistBtn")
+        ) {
+            closeImportOverlay();
+        }
+    });
+}
+
+function openImportOverlay() {
+    _importPayload = null;
+    importInput.value = "";
+    showStep("input");
+    importOverlay.classList.add("show");
+    requestAnimationFrame(() => importInput.focus());
+}
+
+function closeImportOverlay() {
+    importOverlay.classList.remove("show");
+}
+
+function showStep(step) {
+    importStepInput.classList.toggle("hidden", step !== "input");
+    importStepPreview.classList.toggle("hidden", step !== "preview");
+    importStepProgress.classList.toggle("hidden", step !== "progress");
+}
+
+function showPreviewStep() {
+    importCountEl.textContent = _importPayload.items.length;
+    importNameInput.value = _importPayload.title || "Playlist";
+    updateMergeNote();
+    showStep("preview");
+}
+
+function updateMergeNote() {
+    const name = importNameInput.value.trim();
+    const playlists = _getPlaylistsForImport ? _getPlaylistsForImport() : {};
+    const exists = name && playlists[name];
+    importMergeNote.classList.toggle("hidden", !exists);
+    if (exists) {
+        const count = Object.keys(playlists[name].videos || {}).length;
+        importMergeNote.textContent =
+            `Плейлист «${name}» уже существует (${count} видео) — новые видео будут добавлены в него.`;
+    }
 }

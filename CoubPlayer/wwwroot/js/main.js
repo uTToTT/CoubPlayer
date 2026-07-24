@@ -23,6 +23,7 @@ import {
     refreshTagsDatalist,
     initSeekBar,
     initGoToStartButton,
+    initImportPlaylist,
 } from "./ui.js";
 
 const ALL_PLAYLIST_NAME = "Все";
@@ -264,6 +265,50 @@ async function syncFavorites(category, btn) {
         btn.disabled = false;
         label.textContent = originalLabel;
     }
+}
+
+/**
+ * Импортирует сторонний плейлист по списку {id, title}.
+ * Видео, уже скачанные локально (есть в coub_list.json), просто регистрируются
+ * в плейлисте без сети; отсутствующие — докачиваются с coub.com пачкой.
+ * Если плейлист с таким именем уже существует — видео добавляются в него (слияние).
+ */
+async function importPlaylistItems(targetName, items) {
+    if (!state.playlists[targetName]) {
+        await api.createPlaylist({ name: targetName });
+        state.playlists[targetName] = { title: targetName, videos: {} };
+    }
+
+    const alreadyInTarget = new Set(Object.keys(state.playlists[targetName].videos || {}));
+    const knownLocally = new Set(Object.keys(state.coubMap));
+
+    const toAddLocally = items.filter((it) => knownLocally.has(it.id) && !alreadyInTarget.has(it.id));
+    const toDownload = items.filter((it) => !knownLocally.has(it.id) && !alreadyInTarget.has(it.id));
+
+    for (const it of toAddLocally) {
+        try {
+            await api.addVideoToPlaylist(targetName, it.id, it.title);
+        } catch (err) {
+            console.error(`Не удалось добавить ${it.id} в «${targetName}»:`, err);
+        }
+    }
+
+    let failedDownloads = 0;
+    if (toDownload.length) {
+        const results = await api.downloadCoubs(targetName, toDownload.map((it) => it.id));
+        failedDownloads = results.filter((r) => !r.success).length;
+    }
+
+    await refreshData();
+    if (state.selectedPlaylist === targetName) {
+        await selectPlaylist(targetName);
+    }
+
+    return {
+        addedLocally: toAddLocally.length,
+        downloaded: toDownload.length - failedDownloads,
+        failedDownloads,
+    };
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
@@ -547,6 +592,11 @@ async function init() {
     function updatePauseOverlay(isPaused) {
         document.getElementById("pauseOverlay").classList.toggle("visible", isPaused);
     }
+
+    initImportPlaylist({
+        getPlaylists: () => state.playlists,
+        onImport: (targetName, items) => importPlaylistItems(targetName, items),
+    });
 }
 
 init().catch(console.error);
