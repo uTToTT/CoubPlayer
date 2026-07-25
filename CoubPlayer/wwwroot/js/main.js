@@ -6,6 +6,7 @@ import { Player } from "./player.js";
 import { initControls } from "./controls.js";
 import * as api from "./api.js";
 import { state } from "./state.js";
+import { initClickEffects } from "./click-effects.js";
 import {
     initSortingPanel,
     setPlaylistTriggerLabel,
@@ -316,7 +317,12 @@ async function init() {
     await refreshAllTags();
     await refreshTagFilterIds(); // фильтр мог сохраниться с прошлой сессии
 
-
+    initClickEffects({
+        color: "#f43f5e",   // можно поменять на var(--accent-2) / #ec4899 для розового
+        duration: 300,
+        strokeWidth: 2,
+        effectSize: 90,
+    });
 
     // Громкость
     const setVolumeSlider = initVolumeSlider(
