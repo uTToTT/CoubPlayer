@@ -11,23 +11,47 @@ let mode = "crossfade";  // "crossfade" | "flip"
  * Включает обработку mousemove/mouseleave на сцене для tilt-эффекта.
  * Работает только когда активен режим "flip" (см. setFlipMode).
  */
-export function initVideoFlip({ tiltLimit = 15, tiltScale = 1.23, tiltEffect = "repel" } = {}) {
+export function initVideoFlip({ tiltLimit = 15, tiltScale = 1.23, tiltEffect = "repel", edgeDeadzone = 0.10 } = {}) {
     const mult = tiltEffect === "repel" ? -1 : 1;
+
+    const resetTilt = () => {
+        tiltLayer.style.setProperty("--tilt-x", "0deg");
+        tiltLayer.style.setProperty("--tilt-y", "0deg");
+        tiltLayer.style.setProperty("--tilt-scale", "1");
+    };
+
+    // Растягивает долю позиции из "активной" центральной области (deadzone..1-deadzone)
+    // обратно на полный диапазон 0..1 — вызывается только когда курсор уже
+    // прошёл проверку на попадание в мёртвую зону, поэтому клэмп тут не нужен.
+    const remap = (fraction, deadzone) => (fraction - deadzone) / (1 - deadzone * 2);
 
     stage.addEventListener("mousemove", (e) => {
         if (mode !== "flip") return;
         const rect = stage.getBoundingClientRect();
-        const tiltX = ((e.clientY - rect.top) / rect.height - 0.5) * (tiltLimit * 2) * mult;
-        const tiltY = ((e.clientX - rect.left) / rect.width - 0.5) * -(tiltLimit * 2) * mult;
+
+        const rawX = (e.clientY - rect.top) / rect.height;
+        const rawY = (e.clientX - rect.left) / rect.width;
+
+        // Мёртвая зона — полоса вдоль ЛЮБОГО края (верх/низ/лево/право).
+        // Если курсор попал в неё хотя бы по одной оси — наклон сбрасывается в 0,
+        // а не "замирает" на граничном значении.
+        const inDeadzone =
+            rawX < edgeDeadzone || rawX > 1 - edgeDeadzone ||
+            rawY < edgeDeadzone || rawY > 1 - edgeDeadzone;
+
+        if (inDeadzone) {
+            resetTilt();
+            return;
+        }
+
+        const fracX = remap(rawX, edgeDeadzone);
+        const fracY = remap(rawY, edgeDeadzone);
+
+        const tiltX = (fracX - 0.5) * (tiltLimit * 2) * mult;
+        const tiltY = (fracY - 0.5) * -(tiltLimit * 2) * mult;
         tiltLayer.style.setProperty("--tilt-x", `${tiltX}deg`);
         tiltLayer.style.setProperty("--tilt-y", `${tiltY}deg`);
         tiltLayer.style.setProperty("--tilt-scale", tiltScale);
-    });
-
-    stage.addEventListener("mouseleave", () => {
-        tiltLayer.style.setProperty("--tilt-x", "0deg");
-        tiltLayer.style.setProperty("--tilt-y", "0deg");
-        tiltLayer.style.setProperty("--tilt-scale", "1");
     });
 }
 
