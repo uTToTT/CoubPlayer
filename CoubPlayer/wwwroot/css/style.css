@@ -518,7 +518,7 @@ body {
   border-radius: var(--radius-md);
   z-index: 20;
   font-size: 12px;
-  max-width: 240px;
+  max-width: 500px;
   opacity: 0.4;
   transition: opacity 0.3s ease;
 }
@@ -533,8 +533,8 @@ body {
   overflow: hidden;
   /* text-overflow: ellipsis; */
   color: var(--text);
-  font-weight: 500;
-  font-size: 12px;
+  font-weight: 550;
+  font-size: 22px;
 }
 
 /* ═══════════════════════════════════════════════════════════
