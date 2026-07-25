@@ -42,11 +42,40 @@ export class Player {
                 const canvas = this.bgCanvas;
                 if (canvas.width !== window.innerWidth) canvas.width = window.innerWidth;
                 if (canvas.height !== window.innerHeight) canvas.height = window.innerHeight;
-                this.bgCtx.drawImage(v, 0, 0, canvas.width, canvas.height);
+                this._drawCover(v, canvas.width, canvas.height);
             }
             this._bgRafId = requestAnimationFrame(draw);
         };
         draw();
+    }
+
+    // Рисует кадр видео в canvas по принципу object-fit: cover —
+    // с сохранением пропорций и обрезкой лишнего по краям,
+    // вместо растягивания всего кадра в размеры canvas.
+    _drawCover(video, dw, dh) {
+        const sw = video.videoWidth;
+        const sh = video.videoHeight;
+        if (!sw || !sh) return;
+
+        const srcRatio = sw / sh;
+        const dstRatio = dw / dh;
+
+        let sx, sy, sWidth, sHeight;
+        if (srcRatio > dstRatio) {
+            // видео шире экрана — обрезаем по бокам
+            sHeight = sh;
+            sWidth = sh * dstRatio;
+            sx = (sw - sWidth) / 2;
+            sy = 0;
+        } else {
+            // видео выше экрана — обрезаем сверху/снизу
+            sWidth = sw;
+            sHeight = sw / dstRatio;
+            sx = 0;
+            sy = (sh - sHeight) / 2;
+        }
+
+        this.bgCtx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, dw, dh);
     }
 
     getCurrentTime() {
