@@ -1,7 +1,7 @@
 // ui.js — весь рендеринг UI.
 import { getRecentPlaylists, addRecentPlaylist, getRecentTags, addRecentTag } from "./state.js";
 import { encodePlaylistShare, decodePlaylistShare } from "./share.js";
-
+import { revealSimple, revealChars } from "./text-reveal.js";
 
 
 
@@ -32,11 +32,10 @@ const videoIndexInput = document.getElementById("videoIndexInput");
 const videoTotal = document.getElementById("videoTotal");
 
 export function updateVideoInfo(index, title, total) {
-    videoTitleLabel.textContent = title || "—";
-    videoIndexInput.value = index + 1;
-    videoTotal.textContent = `/ ${total}`;
+    revealChars(videoTitleLabel, title || "—");
+    revealSimple(videoIndexInput, index + 1);
+    revealSimple(videoTotal, `/ ${total}`);
 }
-
 // ─── Volume Slider ────────────────────────────────────────────────────────────
 
 const volumeSlider = document.getElementById("volumeSlider");

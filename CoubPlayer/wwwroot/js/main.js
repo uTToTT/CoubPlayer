@@ -7,6 +7,7 @@ import { initControls } from "./controls.js";
 import * as api from "./api.js";
 import { state } from "./state.js";
 import { initClickEffects } from "./click-effects.js";
+import { revealSimple, revealChars } from "./text-reveal.js";
 import {
     initSortingPanel,
     setPlaylistTriggerLabel,
@@ -81,6 +82,7 @@ function updateClock() {
     const mm = String(now.getMinutes()).padStart(2, "0");
     const ss = String(now.getSeconds()).padStart(2, "0");
     realTimeClock.textContent = `${hh}:${mm}:${ss}`;
+    // revealChars(realTimeClock,`${hh}:${mm}:${ss}`)
 }
 
 // Часы не зависят от загрузки плейлистов/плеера — запускаем сразу

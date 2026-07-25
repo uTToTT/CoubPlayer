@@ -531,7 +531,7 @@ body {
   display: block;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+  /* text-overflow: ellipsis; */
   color: var(--text);
   font-weight: 500;
   font-size: 12px;

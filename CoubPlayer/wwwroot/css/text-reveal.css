@@ -1,0 +1,74 @@
+/* ============================================================
+   TEXT REVEAL — vanilla-порт LineMaskSplit (Originkit)
+   Без React/gsap/SplitText — только CSS keyframes + JS-триггер.
+   ============================================================ */
+
+/* ─── Простой вариант (без посимвольного сплита) ────────────
+   Подходит для input, счётчиков, однострочных лейблов с ellipsis */
+.tr-simple {
+  display: inline-block;
+  animation: tr-simple-in 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes tr-simple-in {
+  from {
+    opacity: 0;
+    transform: translateY(35%);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+/* input не поддерживает filter/transform на value напрямую так же плавно
+   во всех браузерах — используем более лёгкую версию для контролов формы */
+input.tr-simple {
+  animation-name: tr-simple-in-input;
+}
+
+@keyframes tr-simple-in-input {
+  from {
+    opacity: 0;
+    transform: translateY(25%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ─── Посимвольный сплит (опционально, для заголовков) ──────
+   ВНИМАНИЕ: ломает text-overflow:ellipsis у родителя — использовать
+   только на элементах без ellipsis/nowrap-обрезки. */
+.tr-mask {
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: bottom;
+}
+
+.tr-char {
+  display: inline-block;
+  will-change: transform, opacity, filter;
+  animation: tr-char-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--tr-i, 0) * 18ms);
+}
+
+.tr-space {
+  width: 0.3em;
+}
+
+@keyframes tr-char-in {
+  from {
+    opacity: 0;
+    transform: translateY(70%);
+    filter: blur(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
