@@ -136,20 +136,29 @@ export function initSortBar(onChange, initial = {}) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// PLAYLIST EDITOR — Pinterest-style (add/remove video from playlists)
+// VIDEO EDITOR — Плейлисты + Теги текущего видео (одно окно, вкладки)
 // ═════════════════════════════════════════════════════════════════════════════
 
 const READONLY_PLAYLISTS = ["bookmarks", "liked", "Все"];
 
-const editorOverlay = document.getElementById("playlistEditorOverlay");
-const editorPanel = document.getElementById("playlistEditorPanel");
-const editorSubtitle = document.getElementById("plEditorSubtitle");
-const editorClose = document.getElementById("plEditorClose");
+const veOverlay = document.getElementById("videoEditorOverlay");
+const vePanel = document.getElementById("videoEditorPanel");
+const veSubtitle = document.getElementById("videoEditorSubtitle");
+const veClose = document.getElementById("videoEditorClose");
+const veTabs = document.getElementById("videoEditorTabs");
+const veTabPlaylists = document.getElementById("veTabPlaylists");
+const veTabTags = document.getElementById("veTabTags");
+
 const editorSearch = document.getElementById("plSearchInput");
 const editorClear = document.getElementById("plSearchClear");
 const editorList = document.getElementById("plEditorList");
 const editorNewBtn = document.getElementById("plNewBtn");
+
+const videoTagsChips = document.getElementById("videoTagsChips");
 const videoTagsRecent = document.getElementById("videoTagsRecent");
+const videoTagsInput = document.getElementById("videoTagsInput");
+const videoTagsAddBtn = document.getElementById("videoTagsAddBtn");
+const allTagsDatalist = document.getElementById("allTagsDatalist");
 
 const toast = document.createElement("div");
 toast.className = "pl-toast";
@@ -158,8 +167,7 @@ document.body.appendChild(toast);
 const NAV_EXEMPT_SELECTORS = [
     "#prev", "#next", "#restart", "#fullscreen",
     "#videoIndexWrapper", ".volume-slider", "#copyLinkBtn",
-    "#playlistEditorPanel", "#videoTagsPanel",
-    "#editTagsBtn", "#editPlaylistsBtn", // NEW — триггеры не должны закрывать чужую панель
+    "#videoEditorPanel", "#videoEditBtn",
 ];
 
 function isNavExempt(target) {
@@ -172,15 +180,36 @@ let _currentTitle = "";
 let _onToggle = null;
 let _onCreatePlaylist = null;
 
-export function initPlaylistEditor({ getPlaylists, onToggle, onCreatePlaylist }) {
+let _tagsCurrent = [];
+let _onGetCoubTags = null;
+let _onAddTag = null;
+let _onRemoveTag = null;
+let _onTagsChanged = null;
+let _suppressNextOverlayClose = false;
+
+let _activeVeTab = "playlists";
+let _tagsLoadedForVideo = null; // id видео, для которого уже подгружены теги
+
+export function initVideoEditor({
+    getPlaylists, onToggle, onCreatePlaylist,
+    getCoubTags, addTag, removeTag, getAllTags, onTagsChanged,
+}) {
     _onToggle = onToggle;
     _onCreatePlaylist = onCreatePlaylist;
+    _onGetCoubTags = getCoubTags;
+    _onAddTag = addTag;
+    _onRemoveTag = removeTag;
+    _onTagsChanged = onTagsChanged;
 
-    editorClose.addEventListener("click", closeEditor);
+    refreshTagsDatalist(getAllTags());
 
-    // editorOverlay.addEventListener("click", (e) => {
-    //     if (!editorPanel.contains(e.target)) closeEditor();
-    // });
+    veClose.addEventListener("click", closeVideoEditor);
+
+    veTabs.addEventListener("click", (e) => {
+        const btn = e.target.closest("button[data-tab]");
+        if (!btn) return;
+        switchVeTab(btn.dataset.tab);
+    });
 
     editorSearch.addEventListener("input", () => {
         const q = editorSearch.value.trim();
@@ -204,67 +233,93 @@ export function initPlaylistEditor({ getPlaylists, onToggle, onCreatePlaylist })
         }
     });
 
-    document.addEventListener("keydown", (e) => {
-        if (e.key === "Escape" && editorOverlay.classList.contains("show")) closeEditor();
+    videoTagsAddBtn.type = "button";
+    videoTagsAddBtn.addEventListener("click", commitAddTag);
+    videoTagsInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            e.stopPropagation();
+            commitAddTag();
+        }
+        e.stopPropagation();
     });
 
-
+    document.addEventListener("keydown", (e) => {
+        if (e.target.matches("input, textarea")) return;
+        if (e.key === "Escape" && veOverlay.classList.contains("show")) closeVideoEditor();
+    });
 
     document.addEventListener("click", (e) => {
-        if (editorOverlay.classList.contains("show")
-            && !editorPanel.contains(e.target)
-            && !isNavExempt(e.target)) {
-            closeEditor();
+        if (_suppressNextOverlayClose) {
+            _suppressNextOverlayClose = false;
+            return;
+        }
+        if (
+            veOverlay.classList.contains("show") &&
+            !vePanel.contains(e.target) &&
+            !isNavExempt(e.target)
+        ) {
+            closeVideoEditor();
         }
     }, true);
 }
 
-export function openPlaylistEditor(video, playlists) {
-    const wasOpen = editorOverlay.classList.contains("show");
+function switchVeTab(tab) {
+    _activeVeTab = tab;
+    const isTags = tab === "tags";
+
+    [...veTabs.children].forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+    veTabPlaylists.classList.toggle("pl-tab-hidden", isTags);
+    veTabTags.classList.toggle("pl-tab-hidden", !isTags);
+
+    if (isTags) {
+        loadTagsForCurrentVideo();
+        requestAnimationFrame(() => videoTagsInput.focus());
+    } else {
+        renderEditorRows(editorSearch.value.trim());
+        requestAnimationFrame(() => editorSearch.focus());
+    }
+}
+
+export function openVideoEditor(video, playlists, tab = _activeVeTab) {
+    const wasOpen = veOverlay.classList.contains("show");
 
     _currentVideoId = video.id;
     _currentTitle = video.title || video.id;
     _playlists = playlists;
+    _tagsLoadedForVideo = null; // видео сменилось (или открывается впервые) — теги перечитаем
 
-    editorSubtitle.textContent = _currentTitle;
+    veSubtitle.textContent = _currentTitle;
 
-    // Поиск сбрасываем только при настоящем открытии панели (была закрыта).
-    // Если панель уже была открыта (например, просто сменилось видео —
-    // вызов пришёл из syncEditorToVideo), сохраняем то, что ввёл пользователь.
     if (!wasOpen) {
         editorSearch.value = "";
         editorClear.classList.add("hidden");
     }
 
-    renderEditorRows(editorSearch.value.trim());
-
-    editorOverlay.classList.add("show");
-
-    if (!wasOpen) {
-        requestAnimationFrame(() => editorSearch.focus());
-    }
+    veOverlay.classList.add("show");
+    switchVeTab(tab);
 }
 
-export function closeEditor() {
-    editorOverlay.classList.remove("show");
-    // Очищаем поиск именно при закрытии — по требованию.
+export function closeVideoEditor() {
+    veOverlay.classList.remove("show");
     editorSearch.value = "";
     editorClear.classList.add("hidden");
 }
 
-export function togglePlaylistEditor(video, playlists) {
-    console.log("toggle, show =", editorOverlay.classList.contains("show"));
-    if (editorOverlay.classList.contains("show")) {
-        closeEditor();
+export function toggleVideoEditor(video, playlists, tab = "playlists") {
+    if (veOverlay.classList.contains("show")) {
+        closeVideoEditor();
     } else {
-        openPlaylistEditor(video, playlists);
+        openVideoEditor(video, playlists, tab);
     }
 }
 
-let _editorRenderGen = 0; // NEW
+// ─── Playlists tab ─────────────────────────────────────────────────────────
+
+let _editorRenderGen = 0;
 
 async function renderEditorRows(query) {
-    const gen = ++_editorRenderGen; // NEW
+    const gen = ++_editorRenderGen;
     editorList.innerHTML = "";
     const q = query.toLowerCase();
     let entries = Object.entries(_playlists).filter(
@@ -272,7 +327,7 @@ async function renderEditorRows(query) {
     );
 
     if (!entries.length) {
-        if (gen !== _editorRenderGen) return; // NEW
+        if (gen !== _editorRenderGen) return;
         const empty = document.createElement("div");
         empty.className = "pl-empty";
         empty.textContent = query ? "Ничего не найдено" : "Нет плейлистов";
@@ -290,18 +345,18 @@ async function renderEditorRows(query) {
             const label = document.createElement("div");
             label.className = "pl-section-label";
             label.textContent = "Недавние";
-            if (gen !== _editorRenderGen) return; // NEW
+            if (gen !== _editorRenderGen) return;
             editorList.appendChild(label);
             for (const [name, data] of recentEntries) {
                 const row = await buildEditorRow(name, data);
-                if (gen !== _editorRenderGen) return; // NEW — проверяем после каждого await
+                if (gen !== _editorRenderGen) return;
                 editorList.appendChild(row);
             }
             if (restEntries.length) {
                 const label2 = document.createElement("div");
                 label2.className = "pl-section-label";
                 label2.textContent = "Все плейлисты";
-                if (gen !== _editorRenderGen) return; // NEW
+                if (gen !== _editorRenderGen) return;
                 editorList.appendChild(label2);
             }
         }
@@ -310,7 +365,7 @@ async function renderEditorRows(query) {
 
     for (const [name, data] of entries) {
         const row = await buildEditorRow(name, data);
-        if (gen !== _editorRenderGen) return; // NEW — проверяем после каждого await
+        if (gen !== _editorRenderGen) return;
         editorList.appendChild(row);
     }
 }
@@ -327,10 +382,6 @@ async function buildEditorRow(name, data) {
     ].filter(Boolean).join(" ");
 
     const icon = await buildIconEl(name, true);
-
-    // const icon = document.createElement("div");
-    // icon.className = "pl-row-icon";
-    // icon.textContent = emojiForPlaylist(name);
 
     const text = document.createElement("div");
     text.className = "pl-row-text";
@@ -405,12 +456,22 @@ function showToast(html) {
     _toastTimer = setTimeout(() => toast.classList.remove("show"), 2000);
 }
 
-export function syncEditorToVideo(video) {
-    if (!editorOverlay.classList.contains("show")) return;
-    openPlaylistEditor(video, _playlists);
+export function syncVideoEditorToVideo(video) {
+    _currentVideoId = video.id;
+    _currentTitle = video.title || video.id;
+    _tagsLoadedForVideo = null;
+
+    if (!veOverlay.classList.contains("show")) return;
+
+    veSubtitle.textContent = _currentTitle;
+    if (_activeVeTab === "tags") {
+        loadTagsForCurrentVideo();
+    } else {
+        renderEditorRows(editorSearch.value.trim());
+    }
 }
 
-// ─── Shared helpers ───────────────────────────────────────────────────────────
+// ─── Shared helpers (иконки плейлистов) ────────────────────────────────────
 
 function emojiForPlaylist(name) {
     const map = {
@@ -425,27 +486,20 @@ function emojiForPlaylist(name) {
     return [...name][0] || "📋";
 }
 
-// ─── Кастомные иконки плейлистов  ───────────────────────────────
-
-
-// Таймстамп сессии — гарантирует cache-bust после каждой перезагрузки страницы,
-// даже если пользователь не менял иконку в этой сессии
 const _sessionCacheBust = Date.now();
-
-const _iconTimestamps = {}; // { [name]: timestamp } — обновляется при загрузке новой иконки
+const _iconTimestamps = {};
 
 function iconUrlForPlaylist(name) {
     const t = _iconTimestamps[name] || _sessionCacheBust;
     return `/Data/icons/${encodeURIComponent(name)}.webp?t=${t}`;
 }
 
-// Проверяем существует ли иконка — через Image onload/onerror
 function iconExists(url) {
     return new Promise((resolve) => {
         const img = new Image();
         img.onload = () => resolve(true);
         img.onerror = () => resolve(false);
-        img.src = url + "?t=" + Date.now(); // cache bust
+        img.src = url + "?t=" + Date.now();
     });
 }
 
@@ -459,7 +513,6 @@ function iconPick(name, onDone) {
         if (!file) return;
         try {
             const url = await setPlaylistIcon(name, file);
-            // Сохраняем timestamp per-playlist чтобы bust работал везде
             _iconTimestamps[name] = Date.now();
             onDone(iconUrlForPlaylist(name));
         } catch {
@@ -481,7 +534,6 @@ async function buildIconEl(name, allowClick) {
         wrap.innerHTML = "";
         if (srcUrl) {
             const img = document.createElement("img");
-            // Берём актуальный URL с timestamp в момент рендера
             img.src = iconUrlForPlaylist(name);
             img.alt = name;
             img.style.cssText =
@@ -506,86 +558,7 @@ async function buildIconEl(name, allowClick) {
     return wrap;
 }
 
-// ─── Video Tags Editor ───────────────────────────────────────────────────────
-
-const editTagsBtn = document.getElementById("editTagsBtn");
-const videoTagsOverlay = document.getElementById("videoTagsOverlay");
-const videoTagsPanel = document.getElementById("videoTagsPanel");
-const videoTagsClose = document.getElementById("videoTagsClose");
-const videoTagsSubtitle = document.getElementById("videoTagsSubtitle");
-const videoTagsChips = document.getElementById("videoTagsChips");
-const videoTagsInput = document.getElementById("videoTagsInput");
-const videoTagsAddBtn = document.getElementById("videoTagsAddBtn");
-const allTagsDatalist = document.getElementById("allTagsDatalist");
-
-let _tagsVideo = null;
-let _tagsCurrent = [];
-let _onGetCoubTags = null;
-let _onAddTag = null;
-let _onRemoveTag = null;
-let _onTagsChanged = null;
-let _suppressNextOverlayClose = false;
-
-export function initVideoTagsEditor({ getCoubTags, addTag, removeTag, getAllTags, onTagsChanged }) {
-    _onGetCoubTags = getCoubTags;
-    _onAddTag = addTag;
-    _onRemoveTag = removeTag;
-    _onTagsChanged = onTagsChanged;
-
-    refreshTagsDatalist(getAllTags());
-
-    videoTagsAddBtn.type = "button";
-
-    editTagsBtn.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        if (!_tagsVideo) {
-            showToast("⚠ Нет текущего видео");
-            return;
-        }
-        refreshTagsDatalist(getAllTags());
-        videoTagsOverlay.classList.add("show");
-        await loadTagsForCurrentVideo();
-        requestAnimationFrame(() => videoTagsInput.focus());
-    });
-
-    videoTagsClose.addEventListener("click", () => videoTagsOverlay.classList.remove("show"));
-
-    videoTagsAddBtn.addEventListener("click", commitAddTag);
-    videoTagsInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-            e.preventDefault();
-            e.stopPropagation();
-            commitAddTag();
-        }
-        e.stopPropagation();
-    });
-
-    document.addEventListener("keydown", (e) => {
-        if (e.key === "Escape" && videoTagsOverlay.classList.contains("show")) {
-            videoTagsOverlay.classList.remove("show");
-        }
-    });
-
-    document.addEventListener("click", (e) => {
-        if (_suppressNextOverlayClose) {
-            _suppressNextOverlayClose = false;
-            return;
-        }
-        if (
-            videoTagsOverlay.classList.contains("show") &&
-            !videoTagsPanel.contains(e.target) &&
-            !e.target.closest("#editTagsBtn") &&
-            !isNavExempt(e.target)
-        ) {
-            videoTagsOverlay.classList.remove("show");
-        }
-    }, true); // NEW
-}
-
-export function setVideoTagsTarget(video) {
-    _tagsVideo = video ? { id: video.id, title: video.title } : null;
-    if (videoTagsOverlay.classList.contains("show")) loadTagsForCurrentVideo();
-}
+// ─── Tags tab ──────────────────────────────────────────────────────────────
 
 export function refreshTagsDatalist(allTags) {
     allTagsDatalist.innerHTML = "";
@@ -597,14 +570,16 @@ export function refreshTagsDatalist(allTags) {
 }
 
 async function loadTagsForCurrentVideo() {
-    if (!_tagsVideo) return;
-    videoTagsSubtitle.textContent = _tagsVideo.title || _tagsVideo.id;
+    if (!_currentVideoId) return;
+    if (_tagsLoadedForVideo === _currentVideoId) return; // уже подгружено для этого видео
+
     videoTagsChips.innerHTML = `<div class="pl-empty">Загрузка…</div>`;
     videoTagsRecent.innerHTML = "";
     try {
-        const res = await _onGetCoubTags(_tagsVideo.id);
+        const res = await _onGetCoubTags(_currentVideoId);
         const list = Array.isArray(res) ? res : res.tags || [];
         _tagsCurrent = list.map((t) => (typeof t === "string" ? t : t.tag));
+        _tagsLoadedForVideo = _currentVideoId;
         renderTagChips();
         renderRecentTagSuggestions();
     } catch (err) {
@@ -634,14 +609,14 @@ function renderRecentTagSuggestions() {
 }
 
 async function quickAddTag(tag) {
-    if (!tag || !_tagsVideo || _tagsCurrent.includes(tag)) return;
-    _suppressNextOverlayClose = true; // NEW
+    if (!tag || !_currentVideoId || _tagsCurrent.includes(tag)) return;
+    _suppressNextOverlayClose = true;
     _tagsCurrent.push(tag);
     renderTagChips();
     renderRecentTagSuggestions();
 
     try {
-        await _onAddTag(_tagsVideo.id, tag);
+        await _onAddTag(_currentVideoId, tag);
         addRecentTag(tag);
         _onTagsChanged?.();
     } catch (err) {
@@ -683,21 +658,21 @@ function renderTagChips() {
 
 async function commitAddTag() {
     const tag = videoTagsInput.value.trim();
-    if (!tag || !_tagsVideo) return;
+    if (!tag || !_currentVideoId) return;
     if (_tagsCurrent.includes(tag)) {
         showToast("⚠ Тег уже добавлен");
         videoTagsInput.value = "";
         return;
     }
 
-    _suppressNextOverlayClose = true; // NEW
+    _suppressNextOverlayClose = true;
     videoTagsInput.value = "";
     _tagsCurrent.push(tag);
     renderTagChips();
     renderRecentTagSuggestions();
 
     try {
-        await _onAddTag(_tagsVideo.id, tag);
+        await _onAddTag(_currentVideoId, tag);
         addRecentTag(tag);
         _onTagsChanged?.();
     } catch (err) {
@@ -708,17 +683,17 @@ async function commitAddTag() {
         console.error("Add tag error:", err);
     }
 
-    requestAnimationFrame(() => videoTagsInput.focus()); // NEW — сразу возвращаем фокус в поле для следующего тега
+    requestAnimationFrame(() => videoTagsInput.focus());
 }
 
 async function removeTagChip(tag, chipEl) {
     const prev = [..._tagsCurrent];
     _tagsCurrent = _tagsCurrent.filter((t) => t !== tag);
-    _suppressNextOverlayClose = true; // NEW
+    _suppressNextOverlayClose = true;
     chipEl.remove();
 
     try {
-        await _onRemoveTag(_tagsVideo.id, tag);
+        await _onRemoveTag(_currentVideoId, tag);
         _onTagsChanged?.();
         renderRecentTagSuggestions();
     } catch (err) {
@@ -1445,10 +1420,9 @@ function notifyTagFilterChange() {
 
 export function isAnyPanelOpen() {
     return (
-        editorOverlay.classList.contains("show") ||
+        veOverlay.classList.contains("show") ||
         sortingOverlay.classList.contains("show") ||
-        videoTagsOverlay.classList.contains("show") ||
-        importOverlay.classList.contains("show") // NEW
+        importOverlay.classList.contains("show")
     );
 }
 

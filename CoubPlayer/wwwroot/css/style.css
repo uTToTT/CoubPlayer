@@ -2155,25 +2155,28 @@ body {
    ═══════════════════════════════════════════════════════════ */
 
 /* Плейлисты — верхняя половина правого края */
-#playlistEditorPanel {
-  top: 60px;
-  bottom: auto;
-  max-height: min(700px, 58vh);
-  transform: translateX(calc(100% + 30px));
-}
 
 #playlistEditorOverlay.show #playlistEditorPanel {
   transform: translateX(0);
 }
 
-/* Теги видео — нижняя половина правого края */
-#videoTagsPanel {
-  top: auto;
-  bottom: 90px;
-  max-height: min(420px, 42vh);
-  transform: translateX(calc(100% + 30px));
-}
-
 #videoTagsOverlay.show #videoTagsPanel {
   transform: translateX(0);
+}
+
+#videoEditorPanel {
+  max-height: min(620px, 78vh);
+}
+
+#videoEditorPanel #plEditorList {
+  max-height: min(360px, 46vh);
+}
+
+#videoEditorPanel .video-tags-chips {
+  max-height: min(320px, 42vh);
+  overflow-y: auto;
+}
+
+.pl-tab-hidden {
+  display: none !important;
 }

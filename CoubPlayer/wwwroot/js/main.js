@@ -7,19 +7,17 @@ import { initControls } from "./controls.js";
 import * as api from "./api.js";
 import { state } from "./state.js";
 import {
-    initSortingPanel,          // было initPlaylistSelector + initTagFilterPanel
+    initSortingPanel,
     setPlaylistTriggerLabel,
     updateVideoInfo,
     initVolumeSlider,
     initCopyLinkBtn,
     initSortBar,
-    initPlaylistEditor,
-    togglePlaylistEditor,
-    syncEditorToVideo,
+    initVideoEditor,          // было: initPlaylistEditor
+    toggleVideoEditor,        // было: togglePlaylistEditor
+    syncVideoEditorToVideo,   // было: syncEditorToVideo + setVideoTagsTarget
     sanitizeBrokenPlaylists,
     isAnyPanelOpen,
-    initVideoTagsEditor,
-    setVideoTagsTarget,
     refreshTagsDatalist,
     initSeekBar,
     initGoToStartButton,
@@ -68,13 +66,13 @@ function buildAllPlaylist() {
 // ─── DOM ──────────────────────────────────────────────────────────────────────
 
 const videoIndexInput = document.getElementById("videoIndexInput");
-const editPlaylistsBtn = document.getElementById("editPlaylistsBtn");
 const openFolderBtn = document.getElementById("openFolderBtn");
 const downloadCoubsBtn = document.getElementById("downloadCoubsBtn");
 const downloadCoubsBtnLabel = downloadCoubsBtn.querySelector(".download-btn-label");
 const syncLikedBtn = document.getElementById("syncLikedBtn");
 const syncBookmarksBtn = document.getElementById("syncBookmarksBtn");
 const realTimeClock = document.getElementById("realTimeClock");
+const videoEditBtn = document.getElementById("videoEditBtn"); // было editTagsBtn/editPlaylistsBtn
 
 function updateClock() {
     const now = new Date();
@@ -359,23 +357,7 @@ async function init() {
         randomSeed: state.randomSeed,
     });
 
-    // ── Теги текущего видео ────────────────────────────────────────────────
-    initVideoTagsEditor({
-        getCoubTags: (id) => api.getCoubTags(id),
-        addTag: (id, tag) => api.addTagToCoub(id, tag),
-        removeTag: (id, tag) => api.removeTagFromCoub(id, tag),
-        getAllTags: () => state.allTags,
-        onTagsChanged: async () => {
-            await refreshAllTags();
-            refreshTagsDatalist(state.allTags);
-            if (state.activeTagFilter.length) await applyTagFilterAndRefresh();
-        },
-    });
-    initGoToStartButton(() => player.goToIndex(1));
-    // ── Выбор плейлиста (Pinterest-style) ────────────────────────────────────
-
-    // ── Редактор плейлистов для видео (Pinterest-style) ───────────────────────
-    initPlaylistEditor({
+    initVideoEditor({
         getPlaylists: () => state.playlists,
         onToggle: async (name, add) => {
             const video = currentVideo();
@@ -393,18 +375,27 @@ async function init() {
             state.playlists[name.trim()] = { title: name.trim(), videos: {} };
             return name.trim();
         },
+        getCoubTags: (id) => api.getCoubTags(id),
+        addTag: (id, tag) => api.addTagToCoub(id, tag),
+        removeTag: (id, tag) => api.removeTagFromCoub(id, tag),
+        getAllTags: () => state.allTags,
+        onTagsChanged: async () => {
+            await refreshAllTags();
+            refreshTagsDatalist(state.allTags);
+            if (state.activeTagFilter.length) await applyTagFilterAndRefresh();
+        },
     });
 
 
-    // Кнопка ✎ открывает редактор
-    editPlaylistsBtn.addEventListener("click", (e) => {
-        console.log("editPlaylistsBtn clicked, currentVideo =", currentVideo()?.id);
+    videoEditBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         const video = currentVideo();
         if (!video) { alert("Нет текущего видео!"); return; }
-        togglePlaylistEditor(video, state.playlists);
-        editPlaylistsBtn.blur();
+        toggleVideoEditor(video, state.playlists);
+        videoEditBtn.blur();
     });
+
+
     openFolderBtn.addEventListener("click", async (e) => {
         e.stopPropagation();
         const video = currentVideo();
@@ -571,8 +562,7 @@ async function init() {
     // Player._notifyChange — тут его дублировать не нужно.
     player.onVideoChange = (item) => {
         updateVideoInfo(player.index, item.title, player.playlist.length);
-        syncEditorToVideo(item);
-        setVideoTagsTarget(item); // NEW
+        syncVideoEditorToVideo(item);
     };
 
     player.activeVideo.addEventListener("play", () => updatePauseOverlay(false));

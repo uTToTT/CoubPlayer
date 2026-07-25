@@ -235,21 +235,9 @@
       </button>
 
       <button
-        id="editTagsBtn"
-        class="control-btn"
-        title="Теги видео"
-        data-icon="tags"
-      >
-        <span class="icon-slot" data-icon-name="tags">
-          <span class="icon-fallback">🏷</span>
-          <img class="icon-custom" alt="" draggable="false" />
-        </span>
-      </button>
-
-      <button
-        id="editPlaylistsBtn"
+        id="videoEditBtn"
         class="control-btn control-btn--accent"
-        title="Добавить в плейлист"
+        title="Плейлисты и теги"
         data-icon="playlist-add"
       >
         <span class="icon-slot" data-icon-name="playlist-add">
@@ -271,30 +259,102 @@
       </button>
     </div>
 
-    <!-- VIDEO TAGS panel -->
-    <div id="videoTagsOverlay" class="pl-editor-overlay">
-      <div id="videoTagsPanel" class="pl-editor-panel video-tags-panel">
+    <!-- ═══════════════════════════════════════════
+     VIDEO EDITOR — Плейлисты + Теги текущего видео (одно окно, табы)
+     ═══════════════════════════════════════════ -->
+    <div id="videoEditorOverlay" class="pl-editor-overlay">
+      <div id="videoEditorPanel" class="pl-editor-panel">
         <div class="pl-editor-header">
           <div class="pl-editor-header-text">
-            <div class="pl-editor-title">Теги видео</div>
-            <div class="pl-editor-subtitle" id="videoTagsSubtitle">—</div>
+            <div class="pl-editor-title">Видео</div>
+            <div class="pl-editor-subtitle" id="videoEditorSubtitle">—</div>
           </div>
-          <button class="pl-editor-close" id="videoTagsClose">✕</button>
+          <button class="pl-editor-close" id="videoEditorClose" title="Закрыть">
+            ✕
+          </button>
         </div>
-        <div class="video-tags-chips" id="videoTagsChips"></div>
-        <div class="video-tags-recent" id="videoTagsRecent"></div>
-        <div class="video-tags-add">
-          <input
-            id="videoTagsInput"
-            type="text"
-            placeholder="Добавить тег…"
-            list="allTagsDatalist"
-            autocomplete="off"
-            maxlength="40"
-          />
-          <button id="videoTagsAddBtn">＋</button>
+
+        <div class="pl-tabs" id="videoEditorTabs">
+          <button data-tab="playlists" class="active">
+            <span class="pl-tab-icon">
+              <span class="icon-slot" data-icon-name="playlist">
+                <span class="icon-fallback">◈</span>
+                <img class="icon-custom" alt="" draggable="false" />
+              </span>
+            </span>
+            Плейлисты
+          </button>
+          <button data-tab="tags">
+            <span class="pl-tab-icon">
+              <span class="icon-slot" data-icon-name="tags">
+                <span class="icon-fallback">🏷</span>
+                <img class="icon-custom" alt="" draggable="false" />
+              </span>
+            </span>
+            Теги
+          </button>
         </div>
-        <datalist id="allTagsDatalist"></datalist>
+
+        <!-- Вкладка: Плейлисты -->
+        <div id="veTabPlaylists">
+          <div class="pl-editor-search">
+            <svg class="pl-search-icon" viewBox="0 0 20 20" fill="none">
+              <circle
+                cx="9"
+                cy="9"
+                r="6"
+                stroke="currentColor"
+                stroke-width="1.8"
+              />
+              <path
+                d="M13.5 13.5 17 17"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+              />
+            </svg>
+            <input
+              id="plSearchInput"
+              class="pl-search-input"
+              type="text"
+              placeholder="Найти плейлист…"
+              autocomplete="off"
+            />
+            <button class="pl-search-clear hidden" id="plSearchClear">✕</button>
+          </div>
+
+          <div class="pl-editor-list" id="plEditorList"></div>
+
+          <div class="pl-editor-footer">
+            <button class="pl-new-btn" id="plNewBtn">
+              <span class="pl-new-icon">
+                <span class="icon-slot" data-icon-name="add">
+                  <span class="icon-fallback">＋</span>
+                  <img class="icon-custom" alt="" draggable="false" />
+                </span>
+              </span>
+              Создать новый плейлист
+            </button>
+          </div>
+        </div>
+
+        <!-- Вкладка: Теги -->
+        <div id="veTabTags" class="pl-tab-hidden">
+          <div class="video-tags-chips" id="videoTagsChips"></div>
+          <div class="video-tags-recent" id="videoTagsRecent"></div>
+          <div class="video-tags-add">
+            <input
+              id="videoTagsInput"
+              type="text"
+              placeholder="Добавить тег…"
+              list="allTagsDatalist"
+              autocomplete="off"
+              maxlength="40"
+            />
+            <button id="videoTagsAddBtn">＋</button>
+          </div>
+          <datalist id="allTagsDatalist"></datalist>
+        </div>
       </div>
     </div>
 
@@ -531,69 +591,6 @@
     <!-- Название текущего видео -->
     <div id="videoInfo" class="video-info panel">
       <span id="videoTitleLabel">—</span>
-    </div>
-
-    <!-- ═══════════════════════════════════════════
-         PLAYLIST EDITOR — Pinterest-style side panel
-         ═══════════════════════════════════════════ -->
-    <div id="playlistEditorOverlay" class="pl-editor-overlay">
-      <div id="playlistEditorPanel" class="pl-editor-panel">
-        <!-- Шапка -->
-        <div class="pl-editor-header">
-          <div class="pl-editor-header-text">
-            <div class="pl-editor-title">Сохранить в плейлист</div>
-            <div class="pl-editor-subtitle" id="plEditorSubtitle">—</div>
-          </div>
-          <button class="pl-editor-close" id="plEditorClose" title="Закрыть">
-            ✕
-          </button>
-        </div>
-
-        <!-- Поиск -->
-        <div class="pl-editor-search">
-          <svg class="pl-search-icon" viewBox="0 0 20 20" fill="none">
-            <circle
-              cx="9"
-              cy="9"
-              r="6"
-              stroke="currentColor"
-              stroke-width="1.8"
-            />
-            <path
-              d="M13.5 13.5 17 17"
-              stroke="currentColor"
-              stroke-width="1.8"
-              stroke-linecap="round"
-            />
-          </svg>
-          <input
-            id="plSearchInput"
-            class="pl-search-input"
-            type="text"
-            placeholder="Найти плейлист…"
-            autocomplete="off"
-          />
-          <button class="pl-search-clear hidden" id="plSearchClear">✕</button>
-        </div>
-
-        <!-- Список плейлистов -->
-        <div class="pl-editor-list" id="plEditorList">
-          <!-- Строки рендерятся через JS -->
-        </div>
-
-        <!-- Футер: кнопка нового плейлиста -->
-        <div class="pl-editor-footer">
-          <button class="pl-new-btn" id="plNewBtn">
-            <span class="pl-new-icon">
-              <span class="icon-slot" data-icon-name="add">
-                <span class="icon-fallback">＋</span>
-                <img class="icon-custom" alt="" draggable="false" />
-              </span>
-            </span>
-            Создать новый плейлист
-          </button>
-        </div>
-      </div>
     </div>
 
     <script type="module" src="js/main.js"></script>
