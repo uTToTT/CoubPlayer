@@ -24,6 +24,7 @@ import {
     initSeekBar,
     initGoToStartButton,
     initImportPlaylist,
+    initTransitionModeToggle,
 } from "./ui.js";
 
 const ALL_PLAYLIST_NAME = "Все";
@@ -364,6 +365,13 @@ async function init() {
         sortDirection: state.sortDirection,
         randomSeed: state.randomSeed,
     });
+
+    // Режим перехода между видео (сохранённый выбор + переключатель)
+    player.setTransitionMode(state.transitionMode);
+    initTransitionModeToggle((mode) => {
+        state.transitionMode = mode;
+        player.setTransitionMode(mode);
+    }, state.transitionMode);
 
     initGoToStartButton(() => player.goToIndex(1));
 

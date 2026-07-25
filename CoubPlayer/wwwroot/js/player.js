@@ -1,6 +1,7 @@
 // player.js
 import { markVideoViewed } from "./api.js";
 import { setLastVideoForPlaylist, getLastVideoForPlaylist } from "./state.js";
+import { initVideoFlip, setFlipMode, syncFlipStageSize, flipTransition, resetFlipAngle } from "./video-flip.js";
 
 export class Player {
     constructor(videoEls, audioEl, bgVideoEl) {
@@ -25,10 +26,13 @@ export class Player {
 
         window.addEventListener("resize", () => {
             this._fitVideo(this.activeVideo);
+            if (this.transitionMode === "flip") syncFlipStageSize(this.activeVideo);
         });
 
         this._bgRafId = null;
         this._startBgLoop();
+        this.transitionMode = "crossfade"; // "crossfade" | "flip"
+        initVideoFlip({ tiltLimit: 15, tiltScale: 1.23, tiltEffect: "repel" });
     }
 
     _startBgLoop() {
@@ -53,6 +57,8 @@ export class Player {
         const d = this.audio.duration;
         return isFinite(d) ? d : 0;
     }
+
+
 
     /**
      * Перемотка. Ведущий трек — audio. Основной видео-буфер зациклен и короче
@@ -109,7 +115,7 @@ export class Player {
 
     async play(index) {
         if (!this._isValidIndex(index)) return;
-
+        if (this._switching) return;
         this._cancelTransition();
         this._generation++;
 
@@ -121,10 +127,17 @@ export class Player {
             v.style.filter = "";
             v.style.display = "block";
         });
-        this.nextVideo.style.display = "none";
+        if (this.transitionMode !== "flip") {
+            this.nextVideo.style.display = "none";
+        }
 
         this.activeVideo.src = item.video;
         this.audio.src = item.audio;
+
+        if (this.transitionMode === "flip") {
+            syncFlipStageSize(this.activeVideo);
+            resetFlipAngle(this.activeIdx);
+        }
 
         await this._playAll();
         this._notifyChange(item);
@@ -173,7 +186,22 @@ export class Player {
 
     async _switchTo(newIndex) {
         if (!this._isValidIndex(newIndex)) return;
+        if (this._switching) return;           // ← игнорируем клики во время перехода
+        this._switching = true;
+        try {
+            const dir = newIndex > this.index ? 1 : -1;
+            if (this.transitionMode === "flip") {
+                await this._switchFlip(newIndex, dir);
+            } else {
+                await this._switchCrossfade(newIndex);
+            }
+        } finally {
+            this._switching = false;
+        }
+    }
 
+    // ─── Кроссфейд (оригинальная логика, без изменений) ───────────────────
+    async _switchCrossfade(newIndex) {
         this._cancelTransition();
         const generation = ++this._generation;
 
@@ -221,6 +249,9 @@ export class Player {
         fadeIn.finished.then(() => {
             if (generation !== this._generation) return;
 
+            fadeIn.cancel();
+            fadeOut.cancel();
+
             incoming.style.opacity = "1";
             incoming.style.filter = "";
             outgoing.style.display = "none";
@@ -228,8 +259,45 @@ export class Player {
             outgoing.style.filter = "";
             this._activeAnimations = null;
             this._pendingOutgoing = null;
-        }).catch(() => { });
+        }).catch(() => {
+            // На случай если finished реджектится (например, из-за _cancelTransition извне) —
+            // всё равно подчищаем, чтобы не оставлять зависший fill:forwards эффект.
+            fadeIn.cancel();
+            fadeOut.cancel();
+        });
+        this._notifyChange(newItem);
+        this._markViewed(newItem);
+    }
 
+    // ─── Flip — 3D-переворот ────────────────────────────────────────────────
+    async _switchFlip(newIndex, dir) {
+        this._cancelTransition();
+        const generation = ++this._generation;
+
+        const newItem = this.playlist[newIndex];
+        const incoming = this.nextVideo;
+        const outgoing = this.activeVideo;
+
+        incoming.style.display = "block";
+        incoming.style.opacity = "1";
+        incoming.style.filter = "";
+        incoming.src = newItem.video;
+        this.audio.src = newItem.audio;
+
+        outgoing.pause();
+        this.activeIdx = 1 - this.activeIdx;
+        this.index = newIndex;
+
+        syncFlipStageSize(incoming);
+
+        // Поворот — сразу, синхронно с toggle activeIdx, а не после await.
+        // Так angle и activeIdx физически не могут разойтись по чётности.
+        flipTransition(dir, 600).catch(() => { });
+
+        await this._playAll();
+        if (generation !== this._generation) return; // теперь эта проверка нужна
+        // только для notify/markViewed —
+        // визуальное состояние уже консистентно
         this._notifyChange(newItem);
         this._markViewed(newItem);
     }
@@ -273,12 +341,13 @@ export class Player {
     }
 
     async _playAll() {
+        const video = this.activeVideo;   // ← зафиксировать один раз
         try {
-            this.activeVideo.muted = true;
-            this._fitVideo(this.activeVideo);
-            await this.activeVideo.play();
-            this.activeVideo.addEventListener("play", () => this.onPlayStateChange?.(false), { once: false });
-            this.activeVideo.addEventListener("pause", () => this.onPlayStateChange?.(true), { once: false });
+            video.muted = true;
+            this._fitVideo(video);
+            await video.play();
+            video.addEventListener("play", () => this.onPlayStateChange?.(false), { once: false });
+            video.addEventListener("pause", () => this.onPlayStateChange?.(true), { once: false });
             this.audio.play().catch(() => { });
             this.onPlayStateChange?.(false);
         } catch (err) {
@@ -322,6 +391,34 @@ export class Player {
             item.lastViewed = new Date().toISOString();
         } catch (err) {
             console.warn("Не удалось обновить время просмотра:", err);
+        }
+    }
+
+    setTransitionMode(mode) {
+        this._cancelTransition();
+        // Дополнительная страховка: снять вообще все WAAPI-анимации с обоих буферов,
+        // даже если _activeAnimations уже null (например, они успели дозавершиться).
+        this.videoEls.forEach((v) => {
+            v.getAnimations().forEach((a) => a.cancel());
+        });
+
+        this.transitionMode = mode === "flip" ? "flip" : "crossfade";
+        setFlipMode(this.transitionMode === "flip");
+
+        if (this.transitionMode === "flip") {
+            this.videoEls.forEach((v) => {
+                v.style.display = "block";
+                v.style.opacity = "1";
+                v.style.filter = "";
+            });
+            syncFlipStageSize(this.activeVideo);
+            resetFlipAngle(this.activeIdx);
+        } else {
+            resetFlipAngle(this.activeIdx);
+            this.nextVideo.style.display = "none";
+            this.activeVideo.style.display = "block";
+            this.activeVideo.style.opacity = "1";
+            this.activeVideo.style.filter = "";
         }
     }
 }

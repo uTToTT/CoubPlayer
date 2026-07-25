@@ -134,6 +134,26 @@ export function initSortBar(onChange, initial = {}) {
     });
 }
 
+// ─── Transition Mode Toggle (Fade / Flip) ──────────────────────────────────
+
+const transitionModeGroup = document.getElementById("transitionModeGroup");
+
+export function initTransitionModeToggle(onChange, initialMode = "crossfade") {
+    const activeBtn = transitionModeGroup.querySelector(`[data-mode="${initialMode}"]`);
+    if (activeBtn) {
+        [...transitionModeGroup.children].forEach((b) => b.classList.remove("active"));
+        activeBtn.classList.add("active");
+    }
+
+    transitionModeGroup.addEventListener("click", (e) => {
+        const btn = e.target.closest("button");
+        if (!btn) return;
+        [...transitionModeGroup.children].forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        onChange(btn.dataset.mode);
+    });
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // VIDEO EDITOR — Плейлисты + Теги текущего видео (одно окно, вкладки)
 // ═════════════════════════════════════════════════════════════════════════════

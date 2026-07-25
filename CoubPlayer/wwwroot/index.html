@@ -3,9 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <title>Coub Player</title>
+
     <link rel="stylesheet" href="css/style.css" />
     <link rel="stylesheet" href="css/click-effects.css" />
     <link rel="stylesheet" href="css/text-reveal.css" />
+    <link rel="stylesheet" href="css/video-flip.css" />
+
     <link rel="icon" type="image/png" href="Data/icons/player_icon.png" />
     <style>
       .top-controls-left {
@@ -146,8 +149,26 @@
 
     <!-- Видео буферы -->
     <div class="video-wrapper">
-      <video id="playerA" autoplay muted loop></video>
-      <video id="playerB" autoplay muted loop></video>
+      <div id="videoFlipStage" class="video-flip-stage">
+        <div id="videoFlipTilt" class="video-flip-tilt">
+          <div id="videoFlipInner" class="video-flip-inner">
+            <video
+              id="playerA"
+              autoplay
+              muted
+              loop
+              class="video-flip-face"
+            ></video>
+            <video
+              id="playerB"
+              autoplay
+              muted
+              loop
+              class="video-flip-face video-flip-face--back"
+            ></video>
+          </div>
+        </div>
+      </div>
     </div>
 
     <audio id="audio" loop></audio>
@@ -480,6 +501,15 @@
           class="hidden"
           title="Seed"
         />
+
+        <div
+          class="sort-group"
+          id="transitionModeGroup"
+          title="Переход между видео"
+        >
+          <button data-mode="crossfade" class="active">Fade</button>
+          <button data-mode="flip">Flip</button>
+        </div>
       </div>
     </div>
 

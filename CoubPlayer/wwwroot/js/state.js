@@ -8,7 +8,7 @@ const STORAGE_KEY = "coub_player_state";
 const PERSIST_KEYS = [
     "selectedPlaylist", "sortType", "sortDirection", "randomSeed",
     "volume", "lastVideoByPlaylist", "coubAccessToken",
-    "activeTagFilter", "tagFilterMode",
+    "activeTagFilter", "tagFilterMode", "transitionMode",
 ];
 
 function loadPersistedState() {
@@ -47,6 +47,7 @@ const _state = {
     coubAccessToken: persisted.coubAccessToken ?? null,
     activeTagFilter: persisted.activeTagFilter ?? [],
     tagFilterMode: persisted.tagFilterMode ?? "any",
+    transitionMode: persisted.transitionMode ?? "crossfade", // "crossfade" | "flip"
     allTags: [], // не персистим — тянем с сервера при старте/после изменения тегов
 };
 
