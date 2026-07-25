@@ -264,7 +264,10 @@ export function togglePlaylistEditor(video, playlists) {
     }
 }
 
+let _editorRenderGen = 0; // NEW
+
 async function renderEditorRows(query) {
+    const gen = ++_editorRenderGen; // NEW
     editorList.innerHTML = "";
     const q = query.toLowerCase();
     let entries = Object.entries(_playlists).filter(
@@ -272,6 +275,7 @@ async function renderEditorRows(query) {
     );
 
     if (!entries.length) {
+        if (gen !== _editorRenderGen) return; // NEW
         const empty = document.createElement("div");
         empty.className = "pl-empty";
         empty.textContent = query ? "Ничего не найдено" : "Нет плейлистов";
@@ -279,7 +283,6 @@ async function renderEditorRows(query) {
         return;
     }
 
-    // Без активного поиска — сначала недавно использованные плейлисты
     if (!q) {
         const recentNames = getRecentPlaylists().filter((n) => _playlists[n]);
         const recentSet = new Set(recentNames);
@@ -290,14 +293,18 @@ async function renderEditorRows(query) {
             const label = document.createElement("div");
             label.className = "pl-section-label";
             label.textContent = "Недавние";
+            if (gen !== _editorRenderGen) return; // NEW
             editorList.appendChild(label);
             for (const [name, data] of recentEntries) {
-                editorList.appendChild(await buildEditorRow(name, data));
+                const row = await buildEditorRow(name, data);
+                if (gen !== _editorRenderGen) return; // NEW — проверяем после каждого await
+                editorList.appendChild(row);
             }
             if (restEntries.length) {
                 const label2 = document.createElement("div");
                 label2.className = "pl-section-label";
                 label2.textContent = "Все плейлисты";
+                if (gen !== _editorRenderGen) return; // NEW
                 editorList.appendChild(label2);
             }
         }
@@ -305,7 +312,9 @@ async function renderEditorRows(query) {
     }
 
     for (const [name, data] of entries) {
-        editorList.appendChild(await buildEditorRow(name, data));
+        const row = await buildEditorRow(name, data);
+        if (gen !== _editorRenderGen) return; // NEW — проверяем после каждого await
+        editorList.appendChild(row);
     }
 }
 
@@ -927,16 +936,20 @@ function syncTagModeButtons() {
 
 // ─── Playlists tab ─────────────────────────────────────────────────────────
 
+let _selectorRenderGen = 0; // NEW
+
 async function renderSelectorRows(query) {
+    const gen = ++_selectorRenderGen; // NEW
     plSelectorList.innerHTML = "";
     const q = query.toLowerCase();
     let entries = Object.entries(_selectorPlaylists).filter(
         ([name]) => !q || name.toLowerCase().includes(q)
     );
 
-    entries = sortPlaylistEntries(entries); // ← добавили
+    entries = sortPlaylistEntries(entries);
 
     if (!entries.length) {
+        if (gen !== _selectorRenderGen) return; // NEW
         const empty = document.createElement("div");
         empty.className = "pl-empty";
         empty.textContent = query ? "Ничего не найдено" : "Нет плейлистов";
@@ -945,7 +958,9 @@ async function renderSelectorRows(query) {
     }
 
     for (const [name, data] of entries) {
-        plSelectorList.appendChild(await buildSelectorRow(name, data));
+        const row = await buildSelectorRow(name, data);
+        if (gen !== _selectorRenderGen) return; // NEW
+        plSelectorList.appendChild(row);
     }
 }
 
