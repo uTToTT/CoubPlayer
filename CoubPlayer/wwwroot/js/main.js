@@ -357,6 +357,8 @@ async function init() {
         randomSeed: state.randomSeed,
     });
 
+    initGoToStartButton(() => player.goToIndex(1));
+
     initVideoEditor({
         getPlaylists: () => state.playlists,
         onToggle: async (name, add) => {

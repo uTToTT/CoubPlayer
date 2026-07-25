@@ -1747,8 +1747,8 @@ body {
 /* Кнопки rename/delete — верхний левый угол, только по hover */
 .pl-tile .pl-row-actions {
   position: absolute;
-  top: 10px;
-  left: 10px;
+  top: 15px;
+  left: 15px;
   margin-left: 0;
   z-index: 2;
 }
