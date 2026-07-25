@@ -24,7 +24,7 @@
         "prev", "next", "fullscreen", "restart", "copy-link", "tags",
         "playlist-add", "folder", "playlist", "download", "link",
         "sync-liked", "sync-bookmarks", "add", "start", "rename", "delete",
-        "share", "import", "change-icon", // NEW
+        "share", "import", "change-icon", "success",
     ];
 
     function tryLoad(name) {
@@ -47,10 +47,9 @@
     }
 
     async function applyIcons() {
-        const slots = document.querySelectorAll(".icon-slot[data-icon-name]");
-        // Кэшируем результат на имя иконки, чтобы не проверять сеть повторно,
-        // если один и тот же значок используется в нескольких местах
-        // (например "playlist" в шапке и в панели сортировки).
+        const slots = document.querySelectorAll(
+            ".icon-slot[data-icon-name], .icon-check[data-icon-name]"
+        );
         const cache = new Map();
 
         await Promise.all(
@@ -64,10 +63,15 @@
                 const src = await cache.get(name);
                 if (!src) return;
 
-                const img = slot.querySelector(".icon-custom");
+                const img = slot.querySelector(":scope > .icon-custom");
                 if (!img) return;
                 img.src = src;
-                slot.classList.add("icon-slot--loaded");
+
+                slot.classList.add(
+                    slot.classList.contains("icon-check")
+                        ? "icon-check--loaded"
+                        : "icon-slot--loaded"
+                );
             })
         );
     }

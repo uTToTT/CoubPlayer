@@ -69,14 +69,23 @@ export function initCopyLinkBtn(getCurrentVideoId) {
         if (!id) return;
         try {
             await navigator.clipboard.writeText(`https://coub.com/view/${id}`);
-            copyLinkIconSlot.classList.add("icon-slot--success");
-            setTimeout(() => {
-                copyLinkIconSlot.classList.remove("icon-slot--success");
-            }, 1200);
+            flashIconSuccess(copyLinkIconSlot);
         } catch (e) {
             console.error("Clipboard error:", e);
         }
     });
+}
+
+let _iconSuccessTimers = new WeakMap();
+
+function flashIconSuccess(iconSlotEl, duration = 1200) {
+    if (!iconSlotEl) return;
+    clearTimeout(_iconSuccessTimers.get(iconSlotEl));
+    iconSlotEl.classList.add("icon-slot--success");
+    const t = setTimeout(() => {
+        iconSlotEl.classList.remove("icon-slot--success");
+    }, duration);
+    _iconSuccessTimers.set(iconSlotEl, t);
 }
 
 // ─── Sort Bar ─────────────────────────────────────────────────────────────────
@@ -298,6 +307,8 @@ function switchVeTab(tab) {
         renderEditorRows(editorSearch.value.trim());
         requestAnimationFrame(() => editorSearch.focus());
     }
+
+    window.refreshCustomIcons?.();
 }
 
 export function openVideoEditor(video, playlists, tab = _activeVeTab) {
@@ -387,6 +398,8 @@ async function renderEditorRows(query) {
         if (gen !== _editorRenderGen) return;
         editorList.appendChild(row);
     }
+
+    window.refreshCustomIcons?.();
 }
 
 async function buildEditorRow(name, data) {
@@ -875,6 +888,7 @@ function openSortingPanel(tab) {
     sortingSearchClear.classList.add("hidden");
 
     switchSortingTab(tab);
+    window.refreshCustomIcons?.();
     sortingOverlay.classList.add("show");
     requestAnimationFrame(() => sortingSearch.focus());
 }
@@ -903,6 +917,8 @@ function switchSortingTab(tab) {
 
     updateSortingSubtitle();
     renderActiveTab("");
+
+    window.refreshCustomIcons?.();
 }
 
 function updateSortingSubtitle() {
@@ -954,6 +970,8 @@ async function renderSelectorRows(query) {
         if (gen !== _selectorRenderGen) return; // NEW
         plSelectorList.appendChild(row);
     }
+
+    window.refreshCustomIcons?.();
 }
 
 const PRIORITY_ORDER = ["Все", "bookmarks", "liked"];
@@ -1015,10 +1033,18 @@ async function buildSelectorRow(name, data) {
     const shareBtn = document.createElement("button");
     shareBtn.className = "pl-row-action-btn pl-row-share-btn";
     shareBtn.title = "Поделиться плейлистом";
-    shareBtn.innerHTML = `<span class="icon-slot" data-icon-name="share"><span class="icon-fallback">📤</span><img class="icon-custom" alt="" draggable="false" /></span>`;
+    shareBtn.innerHTML = `<span class="icon-slot" data-icon-name="copy-link">
+    <span class="icon-fallback">🔗</span>
+    <img class="icon-custom" alt="" draggable="false" />
+    <span class="icon-check" data-icon-name="success">
+        <span class="icon-check-fallback">✓</span>
+        <img class="icon-custom" alt="" draggable="false" />
+    </span>
+</span>`;
     shareBtn.addEventListener("click", async (e) => {
         e.stopPropagation();
-        await handleSharePlaylist(name, data);
+        const iconSlot = shareBtn.querySelector(".icon-slot");
+        await handleSharePlaylist(name, data, iconSlot);
     });
 
     actions.appendChild(shareBtn);
@@ -1071,11 +1097,12 @@ async function buildSelectorRow(name, data) {
     return tile;
 }
 
-async function handleSharePlaylist(name, data) {
+async function handleSharePlaylist(name, data, iconSlot) {
     const code = encodePlaylistShare(name, data.videos || {});
     try {
         await navigator.clipboard.writeText(code);
         showToast(`✓ Код плейлиста «${name}» скопирован`);
+        flashIconSuccess(iconSlot);
     } catch {
         prompt("Скопируйте код плейлиста вручную:", code);
     }

@@ -2039,19 +2039,6 @@ body {
         ничего не сломается.
    ═══════════════════════════════════════════════════════════ */
 
-.icon-slot .icon-check {
-  display: none;
-}
-
-.icon-slot.icon-slot--success .icon-fallback,
-.icon-slot.icon-slot--success .icon-custom {
-  display: none;
-}
-
-.icon-slot.icon-slot--success .icon-check {
-  display: block;
-  color: var(--accent);
-}
 .icon-slot {
   position: relative;
   display: inline-flex;
@@ -2066,20 +2053,51 @@ body {
   display: block;
 }
 
-.icon-slot .icon-custom {
+.icon-slot > .icon-custom {
   display: none;
   width: 100%;
   height: 100%;
   object-fit: contain;
-  /* SVG-иконки одним цветом наследуют текущий цвет кнопки */
-  filter: drop-shadow(0 0 0 transparent);
 }
 
-.icon-slot.icon-slot--loaded .icon-fallback {
+.icon-slot.icon-slot--loaded > .icon-fallback {
   display: none;
 }
+.icon-slot.icon-slot--loaded > .icon-custom {
+  display: block;
+}
 
-.icon-slot.icon-slot--loaded .icon-custom {
+/* success — оверлей поверх текущей иконки. position:absolute красится
+   поверх статичных соседей автоматически, поэтому НЕ нужно прятать
+   .icon-fallback/.icon-custom под ним — сняты все конфликты специфичности. */
+.icon-check {
+  display: none;
+  position: absolute;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+
+.icon-check .icon-custom {
+  display: none;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.icon-slot.icon-slot--success .icon-check {
+  display: flex;
+}
+
+.icon-slot.icon-slot--success > .icon-fallback,
+.icon-slot.icon-slot--success > .icon-custom {
+  visibility: hidden;
+}
+.icon-check.icon-check--loaded .icon-check-fallback {
+  display: none;
+}
+.icon-check.icon-check--loaded .icon-custom {
   display: block;
 }
 
