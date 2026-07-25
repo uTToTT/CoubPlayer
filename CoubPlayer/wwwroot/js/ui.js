@@ -158,6 +158,8 @@ document.body.appendChild(toast);
 const NAV_EXEMPT_SELECTORS = [
     "#prev", "#next", "#restart", "#fullscreen",
     "#videoIndexWrapper", ".volume-slider", "#copyLinkBtn",
+    "#playlistEditorPanel", "#videoTagsPanel",
+    "#editTagsBtn", "#editPlaylistsBtn", // NEW — триггеры не должны закрывать чужую панель
 ];
 
 function isNavExempt(target) {
@@ -214,12 +216,7 @@ export function initPlaylistEditor({ getPlaylists, onToggle, onCreatePlaylist })
             && !isNavExempt(e.target)) {
             closeEditor();
         }
-        // if (selectorOverlay.classList.contains("show")
-        //     && !selectorPanel.contains(e.target)
-        //     && !isNavExempt(e.target)) {
-        //     closeSelector();
-        // }
-    });
+    }, true);
 }
 
 export function openPlaylistEditor(video, playlists) {
@@ -570,9 +567,9 @@ export function initVideoTagsEditor({ getCoubTags, addTag, removeTag, getAllTags
     });
 
     document.addEventListener("click", (e) => {
-        if (_suppressNextOverlayClose) {           // NEW
-            _suppressNextOverlayClose = false;      // NEW
-            return;                                 // NEW
+        if (_suppressNextOverlayClose) {
+            _suppressNextOverlayClose = false;
+            return;
         }
         if (
             videoTagsOverlay.classList.contains("show") &&
@@ -582,7 +579,7 @@ export function initVideoTagsEditor({ getCoubTags, addTag, removeTag, getAllTags
         ) {
             videoTagsOverlay.classList.remove("show");
         }
-    });
+    }, true); // NEW
 }
 
 export function setVideoTagsTarget(video) {
@@ -717,6 +714,7 @@ async function commitAddTag() {
 async function removeTagChip(tag, chipEl) {
     const prev = [..._tagsCurrent];
     _tagsCurrent = _tagsCurrent.filter((t) => t !== tag);
+    _suppressNextOverlayClose = true; // NEW
     chipEl.remove();
 
     try {
@@ -868,7 +866,7 @@ export function initSortingPanel({
         ) {
             closeSortingPanel();
         }
-    });
+    }, true); // NEW
 
 }
 

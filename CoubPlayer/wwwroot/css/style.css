@@ -2146,3 +2146,34 @@ body {
   flex-direction: column;
   gap: 8px;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   Разведение панелей "Редактор плейлистов" и "Теги видео" по
+   вертикали, чтобы они не перекрывались при одновременном
+   открытии. ID-селекторы намеренно перебивают базовое
+   позиционирование .pl-editor-panel (top:50% + translateY(-50%)).
+   ═══════════════════════════════════════════════════════════ */
+
+/* Плейлисты — верхняя половина правого края */
+#playlistEditorPanel {
+  top: 60px;
+  bottom: auto;
+  max-height: min(700px, 58vh);
+  transform: translateX(calc(100% + 30px));
+}
+
+#playlistEditorOverlay.show #playlistEditorPanel {
+  transform: translateX(0);
+}
+
+/* Теги видео — нижняя половина правого края */
+#videoTagsPanel {
+  top: auto;
+  bottom: 90px;
+  max-height: min(420px, 42vh);
+  transform: translateX(calc(100% + 30px));
+}
+
+#videoTagsOverlay.show #videoTagsPanel {
+  transform: translateX(0);
+}
