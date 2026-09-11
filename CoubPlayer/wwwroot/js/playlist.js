@@ -3,14 +3,63 @@
 // Player теперь отвечает только за воспроизведение.
 
 /**
- * @typedef {{id: string, title: string, order: number, lastViewed: string | null}} PlaylistItem
- * @typedef {{videos: Record<string, {title: string, order: number, lastViewed?: string}>}} PlaylistObj
- * @typedef {{id: string, title: string, video: string, audio: string, lastViewed?: string | null}} ResolvedItem
+ * @typedef {{key: string, id: string, title: string, order: number, lastViewed: string | null, fx: object | null}} PlaylistItem
+ * @typedef {{videos: Record<string, {title: string, order: number, lastViewed?: string, fx?: object}>}} PlaylistObj
+ * @typedef {{key: string, id: string, title: string, video: string, audio: string, lastViewed?: string | null, fx: object | null}} ResolvedItem
  */
 
 /**
+ * Разделитель ключа записи плейлиста и номера копии: "4aqice#2".
+ * Один и тот же ролик может лежать в плейлисте несколько раз (дубликаты),
+ * поэтому ключ записи (key) и id самого куба (id) — разные вещи:
+ *   key — уникален внутри плейлиста, по нему живут order, lastViewed и fx;
+ *   id  — по нему находятся файлы в coub_list.json, теги и ссылка на coub.com.
+ */
+export const INSTANCE_SEP = "#";
+
+/** id куба из ключа записи плейлиста. */
+export function coubIdFromKey(key) {
+    const i = String(key).indexOf(INSTANCE_SEP);
+    return i === -1 ? key : key.slice(0, i);
+}
+
+/** Является ли запись копией (а не первым вхождением ролика). */
+export function isDuplicateKey(key) {
+    return String(key).includes(INSTANCE_SEP);
+}
+
+/**
+ * Ключ записи этого куба в плейлисте — или null, если ролика там нет.
+ * Нужен там, где на руках есть id куба, а работать надо с записью
+ * (например, убрать ролик из плейлиста, где он лежит копией "id#2").
+ * @param {Record<string, object>} videos
+ * @param {string} coubId
+ */
+export function findKeyForCoub(videos, coubId) {
+    if (!videos || !coubId) return null;
+    if (videos[coubId]) return coubId;
+    for (const key of Object.keys(videos)) {
+        if (coubIdFromKey(key) === coubId) return key;
+    }
+    return null;
+}
+
+/** Запись videos → элемент списка. */
+function toItem(key, meta) {
+    return {
+        key,
+        id: coubIdFromKey(key),
+        title: meta.title,
+        order: meta.order,
+        lastViewed: meta.lastViewed || null,
+        fx: meta.fx || null,
+        bgFx: meta.bgFx || null,
+        bgSeparate: !!meta.bgSeparate,
+    };
+}
+
+/**
  * Преобразует объект videos в массив и обогащает данными из coubMap.
- * @param {PlaylistObj} playlistObj
  * @param {PlaylistItem[]} sorted — уже отсортированный массив
  * @param {Record<string, {video: string, audio: string}>} coubMap
  * @returns {ResolvedItem[]}
@@ -19,12 +68,16 @@ export function resolveItems(sorted, coubMap) {
     return sorted.map((item) => {
         const coub = coubMap[item.id] || {};
         return {
+            key: item.key,
             id: item.id,
             title: item.title,
             video: coub.video || "",
             audio: coub.audio || "",
             lastViewed: item.lastViewed || null,
             tags: coub.tags || [],
+            fx: item.fx || null,
+            bgFx: item.bgFx || null,
+            bgSeparate: !!item.bgSeparate,
         };
     });
 }
@@ -55,12 +108,7 @@ export function sortByOrder(playlistObj, direction = "asc") {
     if (!playlistObj?.videos) return [];
 
     return Object.entries(playlistObj.videos)
-        .map(([id, meta]) => ({
-            id,
-            title: meta.title,
-            order: meta.order,
-            lastViewed: meta.lastViewed || null,
-        }))
+        .map(([key, meta]) => toItem(key, meta))
         .sort((a, b) =>
             direction === "asc" ? a.order - b.order : b.order - a.order
         );
@@ -76,10 +124,8 @@ export function sortByLastViewed(playlistObj, direction = "desc") {
     if (!playlistObj?.videos) return [];
 
     return Object.entries(playlistObj.videos)
-        .map(([id, meta]) => ({
-            id,
-            title: meta.title,
-            order: meta.order,
+        .map(([key, meta]) => ({
+            ...toItem(key, meta),
             lastViewed: meta.lastViewed ? new Date(meta.lastViewed) : null,
         }))
         .sort((a, b) => {
@@ -101,12 +147,7 @@ export function sortByLastViewed(playlistObj, direction = "desc") {
 export function sortRandom(playlistObj, seed = 1) {
     if (!playlistObj?.videos) return [];
 
-    const arr = Object.entries(playlistObj.videos).map(([id, meta]) => ({
-        id,
-        title: meta.title,
-        order: meta.order,
-        lastViewed: meta.lastViewed || null,
-    }));
+    const arr = Object.entries(playlistObj.videos).map(([key, meta]) => toItem(key, meta));
 
     const rng = createSeededRNG(seed);
     for (let i = arr.length - 1; i > 0; i--) {
@@ -158,6 +199,7 @@ export function buildPlaylist(playlistObj, coubMap, { type, direction, seed = 1,
  */
 export function buildTagSearchPlaylist(coubEntries) {
     return coubEntries.map((c) => ({
+        key: c.id,
         id: c.id,
         title: c.title || c.id,
         video: c.video || "",

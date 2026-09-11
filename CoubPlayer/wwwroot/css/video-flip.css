@@ -45,7 +45,9 @@
   inset: 0;
   top: 0;
   left: 0;
-  transform: none; /* переопределяем базовый translate — тут центрирование через inset:0 + 100%/100% */
+  /* переопределяем базовый translate — тут центрирование через inset:0 + 100%/100%;
+     --fx-transform подмешивает эффекты режима «Безумие» (см. randomizer.js) */
+  transform: var(--fx-transform, none);
   width: 100% !important;
   height: 100% !important;
   max-width: none !important;
@@ -56,7 +58,7 @@
 }
 
 #videoFlipStage.video-flip-mode video.video-flip-face--back {
-  transform: rotateY(180deg);
+  transform: rotateY(180deg) var(--fx-transform, );
 }
 
 /* Пока режим НЕ flip — полностью нейтрализуем 3D-слои,
@@ -71,7 +73,9 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  transform: translate(-50%, -50%);
+  /* --fx-transform — эффекты режима «Безумие» (отражение/поворот).
+     Идёт после центрирования, чтобы не сбивать позиционирование. */
+  transform: translate(-50%, -50%) var(--fx-transform, );
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
 }

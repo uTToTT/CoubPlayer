@@ -87,15 +87,27 @@ body {
 }
 
 /* ─── Фон-видео ──────────────────────────────────────────── */
+/* --bg-fx-* — постобработка фона (см. player.js). Базовые blur/затемнение
+   остаются всегда, настройки ролика подмешиваются к ним.
+   --bg-fx-scale подстраивается под поворот, чтобы повёрнутый фон
+   не открывал пустые углы. */
 #bgVideo {
   position: fixed;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  filter: blur(22px) brightness(0.35) saturate(1.4);
-  transform: scale(1.05);
+  filter: blur(22px) brightness(0.35) saturate(1.4) var(--bg-fx-filter, );
+  transform: scale(var(--bg-fx-scale, 1.05)) var(--bg-fx-transform, );
   z-index: 0;
+  opacity: 1;
+  transition: opacity 190ms ease; /* держать в паре с Player.BG_FADE_MS */
+}
+
+/* Затухание на время смены источника фона (например, при наведении
+   на другую плитку в режиме сетки) */
+#bgVideo.bg-fading {
+  opacity: 0;
 }
 
 /* ─── Видео-плееры ───────────────────────────────────────── */
@@ -881,7 +893,7 @@ body {
   right: 20px;
   transform: translateY(-50%) translateX(calc(100% + 30px));
   width: 280px;
-  max-height: min(520px, 80vh);
+  max-height: min(620px, 88vh);
 
   background: var(--glass-strong);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -1663,9 +1675,11 @@ body {
 
 .pl-selector-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  gap: 18px;
-  padding: 20px;
+  /* баннеры 16:9 шире прежних квадратных иконок — колонку можно сузить,
+     чтобы в узком окне помещалось больше одной */
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 16px;
+  padding: 18px;
   align-content: start;
 }
 .pl-selector-grid .pl-empty {

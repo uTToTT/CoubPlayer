@@ -8,7 +8,8 @@ const STORAGE_KEY = "coub_player_state";
 const PERSIST_KEYS = [
     "selectedPlaylist", "sortType", "sortDirection", "randomSeed",
     "volume", "lastVideoByPlaylist", "coubAccessToken",
-    "activeTagFilter", "tagFilterMode", "transitionMode",
+    "activeTagFilter", "tagFilterMode", "transitionMode", "gridTileSize",
+    "viewMode", "madnessTraits",
 ];
 
 function loadPersistedState() {
@@ -48,7 +49,14 @@ const _state = {
     activeTagFilter: persisted.activeTagFilter ?? [],
     tagFilterMode: persisted.tagFilterMode ?? "any",
     transitionMode: persisted.transitionMode ?? "crossfade", // "crossfade" | "flip"
+    gridTileSize: persisted.gridTileSize ?? "m", // размер плиток в сетке: "s" | "m" | "l"
+    viewMode: persisted.viewMode ?? "list",      // способ просмотра: "list" (плеер) | "grid" (плитка)
+    // Что рандомизировать в режиме сортировки «Безумие» — набор флагов по
+    // ключам RANDOM_TRAITS из randomizer.js. null = ещё не настраивали,
+    // main.js подставит набор по умолчанию.
+    madnessTraits: persisted.madnessTraits ?? null,
     allTags: [], // не персистим — тянем с сервера при старте/после изменения тегов
+    fxPresets: [], // пресеты постобработки — тоже с сервера
 };
 
 export const state = new Proxy(_state, {

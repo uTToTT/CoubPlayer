@@ -111,6 +111,140 @@ namespace CoubPlayer
 
         #endregion
 
+        #region Banners
+
+        private readonly string _bannersPath = Path.Combine(
+            Directory.GetCurrentDirectory(), "wwwroot", "Data", "banners");
+
+        private const int BANNER_W = 960;
+        private const int BANNER_H = 540;
+
+        private static readonly string[] AllowedBannerVideoExt = { ".mp4", ".webm" };
+
+        private void DeleteBannerFile(string? fileName)
+        {
+            if (string.IsNullOrEmpty(fileName)) return;
+            var path = Path.Combine(_bannersPath, Path.GetFileName(fileName));
+            if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
+        }
+
+        private void DeleteAllBannerFiles(Playlist pl)
+        {
+            DeleteBannerFile(pl.banner?.image);
+            DeleteBannerFile(pl.banner?.video);
+        }
+
+        /// <summary>
+        /// Своя картинка для баннера. Клиент присылает уже обрезанный под 16:9
+        /// кадр (позиционирование и масштаб он же и делает), тут остаётся
+        /// привести к одному размеру и формату.
+        /// </summary>
+        [HttpPost("{playlist}/banner")]
+        public IActionResult SetBannerImage([FromRoute] string playlist, IFormFile file)
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest("No file");
+
+            Directory.CreateDirectory(_bannersPath);
+
+            using var inputStream = file.OpenReadStream();
+            using var original = SKBitmap.Decode(inputStream);
+            if (original == null) return BadRequest("Unsupported image");
+
+            using var resized = original.Resize(
+                new SKImageInfo(BANNER_W, BANNER_H), SKFilterQuality.High);
+            if (resized == null) return BadRequest("Resize failed");
+
+            var fileName = $"b_{Guid.NewGuid():N}.webp";
+            using (var output = System.IO.File.OpenWrite(Path.Combine(_bannersPath, fileName)))
+                resized.Encode(output, SKEncodedImageFormat.Webp, 88);
+
+            var result = ExecuteLocked(data =>
+            {
+                if (!data.ContainsKey(playlist)) return NotFound();
+
+                var pl = data[playlist];
+                pl.banner ??= new PlaylistBanner();
+                DeleteBannerFile(pl.banner.image);
+                pl.banner.image = fileName;
+
+                return Ok(new { url = $"/Data/banners/{fileName}" });
+            });
+
+            // Плейлиста не оказалось — не оставляем осиротевший файл
+            if (result is not (OkResult or OkObjectResult))
+                DeleteBannerFile(fileName);
+
+            return result;
+        }
+
+        /// <summary>Свой анимированный баннер. Файл сохраняется как есть.</summary>
+        [HttpPost("{playlist}/banner-video")]
+        public async Task<IActionResult> SetBannerVideo([FromRoute] string playlist, IFormFile file)
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest("No file");
+
+            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+            if (!AllowedBannerVideoExt.Contains(ext))
+                return BadRequest("Поддерживаются только mp4 и webm");
+
+            Directory.CreateDirectory(_bannersPath);
+
+            var fileName = $"b_{Guid.NewGuid():N}{ext}";
+            await using (var output = System.IO.File.Create(Path.Combine(_bannersPath, fileName)))
+                await file.CopyToAsync(output);
+
+            var result = ExecuteLocked(data =>
+            {
+                if (!data.ContainsKey(playlist)) return NotFound();
+
+                var pl = data[playlist];
+                pl.banner ??= new PlaylistBanner();
+                DeleteBannerFile(pl.banner.video);
+                pl.banner.video = fileName;
+
+                return Ok(new { url = $"/Data/banners/{fileName}" });
+            });
+
+            if (result is not (OkResult or OkObjectResult))
+                DeleteBannerFile(fileName);
+
+            return result;
+        }
+
+        /// <summary>
+        /// Сбрасывает баннер к значению по умолчанию (превью первого ролика).
+        /// kind: "image" | "video" | "all".
+        /// </summary>
+        [HttpDelete("{playlist}/banner")]
+        public IActionResult DeleteBanner([FromRoute] string playlist, [FromQuery] string kind = "all")
+        {
+            return ExecuteLocked(data =>
+            {
+                if (!data.ContainsKey(playlist)) return NotFound();
+
+                var pl = data[playlist];
+                if (pl.banner == null) return Ok();
+
+                if (kind is "image" or "all")
+                {
+                    DeleteBannerFile(pl.banner.image);
+                    pl.banner.image = null;
+                }
+                if (kind is "video" or "all")
+                {
+                    DeleteBannerFile(pl.banner.video);
+                    pl.banner.video = null;
+                }
+
+                if (pl.banner.IsEmpty) pl.banner = null;
+                return Ok();
+            });
+        }
+
+        #endregion
+
         private IActionResult ExecuteLocked(Func<Dictionary<string, Playlist>, IActionResult> action)
         {
             lock (_lock)
@@ -176,6 +310,8 @@ namespace CoubPlayer
                 if (System.IO.File.Exists(iconPath))
                     System.IO.File.Delete(iconPath);
 
+                DeleteAllBannerFiles(data[playlist]);
+
                 data.Remove(playlist);
                 return Ok();
             });
@@ -240,17 +376,145 @@ namespace CoubPlayer
 
                 var pl = data[playlist];
 
-                if (!pl.videos.ContainsKey(req.Id))
+                // Может прийти как точный ключ записи, так и id куба — во втором
+                // случае ролик лежит в плейлисте копией ("id#2"), и убрать нужно
+                // первую попавшуюся его запись. Искать ключ на клиенте нельзя:
+                // его копия плейлистов могла устареть.
+                var key = pl.videos.ContainsKey(req.Id)
+                    ? req.Id
+                    : pl.videos.Keys.FirstOrDefault(k => BaseCoubId(k) == req.Id);
+
+                if (key == null)
                     return NotFound();
 
-                var removedOrder = pl.videos[req.Id].order;
-                pl.videos.Remove(req.Id);
+                var removedOrder = pl.videos[key].order;
+                pl.videos.Remove(key);
 
                 foreach (var video in pl.videos.Values)
                 {
                     if (video.order > removedOrder)
                         video.order -= 1;
                 }
+
+                return Ok();
+            });
+        }
+
+        /// <summary>
+        /// Ключ записи в плейлисте — это либо id куба, либо "id#N" для копии.
+        /// Сами файлы при дублировании не копируются: обе записи ссылаются
+        /// на один и тот же ролик в coub_list.json.
+        /// </summary>
+        private static string BaseCoubId(string key)
+        {
+            var i = key.IndexOf('#');
+            return i < 0 ? key : key.Substring(0, i);
+        }
+
+        private static string NextInstanceKey(Playlist pl, string baseId)
+        {
+            var n = 2;
+            while (pl.videos.ContainsKey($"{baseId}#{n}")) n++;
+            return $"{baseId}#{n}";
+        }
+
+        /// <summary>
+        /// Добавляет в плейлист ещё одну запись того же ролика, сразу за исходной.
+        /// Файлы не копируются — новая запись просто ссылается на тот же куб,
+        /// но имеет собственные order и постобработку.
+        /// </summary>
+        [HttpPost("{playlist}/duplicate")]
+        public IActionResult Duplicate([FromRoute] string playlist, [FromBody] DuplicateVideoRequest req)
+        {
+            if (string.IsNullOrWhiteSpace(req?.Id))
+                return BadRequest("No id provided");
+
+            return ExecuteLocked(data =>
+            {
+                if (!data.ContainsKey(playlist))
+                    return NotFound();
+
+                var pl = data[playlist];
+                if (!pl.videos.TryGetValue(req.Id, out var source))
+                    return NotFound("Video not in playlist");
+
+                var newKey = NextInstanceKey(pl, BaseCoubId(req.Id));
+
+                foreach (var video in pl.videos.Values)
+                    if (video.order > source.order) video.order += 1;
+
+                pl.videos[newKey] = new VideoMeta
+                {
+                    title = source.title,
+                    order = source.order + 1,
+                    fx = source.fx == null ? null : new Dictionary<string, double>(source.fx),
+                    bgFx = source.bgFx == null ? null : new Dictionary<string, double>(source.bgFx),
+                    bgSeparate = source.bgSeparate,
+                };
+
+                return Ok(new { key = newKey });
+            });
+        }
+
+        /// <summary>
+        /// Сохраняет персональную постобработку одной записи плейлиста.
+        /// Пустой/отсутствующий Fx снимает настройки.
+        /// </summary>
+        [HttpPost("{playlist}/fx")]
+        public IActionResult SetFx([FromRoute] string playlist, [FromBody] SetVideoFxRequest req)
+        {
+            if (string.IsNullOrWhiteSpace(req?.Id))
+                return BadRequest("No id provided");
+
+            return ExecuteLocked(data =>
+            {
+                if (!data.ContainsKey(playlist))
+                    return NotFound();
+
+                var pl = data[playlist];
+                if (!pl.videos.TryGetValue(req.Id, out var meta))
+                    return NotFound("Video not in playlist");
+
+                meta.fx = req.Fx is { Count: > 0 } ? req.Fx : null;
+                meta.bgSeparate = req.BgSeparate ? true : null;
+                // bgFx имеет смысл только при отдельной настройке фона —
+                // иначе не храним, чтобы файл не пух пустыми объектами
+                meta.bgFx = req.BgSeparate && req.BgFx is { Count: > 0 } ? req.BgFx : null;
+                return Ok();
+            });
+        }
+
+        /// <summary>
+        /// Переставляет ролики в плейлисте (drag and drop в режиме плитки).
+        /// Ids может быть подмножеством плейлиста — в сетке могут быть включены
+        /// поиск или фильтр по тегам, и тогда пользователь видит и таскает не всё.
+        /// Поэтому переставляем не «сквозной нумерацией», а по занятым позициям:
+        /// берём order'ы именно этих роликов, сортируем и раздаём в новом порядке.
+        /// Ролики, которых нет в списке, остаются на своих местах.
+        /// </summary>
+        [HttpPost("{playlist}/reorder")]
+        public IActionResult Reorder([FromRoute] string playlist, [FromBody] ReorderPlaylistRequest req)
+        {
+            if (req?.Ids == null || req.Ids.Count == 0)
+                return BadRequest("No ids provided");
+
+            return ExecuteLocked(data =>
+            {
+                if (!data.ContainsKey(playlist))
+                    return NotFound();
+
+                var pl = data[playlist];
+
+                var unknown = req.Ids.Where(id => !pl.videos.ContainsKey(id)).ToList();
+                if (unknown.Count > 0)
+                    return BadRequest($"Not in playlist: {string.Join(", ", unknown)}");
+
+                if (req.Ids.Distinct().Count() != req.Ids.Count)
+                    return BadRequest("Duplicate ids");
+
+                var slots = req.Ids.Select(id => pl.videos[id].order).OrderBy(o => o).ToList();
+                for (var i = 0; i < req.Ids.Count; i++)
+                    pl.videos[req.Ids[i]].order = slots[i];
 
                 return Ok();
             });

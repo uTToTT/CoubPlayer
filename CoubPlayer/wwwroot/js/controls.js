@@ -1,6 +1,12 @@
 // controls.js
 // Keyboard, wheel, кнопки. Работает только через публичный API Player.
 // Больше не лезет напрямую в player.videoEls[player.activeIdx].
+//
+// В режиме «плитка» плеер выключен целиком, поэтому управление
+// воспроизведением там не работает — иначе стрелки и колесо снова
+// запускали бы ролик, который пользователь не видит.
+
+import { isGridMode } from "./grid.js";
 
 /**
  * @param {import("./player.js").Player} player
@@ -19,11 +25,16 @@ export function initControls(player, setVolumeSlider, onToggleEditor) {
     document.addEventListener("keydown", (e) => {
         if (e.target.matches("input, textarea")) return;
 
+        // Громкость настраивается и в плитке — ей управляют превью
+        const playbackOff = isGridMode();
+
         switch (e.code) {
             case "ArrowRight":
+                if (playbackOff) return;
                 player.goToNext();
                 break;
             case "ArrowLeft":
+                if (playbackOff) return;
                 player.goToPrev();
                 break;
             case "ArrowUp": {
@@ -42,10 +53,12 @@ export function initControls(player, setVolumeSlider, onToggleEditor) {
             }
             case "Numpad0":
             case "KeyR":
+                if (playbackOff) return;
                 player.restart();
                 break;
             case "Space":
                 e.preventDefault();
+                if (playbackOff) return;
                 player.togglePause();
                 break;
             // case "ControlRight":
@@ -55,12 +68,13 @@ export function initControls(player, setVolumeSlider, onToggleEditor) {
         }
     });
 
-    const SCROLL_SELECTORS = [".pl-editor-list", ".pl-editor-overlay"];
+    const SCROLL_SELECTORS = [".pl-editor-list", ".pl-editor-overlay", ".grid-view"];
     const isOverScrollable = (target) =>
         SCROLL_SELECTORS.some((sel) => target.closest(sel));
 
     let wheelLock = false;
     document.addEventListener("wheel", (e) => {
+        if (isGridMode()) return;
         if (isOverScrollable(e.target)) return;
         if (wheelLock) return;
         wheelLock = true;

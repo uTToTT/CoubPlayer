@@ -8,6 +8,9 @@
     <link rel="stylesheet" href="css/click-effects.css" />
     <link rel="stylesheet" href="css/text-reveal.css" />
     <link rel="stylesheet" href="css/video-flip.css" />
+    <link rel="stylesheet" href="css/coub-grid.css" />
+    <link rel="stylesheet" href="css/madness.css" />
+    <link rel="stylesheet" href="css/banner.css" />
 
     <link rel="icon" type="image/png" href="Data/icons/player_icon.png" />
     <style>
@@ -248,6 +251,7 @@
           </span>
         </span>
       </button>
+
       <button
         id="restart"
         class="control-btn"
@@ -260,22 +264,34 @@
         </span>
       </button>
 
-      <button
-        id="openFolderBtn"
-        class="control-btn"
-        title="Открыть папку с файлами"
-        data-icon="folder"
-      >
-        <span class="icon-slot" data-icon-name="folder">
-          <span class="icon-fallback">📁</span>
-          <img class="icon-custom" alt="" draggable="false" />
-        </span>
-      </button>
+      <!-- Файлы ролика и его копии — одной кнопкой со списком -->
+      <div class="ctl-dropdown" id="fileDropdown">
+        <button
+          id="fileDropdownBtn"
+          class="control-btn"
+          type="button"
+          title="Файлы и копии"
+          data-icon="folder"
+        >
+          <span class="icon-slot" data-icon-name="folder">
+            <span class="icon-fallback">📁</span>
+            <img class="icon-custom" alt="" draggable="false" />
+          </span>
+        </button>
+        <div class="ctl-dropdown-menu hidden" id="fileDropdownMenu">
+          <button type="button" class="ctl-dropdown-item" id="openFolderBtn">
+            Открыть папку
+          </button>
+          <button type="button" class="ctl-dropdown-item" id="duplicateBtn">
+            ⧉ Дублировать видео
+          </button>
+        </div>
+      </div>
 
       <button
         id="videoEditBtn"
         class="control-btn control-btn--accent"
-        title="Плейлисты и теги"
+        title="Плейлисты, теги и эффекты"
         data-icon="playlist-add"
       >
         <span class="icon-slot" data-icon-name="playlist-add">
@@ -318,6 +334,15 @@
               </span>
             </span>
             Теги
+          </button>
+          <button data-tab="fx">
+            <span class="pl-tab-icon">
+              <span class="icon-slot" data-icon-name="fx">
+                <span class="icon-fallback">✨</span>
+                <img class="icon-custom" alt="" draggable="false" />
+              </span>
+            </span>
+            Эффекты
           </button>
         </div>
 
@@ -380,6 +405,61 @@
             <button id="videoTagsAddBtn">＋</button>
           </div>
           <datalist id="allTagsDatalist"></datalist>
+        </div>
+
+        <!-- Вкладка: Эффекты (персональная постобработка ролика) -->
+        <div id="veTabFx" class="pl-tab-hidden">
+          <div class="fx-note" id="fxNote"></div>
+
+          <div class="fx-switches">
+            <div class="fx-switch-row">
+              <span class="fx-switch-label">Фон</span>
+              <div class="sort-group fx-switch-group" id="fxBgModeGroup">
+                <button type="button" data-bgmode="together" class="active">
+                  вместе
+                </button>
+                <button type="button" data-bgmode="separate">отдельно</button>
+              </div>
+            </div>
+            <div class="fx-switch-row hidden" id="fxTargetRow">
+              <span class="fx-switch-label">Настраиваем</span>
+              <div class="sort-group fx-switch-group" id="fxTargetGroup">
+                <button type="button" data-target="video" class="active">
+                  видео
+                </button>
+                <button type="button" data-target="bg">фон</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="fx-list" id="fxList"></div>
+
+          <div class="fx-presets hidden" id="fxPresetsBox">
+            <div class="fx-presets-head">Пресеты</div>
+            <div class="fx-presets-list" id="fxPresetsList"></div>
+          </div>
+
+          <div class="fx-foot">
+            <button type="button" class="grid-bulk-btn" id="fxPresetsBtn">
+              Пресеты
+            </button>
+            <button type="button" class="grid-bulk-btn" id="fxSavePresetBtn">
+              Сохранить как…
+            </button>
+          </div>
+          <div class="fx-foot fx-foot--top">
+            <button type="button" class="grid-bulk-btn" id="fxResetBtn">
+              Сбросить всё
+            </button>
+            <button
+              type="button"
+              class="grid-bulk-btn grid-bulk-btn--accent"
+              id="fxDuplicateBtn"
+              title="Создать ещё одну такую же запись сразу после текущей"
+            >
+              ⧉ Дублировать
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -491,11 +571,61 @@
       </div>
 
       <div class="sort-bar">
+        <div class="sort-group" id="viewModeGroup" title="Способ просмотра (G)">
+          <button data-view="list" class="active">Список</button>
+          <button data-view="grid">Плитка</button>
+        </div>
+
         <div class="sort-group" id="sortTypeGroup">
           <button data-type="order" class="active">Order</button>
           <button data-type="random">Random</button>
+          <button data-type="madness">Безумие</button>
         </div>
         <button id="sortDirectionBtn" title="Направление сортировки">↑</button>
+
+        <div class="madness-wrap" id="madnessWrap">
+          <button
+            id="madnessSettingsBtn"
+            class="madness-trigger hidden"
+            type="button"
+            title="Что рандомизировать"
+          >
+            ⚙
+          </button>
+
+          <div class="madness-panel hidden" id="madnessPanel">
+            <div class="madness-head">
+              <div>
+                <div class="madness-title">Безумие</div>
+                <div class="madness-subtitle">Что рандомизировать</div>
+              </div>
+              <button class="pl-editor-close" id="madnessClose" title="Закрыть">
+                ✕
+              </button>
+            </div>
+
+            <div class="madness-list" id="madnessList"></div>
+
+            <div class="madness-current" id="madnessCurrent"></div>
+
+            <div class="madness-foot">
+              <button type="button" class="grid-bulk-btn" id="madnessNone">
+                Снять всё
+              </button>
+              <button type="button" class="grid-bulk-btn" id="madnessAll">
+                Отметить всё
+              </button>
+              <button
+                type="button"
+                class="grid-bulk-btn grid-bulk-btn--accent"
+                id="madnessReshuffle"
+                title="Новый seed — новые значения для всех роликов"
+              >
+                🎲 Перетряхнуть
+              </button>
+            </div>
+          </div>
+        </div>
         <input
           id="seedInput"
           type="number"
@@ -618,6 +748,171 @@
             id="tagFilterDeleteAllBtn"
           >
             🗑 Удалить все теги
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════
+     COUB GRID — просмотр текущего плейлиста плиткой
+     ═══════════════════════════════════════════ -->
+    <div id="gridView" class="grid-view">
+      <div class="grid-view-toolbar">
+        <div class="grid-view-caption" id="gridSubtitle">—</div>
+
+        <div class="pl-editor-search grid-view-search">
+          <svg class="pl-search-icon" viewBox="0 0 20 20" fill="none">
+            <circle
+              cx="9"
+              cy="9"
+              r="6"
+              stroke="currentColor"
+              stroke-width="1.8"
+            />
+            <path
+              d="M13.5 13.5 17 17"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+            />
+          </svg>
+          <input
+            id="gridSearch"
+            class="pl-search-input"
+            type="text"
+            placeholder="Найти видео…"
+            autocomplete="off"
+          />
+          <button class="pl-search-clear hidden" id="gridSearchClear">✕</button>
+        </div>
+
+        <div
+          class="sort-group grid-size-group"
+          id="gridSizeGroup"
+          title="Размер плиток"
+        >
+          <button data-size="s" type="button">S</button>
+          <button data-size="m" type="button" class="active">M</button>
+          <button data-size="l" type="button">L</button>
+        </div>
+      </div>
+
+      <div class="pl-editor-list coub-grid" id="gridList"></div>
+
+      <!-- Массовые действия над выделенными роликами -->
+      <div class="grid-bulk-bar" id="gridBulkBar" hidden>
+        <div class="grid-bulk-info">
+          <span class="grid-bulk-count" id="gridBulkCount">Выбрано: 0</span>
+          <span class="grid-bulk-hint">двойной клик — перейти к видео</span>
+        </div>
+        <div class="grid-bulk-actions">
+          <button type="button" class="grid-bulk-btn" id="gridBulkAll">
+            Выделить всё
+          </button>
+          <button type="button" class="grid-bulk-btn" id="gridBulkClear">
+            Снять
+          </button>
+          <button
+            type="button"
+            class="grid-bulk-btn grid-bulk-btn--accent"
+            id="gridBulkPlaylist"
+          >
+            В плейлист
+          </button>
+          <button
+            type="button"
+            class="grid-bulk-btn grid-bulk-btn--accent"
+            id="gridBulkTag"
+          >
+            Добавить тег
+          </button>
+          <button
+            type="button"
+            class="grid-bulk-btn grid-bulk-btn--accent"
+            id="gridBulkPreset"
+            title="Применить пресет постобработки ко всем выделенным"
+          >
+            Пресет
+          </button>
+        </div>
+      </div>
+
+      <!-- Выпадашка выбора плейлиста / тега для массового действия -->
+      <div class="grid-bulk-popover hidden" id="gridBulkPopover">
+        <div class="grid-bulk-popover-head">
+          <span id="gridBulkPopoverTitle">В плейлист</span>
+          <button class="pl-editor-close" id="gridBulkPopoverClose">✕</button>
+        </div>
+        <div class="grid-bulk-popover-input">
+          <input
+            id="gridBulkInput"
+            class="pl-search-input"
+            type="text"
+            autocomplete="off"
+            maxlength="80"
+          />
+          <button
+            type="button"
+            class="grid-bulk-btn grid-bulk-btn--accent"
+            id="gridBulkInputAdd"
+          >
+            ＋
+          </button>
+        </div>
+        <div class="grid-bulk-popover-list" id="gridBulkPopoverList"></div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════
+     BANNER CROPPER — кадрирование своей картинки под баннер
+     ═══════════════════════════════════════════ -->
+    <div
+      id="bannerCropOverlay"
+      class="pl-editor-overlay pl-editor-overlay--modal"
+    >
+      <div id="bannerCropPanel" class="pl-editor-panel banner-crop-panel">
+        <div class="pl-editor-header">
+          <div class="pl-editor-header-text">
+            <div class="pl-editor-title">Баннер плейлиста</div>
+            <div class="pl-editor-subtitle" id="bannerCropSubtitle">—</div>
+          </div>
+          <button class="pl-editor-close" id="bannerCropClose" title="Закрыть">
+            ✕
+          </button>
+        </div>
+
+        <div class="banner-crop-body">
+          <div class="banner-crop-frame" id="bannerCropFrame">
+            <img id="bannerCropImage" alt="" draggable="false" />
+            <div class="banner-crop-grid"></div>
+          </div>
+          <div class="banner-crop-hint">
+            Перетащите картинку и настройте масштаб
+          </div>
+          <div class="banner-crop-zoom">
+            <span class="banner-crop-zoom-icon">＋</span>
+            <input
+              id="bannerCropZoom"
+              class="volume-slider banner-crop-zoom-slider"
+              type="range"
+              min="1"
+              max="4"
+              step="0.01"
+              value="1"
+            />
+          </div>
+        </div>
+
+        <div class="pl-editor-footer banner-crop-foot">
+          <button type="button" class="grid-bulk-btn" id="bannerCropCancel">
+            Отмена
+          </button>
+          <button
+            type="button"
+            class="grid-bulk-btn grid-bulk-btn--accent"
+            id="bannerCropSave"
+          >
+            Сохранить
           </button>
         </div>
       </div>

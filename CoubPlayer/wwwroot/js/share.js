@@ -2,6 +2,8 @@
 // Кодирование/декодирование "лёгкой" строки для шаринга плейлиста между пользователями.
 // Формат: "CPSHARE1:" + base64(JSON), JSON = { v: 1, title, items: [{id, title}] }
 
+import { coubIdFromKey } from "./playlist.js";
+
 const PREFIX = "CPSHARE1:";
 
 function b64encode(str) {
@@ -17,10 +19,16 @@ function b64decode(str) {
  * @returns {string}
  */
 export function encodePlaylistShare(title, videosMap) {
-    const items = Object.entries(videosMap || {}).map(([id, meta]) => ({
-        id,
-        title: meta?.title || id,
-    }));
+    // Ключи плейлиста могут быть копиями ("id#2") — наружу отдаём id кубов
+    // и без повторов: получателю всё равно качать один и тот же ролик один раз.
+    const seen = new Set();
+    const items = [];
+    for (const [key, meta] of Object.entries(videosMap || {})) {
+        const id = coubIdFromKey(key);
+        if (seen.has(id)) continue;
+        seen.add(id);
+        items.push({ id, title: meta?.title || id });
+    }
     const payload = { v: 1, title: title || "Playlist", items };
     return PREFIX + b64encode(JSON.stringify(payload));
 }

@@ -1,12 +1,20 @@
 // main.js — точка входа, склейка модулей.
 
 import { loadData } from "./loader.js";
-import { buildPlaylist } from "./playlist.js";
+import { buildPlaylist, coubIdFromKey, findKeyForCoub } from "./playlist.js";
 import { Player } from "./player.js";
 import { initControls } from "./controls.js";
 import * as api from "./api.js";
 import { state } from "./state.js";
 import { initClickEffects } from "./click-effects.js";
+import { initGridView, isGridMode, syncGridToVideo, refreshGrid } from "./grid.js";
+import {
+    RANDOM_TRAITS,
+    DEFAULT_MADNESS_TRAITS,
+    createRandomizer,
+    normalizeTraits,
+    rollSeed,
+} from "./randomizer.js";
 import { revealSimple, revealChars } from "./text-reveal.js";
 import {
     initSortingPanel,
@@ -14,6 +22,7 @@ import {
     updateVideoInfo,
     initVolumeSlider,
     initCopyLinkBtn,
+    initControlDropdown,
     initSortBar,
     initVideoEditor,          // было: initPlaylistEditor
     toggleVideoEditor,        // было: togglePlaylistEditor
@@ -25,6 +34,13 @@ import {
     initGoToStartButton,
     initImportPlaylist,
     initTransitionModeToggle,
+    initMadnessPanel,
+    setMadnessAvailable,
+    openMadnessPanel,
+    setMadnessCurrent,
+    syncSortControls,
+    setSeedInput,
+    showToast,
 } from "./ui.js";
 
 const ALL_PLAYLIST_NAME = "Все";
@@ -40,7 +56,9 @@ function buildTitleMap() {
     const titles = {};
     for (const [name, pl] of Object.entries(state.playlists)) {
         if (name === ALL_PLAYLIST_NAME) continue; // сам ещё не построен на этом шаге
-        for (const [id, meta] of Object.entries(pl.videos || {})) {
+        for (const [key, meta] of Object.entries(pl.videos || {})) {
+            // ключ может быть копией ("id#2") — заголовок нужен для самого куба
+            const id = coubIdFromKey(key);
             if (!titles[id] && meta.title) titles[id] = meta.title;
         }
     }
@@ -76,6 +94,7 @@ const syncLikedBtn = document.getElementById("syncLikedBtn");
 const syncBookmarksBtn = document.getElementById("syncBookmarksBtn");
 const realTimeClock = document.getElementById("realTimeClock");
 const videoEditBtn = document.getElementById("videoEditBtn"); // было editTagsBtn/editPlaylistsBtn
+const duplicateBtn = document.getElementById("duplicateBtn");
 
 function updateClock() {
     const now = new Date();
@@ -144,11 +163,53 @@ async function applyTagFilterAndRefresh() {
     if (state.selectedPlaylist) await applySorting();
 }
 
+// ─── Безумие ──────────────────────────────────────────────────────────────────
+// Режим сортировки, в котором каждому ролику достаются случайные настройки
+// воспроизведения (см. randomizer.js). Какие именно — выбирает пользователь
+// галочками; сами значения детерминированы по seed, так что при возврате
+// к ролику он выглядит так же.
+
+state.madnessTraits = state.madnessTraits
+    ? normalizeTraits(state.madnessTraits)
+    : { ...DEFAULT_MADNESS_TRAITS };
+
+let madness = null; // активный рандомизатор, либо null когда режим выключен
+
+// Играл ли плеер до перехода в режим плитки — чтобы вернуть как было
+let wasPlayingBeforeGrid = false;
+
+/**
+ * Во что «Безумие» превращается на уровне порядка роликов: если галочка
+ * «Порядок» стоит — это обычный random с тем же seed, если нет — order.
+ */
+function effectiveSortType() {
+    if (state.sortType !== "madness") return state.sortType;
+    return state.madnessTraits.order ? "random" : "order";
+}
+
+/** Пересобирает рандомизатор под текущий seed/галочки и отдаёт его плееру. */
+function applyMadness() {
+    const isMadness = state.sortType === "madness";
+    madness = isMadness
+        ? createRandomizer({ seed: state.randomSeed, traits: state.madnessTraits })
+        : null;
+
+    player.setEffects(madness);
+    setMadnessAvailable(isMadness);
+    syncSortControls(state.sortType, state.madnessTraits.order);
+    updateMadnessCurrent();
+}
+
+/** Показывает в панели, что именно выпало текущему ролику. */
+function updateMadnessCurrent() {
+    setMadnessCurrent(madness ? madness.describe(currentVideo()?.id) : "");
+}
+
 function getResolvedPlaylist(name) {
     const obj = state.playlists[name];
     if (!obj?.videos) return [];
     let resolved = buildPlaylist(obj, state.coubMap, {
-        type: state.sortType,
+        type: effectiveSortType(),
         direction: state.sortDirection,
         seed: state.randomSeed,
     });
@@ -176,6 +237,7 @@ async function selectPlaylist(name) {
     const resolved = getResolvedPlaylist(name);
     if (!resolved.length) {
         player.setPlaylist([], name);
+        refreshGrid();
         alert(matchingTagIds ? "Нет видео с выбранными тегами в этом плейлисте!" : "Playlist empty!");
         return;
     }
@@ -183,25 +245,28 @@ async function selectPlaylist(name) {
     player.setPlaylist(resolved, name);
     const startIndex = player.getStartIndex();
     await player.playPaused(startIndex);
+    refreshGrid();
 }
 
 async function applySorting() {
     if (!state.selectedPlaylist) return;
 
-    const currentId = currentVideo()?.id ?? null;
+    const currentKey = currentVideo()?.key ?? null;
 
     await refreshData();
     const resolved = getResolvedPlaylist(state.selectedPlaylist);
 
     if (!resolved.length) {
         player.setPlaylist([], state.selectedPlaylist);
+        refreshGrid();
         alert(matchingTagIds ? "Нет видео с выбранными тегами в этом плейлисте!" : "Playlist empty!");
         return;
     }
 
     player.setPlaylist(resolved, state.selectedPlaylist);
-    const idx = currentId ? resolved.findIndex((v) => v.id === currentId) : -1;
+    const idx = currentKey ? resolved.findIndex((v) => v.key === currentKey) : -1;
     await player.playPaused(idx === -1 ? 0 : idx);
+    refreshGrid();
 }
 
 /**
@@ -281,7 +346,9 @@ async function importPlaylistItems(targetName, items) {
         state.playlists[targetName] = { title: targetName, videos: {} };
     }
 
-    const alreadyInTarget = new Set(Object.keys(state.playlists[targetName].videos || {}));
+    const alreadyInTarget = new Set(
+        Object.keys(state.playlists[targetName].videos || {}).map(coubIdFromKey)
+    );
     const knownLocally = new Set(Object.keys(state.coubMap));
 
     const toAddLocally = items.filter((it) => knownLocally.has(it.id) && !alreadyInTarget.has(it.id));
@@ -313,11 +380,304 @@ async function importPlaylistItems(targetName, items) {
     };
 }
 
+/**
+ * Массово добавляет выбранные в сетке ролики в плейлист.
+ * Bulk-эндпоинта на сервере нет, поэтому шлём по одному запросу на ролик.
+ * Сервер на каждый /add сдвигает order всем уже лежащим в плейлисте видео
+ * и кладёт новое в начало, отсюда две особенности:
+ *   • идём в обратном порядке — чтобы в плейлисте ролики легли в том же
+ *     порядке, в каком шли в сетке;
+ *   • уже присутствующие пропускаем — повторный /add перезаписал бы запись
+ *     и лишний раз сдвинул order остальным.
+ * @param {string} name
+ * @param {Array<{id: string, title: string}>} items
+ * @param {(done: number, total: number) => void} onProgress
+ */
+async function bulkAddToPlaylist(name, items, onProgress) {
+    const existing = new Set(
+        Object.keys(state.playlists[name]?.videos || {}).map(coubIdFromKey)
+    );
+    // В выделении могли оказаться копии одного ролика — в целевой плейлист
+    // он всё равно добавляется один раз
+    const seen = new Set();
+    const todo = items.filter((it) => {
+        if (existing.has(it.id) || seen.has(it.id)) return false;
+        seen.add(it.id);
+        return true;
+    });
+
+    let done = 0;
+    let failed = 0;
+    for (let i = todo.length - 1; i >= 0; i--) {
+        const item = todo[i];
+        try {
+            await api.addVideoToPlaylist(name, item.id, item.title);
+        } catch (err) {
+            failed++;
+            console.error(`Не удалось добавить ${item.id} в «${name}»:`, err);
+        }
+        onProgress(++done, todo.length);
+    }
+
+    await refreshData();
+
+    return {
+        added: todo.length - failed,
+        skipped: items.length - todo.length,
+        failed,
+    };
+}
+
+/**
+ * Навешивает один тег на все выбранные в сетке ролики.
+ * Сервер сам игнорирует повторное добавление того же тега, так что
+ * фильтровать уже помеченные на клиенте не нужно.
+ * @param {string} tag
+ * @param {Array<{id: string}>} items
+ * @param {(done: number, total: number) => void} onProgress
+ */
+async function bulkAddTag(tag, items, onProgress) {
+    let done = 0;
+    let failed = 0;
+    for (const item of items) {
+        try {
+            await api.addTagToCoub(item.id, tag);
+        } catch (err) {
+            failed++;
+            console.error(`Не удалось добавить тег «${tag}» к ${item.id}:`, err);
+        }
+        onProgress(++done, items.length);
+    }
+
+    await refreshAllTags();
+    refreshTagsDatalist(state.allTags);
+    if (state.activeTagFilter.length) await applyTagFilterAndRefresh();
+
+    return { added: items.length - failed, failed };
+}
+
+/**
+ * Можно ли сейчас менять порядок роликов перетаскиванием в сетке.
+ * Порядок хранится в самом плейлисте (VideoMeta.order), поэтому таскать
+ * имеет смысл, только когда сетка показывает плейлист именно в этом порядке.
+ * @returns {{enabled: boolean, hint: string}}
+ */
+function getReorderInfo() {
+    if (!state.selectedPlaylist) {
+        return { enabled: false, hint: "" };
+    }
+    if (state.selectedPlaylist === ALL_PLAYLIST_NAME) {
+        return {
+            enabled: false,
+            hint: "«Все» собирается на лету, порядок не сохраняется",
+        };
+    }
+    if (effectiveSortType() !== "order") {
+        return {
+            enabled: false,
+            hint: "перетаскивание доступно при сортировке Order",
+        };
+    }
+    return { enabled: true, hint: "" };
+}
+
+/**
+ * Применяет новый порядок, полученный перетаскиванием в сетке.
+ * Плейлист плеера переставляем на месте (без перезапуска ролика), после чего
+ * сохраняем порядок на сервере. visibleIds — только то, что реально видно
+ * в сетке; при сортировке по убыванию отдаём их развёрнутыми, потому что
+ * сервер раздаёт позиции по возрастанию order.
+ * @param {{orderedItems: Array<object>, visibleIds: string[]}} change
+ */
+async function applyReorder({ orderedItems, visibleIds }) {
+    const playlistName = state.selectedPlaylist;
+    const currentId = currentVideo()?.id ?? null;
+
+    player.setPlaylist(orderedItems, playlistName);
+    const idx = currentId ? orderedItems.findIndex((v) => v.id === currentId) : -1;
+    if (idx !== -1) player.index = idx;
+    updateVideoInfo(player.index, orderedItems[player.index]?.title, orderedItems.length);
+
+    const ids = state.sortDirection === "desc" ? [...visibleIds].reverse() : visibleIds;
+
+    try {
+        await api.reorderPlaylist(playlistName, ids);
+        await refreshData();
+    } catch (err) {
+        console.error("Не удалось сохранить порядок:", err);
+        alert("Не удалось сохранить порядок: " + err.message);
+        // Возвращаемся к тому, что реально лежит на сервере
+        await applySorting();
+    }
+}
+
+// ─── Дубликаты и персональная постобработка ──────────────────────────────────
+
+/** Можно ли сейчас править записи плейлиста (дублировать, задавать эффекты). */
+function playlistIsEditable() {
+    if (!state.selectedPlaylist) {
+        return { editable: false, note: "Сначала выберите плейлист." };
+    }
+    if (state.selectedPlaylist === ALL_PLAYLIST_NAME) {
+        return {
+            editable: false,
+            note: `«${ALL_PLAYLIST_NAME}» собирается на лету и не хранится — ` +
+                "дубликаты и эффекты сохранять некуда. Откройте обычный плейлист.",
+        };
+    }
+    return {
+        editable: true,
+        note: "Настройки сохраняются в этой записи плейлиста, поэтому у копий " +
+            "одного ролика они могут отличаться.",
+    };
+}
+
+/**
+ * Добавляет копию текущего ролика сразу после него.
+ * Файлы не копируются — в плейлисте появляется вторая запись того же куба
+ * (ключ "id#2"), со своим порядком и своей постобработкой.
+ * Воспроизведение не прерываем: список пересобираем на месте.
+ */
+async function duplicateCurrentVideo() {
+    const video = currentVideo();
+    if (!video) {
+        alert("Нет текущего видео!");
+        return;
+    }
+
+    const { editable, note } = playlistIsEditable();
+    if (!editable) {
+        alert(note);
+        return;
+    }
+
+    try {
+        await api.duplicateVideo(state.selectedPlaylist, video.key);
+    } catch (err) {
+        alert("Не удалось дублировать: " + err.message);
+        return;
+    }
+
+    await refreshData();
+    const resolved = getResolvedPlaylist(state.selectedPlaylist);
+    player.setPlaylist(resolved, state.selectedPlaylist);
+
+    const idx = resolved.findIndex((v) => v.key === video.key);
+    if (idx !== -1) player.index = idx;
+    updateVideoInfo(player.index, resolved[player.index]?.title, resolved.length);
+
+    refreshGrid();
+    showToast(`<span class="pl-toast-accent">⧉</span> Копия добавлена после текущего`);
+}
+
+/** Раскладывает набор настроек по записи плейлиста (локально, без сети). */
+function assignFxToItem(item, { fx, bgFx, bgSeparate }) {
+    if (!item) return;
+    item.fx = fx && Object.keys(fx).length ? fx : null;
+    item.bgSeparate = !!bgSeparate;
+    item.bgFx = bgSeparate && bgFx && Object.keys(bgFx).length ? bgFx : null;
+}
+
+/**
+ * Применяет персональную постобработку к записи плейлиста.
+ * persist=false — только показать результат (пока пользователь тянет ползунок),
+ * persist=true — ещё и сохранить на сервере.
+ */
+async function applyVideoFx(key, settings, { persist }) {
+    if (!key) return;
+
+    const item = player.playlist.find((v) => v.key === key);
+    if (item) {
+        assignFxToItem(item, settings);
+        if (player.playlist[player.index]?.key === key) player.refreshEffects();
+    }
+
+    if (!persist) return;
+
+    const { editable } = playlistIsEditable();
+    if (!editable) return;
+
+    try {
+        await api.setVideoFx(state.selectedPlaylist, key, settings);
+        assignFxToItem(state.playlists[state.selectedPlaylist]?.videos?.[key], settings);
+    } catch (err) {
+        console.error("Не удалось сохранить постобработку:", err);
+        showToast("⚠ Не удалось сохранить эффекты");
+    }
+}
+
+// ─── Пресеты постобработки ───────────────────────────────────────────────────
+
+async function refreshFxPresets() {
+    try {
+        state.fxPresets = await api.getFxPresets();
+    } catch (err) {
+        console.error("Не удалось загрузить пресеты:", err);
+        state.fxPresets = [];
+    }
+}
+
+async function saveFxPreset(preset) {
+    try {
+        state.fxPresets = await api.saveFxPreset(preset);
+        showToast(`<span class="pl-toast-accent">✦</span> Пресет «${preset.name}» сохранён`);
+    } catch (err) {
+        console.error("Не удалось сохранить пресет:", err);
+        showToast("⚠ Не удалось сохранить пресет");
+    }
+}
+
+async function deleteFxPreset(name) {
+    try {
+        state.fxPresets = await api.deleteFxPreset(name);
+    } catch (err) {
+        console.error("Не удалось удалить пресет:", err);
+        showToast("⚠ Не удалось удалить пресет");
+    }
+}
+
+/**
+ * Применяет пресет сразу к нескольким записям плейлиста.
+ * @param {{name: string, fx?: object, bgFx?: object, bgSeparate?: boolean}} preset
+ * @param {Array<{key: string}>} items
+ * @param {(done: number, total: number) => void} onProgress
+ */
+async function bulkApplyPreset(preset, items, onProgress) {
+    const { editable, note } = playlistIsEditable();
+    if (!editable) throw new Error(note);
+
+    const settings = {
+        fx: { ...(preset.fx || {}) },
+        bgFx: { ...(preset.bgFx || {}) },
+        bgSeparate: !!preset.bgSeparate,
+    };
+
+    let done = 0;
+    let failed = 0;
+    for (const item of items) {
+        try {
+            await api.setVideoFx(state.selectedPlaylist, item.key, settings);
+            assignFxToItem(player.playlist.find((v) => v.key === item.key), settings);
+            assignFxToItem(state.playlists[state.selectedPlaylist]?.videos?.[item.key], settings);
+        } catch (err) {
+            failed++;
+            console.error(`Не удалось применить пресет к ${item.key}:`, err);
+        }
+        onProgress(++done, items.length);
+    }
+
+    player.refreshEffects();
+    refreshGrid();
+
+    return { applied: items.length - failed, failed };
+}
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
 async function init() {
     await refreshData();
     await refreshAllTags();
+    await refreshFxPresets();
     await refreshTagFilterIds(); // фильтр мог сохраниться с прошлой сессии
 
     initClickEffects({
@@ -339,8 +699,9 @@ async function init() {
     // Клавиатура / колесо / кнопки
     initControls(player, setVolumeSlider);
 
-    // Ссылка
+    // Ссылка и папка — одной кнопкой со списком
     initCopyLinkBtn(() => currentVideo()?.id);
+    initControlDropdown();
 
     const seekBar = initSeekBar((ratio) => {
         const duration = player.getDuration();
@@ -356,15 +717,45 @@ async function init() {
 
     // Сортировка
     initSortBar((type, direction, seed) => {
+        const enteredMadness = type === "madness" && state.sortType !== "madness";
+
         state.sortType = type;
         state.sortDirection = direction;
         state.randomSeed = seed;
+
+        applyMadness();
         applySorting();
+
+        // Режим бессмысленно включать вслепую — сразу показываем, что он делает
+        if (enteredMadness) openMadnessPanel();
     }, {
         sortType: state.sortType,
         sortDirection: state.sortDirection,
         randomSeed: state.randomSeed,
+        madnessShufflesOrder: () => state.madnessTraits.order,
     });
+
+    // Панель «Безумие» — набор рандомизируемых настроек
+    initMadnessPanel({
+        traits: RANDOM_TRAITS,
+        getEnabled: () => state.madnessTraits,
+        onChange: (enabled) => {
+            const prevOrder = !!state.madnessTraits.order;
+            state.madnessTraits = normalizeTraits(enabled);
+            applyMadness();
+            // Пересобирать плейлист нужно только если поменялся сам порядок —
+            // визуальные настройки применяются на лету, не трогая воспроизведение
+            if (prevOrder !== !!state.madnessTraits.order) applySorting();
+        },
+        onReshuffle: () => {
+            state.randomSeed = rollSeed();
+            setSeedInput(state.randomSeed);
+            applyMadness();
+            if (state.madnessTraits.order) applySorting();
+        },
+    });
+
+    applyMadness();
 
     // Режим перехода между видео (сохранённый выбор + переключатель)
     player.setTransitionMode(state.transitionMode);
@@ -375,6 +766,57 @@ async function init() {
 
     initGoToStartButton(() => player.goToIndex(1));
 
+    // Просмотр текущего плейлиста плиткой
+    initGridView({
+        getItems: () => player.playlist,
+        getCurrentIndex: () => player.index,
+        getPlaylistName: () => state.selectedPlaylist,
+        onPick: (index) => {
+            if (index !== player.index) player.goToIndex(index + 1);
+        },
+        getTileSize: () => state.gridTileSize,
+        onTileSizeChange: (size) => { state.gridTileSize = size; },
+        getViewMode: () => state.viewMode,
+        onViewModeChange: (mode) => { state.viewMode = mode; },
+
+        // Превью в сетке звучит само, поэтому на это время глушим основной плеер.
+        // state.volume не трогаем — это пользовательская настройка, ползунок
+        // должен остаться на своём месте.
+        getVolume: () => state.volume,
+        onPreviewActive: (active) => player.setVolume(active ? 0 : state.volume),
+
+        getPlaylists: () => state.playlists,
+        onCreatePlaylist: async () => {
+            const name = prompt("Название нового плейлиста:");
+            if (!name?.trim()) return null;
+            await api.createPlaylist({ name: name.trim() });
+            state.playlists[name.trim()] = { title: name.trim(), videos: {} };
+            return name.trim();
+        },
+        onBulkAddToPlaylist: (name, items, onProgress) =>
+            bulkAddToPlaylist(name, items, onProgress),
+        getAllTags: () => state.allTags,
+        onBulkAddTag: (tag, items, onProgress) => bulkAddTag(tag, items, onProgress),
+        getPresets: () => state.fxPresets,
+        onBulkApplyPreset: (preset, items, onProgress) =>
+            bulkApplyPreset(preset, items, onProgress),
+
+        getReorderInfo: () => getReorderInfo(),
+        onReorder: (change) => applyReorder(change),
+
+        // В режиме плитки плеер выключается целиком; возвращаясь к списку,
+        // восстанавливаем то состояние, в котором он был до переключения
+        onPlayerActive: (active) => {
+            if (!active) {
+                wasPlayingBeforeGrid = !player.isPaused;
+                player.pause();
+            } else if (wasPlayingBeforeGrid) {
+                player.resume();
+            }
+        },
+        onBgPreview: (videoEl, item) => player.setBgPreview(videoEl, item),
+    });
+
     initVideoEditor({
         getPlaylists: () => state.playlists,
         onToggle: async (name, add) => {
@@ -383,6 +825,8 @@ async function init() {
             if (add) {
                 await api.addVideoToPlaylist(name, video.id, video.title);
             } else {
+                // Отдаём id куба: если ролик лежит в плейлисте копией, нужную
+                // запись найдёт сервер — у него данные заведомо актуальные
                 await api.removeVideoFromPlaylist(name, video.id);
             }
         },
@@ -402,6 +846,18 @@ async function init() {
             refreshTagsDatalist(state.allTags);
             if (state.activeTagFilter.length) await applyTagFilterAndRefresh();
         },
+        getFxContext: () => playlistIsEditable(),
+        onFxChange: (key, settings, opts) => applyVideoFx(key, settings, opts),
+        onDuplicate: () => duplicateCurrentVideo(),
+        getPresets: () => state.fxPresets,
+        onSavePreset: (preset) => saveFxPreset(preset),
+        onDeletePreset: (name) => deleteFxPreset(name),
+    });
+
+    duplicateBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        duplicateCurrentVideo();
+        duplicateBtn.blur();
     });
 
 
@@ -490,6 +946,9 @@ async function init() {
                 await applyTagFilterAndRefresh();
             }
         },
+        // баннеры
+        getCoubMap: () => state.coubMap,
+        onBannerChanged: () => refreshData(),
         onDeleteAllTags: async () => {
             await api.deleteAllTags();
             state.allTags = [];
@@ -561,7 +1020,7 @@ async function init() {
     document.body.addEventListener("click", (e) => {
         // Если открыта панель (редактор/селектор плейлистов) — не трогаем паузу.
         // Закрытие панели по клику мимо неё обрабатывает document-listener в ui.js.
-        if (isAnyPanelOpen()) return;
+        if (isAnyPanelOpen() || isGridMode()) return;
 
         const ignore = [
             ".button", ".fullscreen-btn", ".bottom-controls",
@@ -581,6 +1040,8 @@ async function init() {
     player.onVideoChange = (item) => {
         updateVideoInfo(player.index, item.title, player.playlist.length);
         syncVideoEditorToVideo(item);
+        syncGridToVideo();
+        updateMadnessCurrent();
     };
 
     player.activeVideo.addEventListener("play", () => updatePauseOverlay(false));

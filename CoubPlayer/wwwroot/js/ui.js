@@ -1,5 +1,20 @@
 // ui.js — весь рендеринг UI.
 import { getRecentPlaylists, addRecentPlaylist, getRecentTags, addRecentTag } from "./state.js";
+import { RANDOM_TRAITS, neutralValue } from "./randomizer.js";
+import { findKeyForCoub } from "./playlist.js";
+import {
+    buildBannerEl,
+    bindBannerHover,
+    cropBannerImage,
+    initBannerCropper,
+    forgetLegacyIcon,
+} from "./banner.js";
+import {
+    setPlaylistBanner,
+    setPlaylistBannerVideo,
+    deletePlaylistBanner,
+    deletePlaylistIcon,
+} from "./api.js";
 import { encodePlaylistShare, decodePlaylistShare } from "./share.js";
 import { revealSimple, revealChars } from "./text-reveal.js";
 
@@ -63,6 +78,10 @@ export function initVolumeSlider(onChange, initialValue = 50) {
 const copyLinkBtn = document.getElementById("copyLinkBtn");
 const copyLinkIconSlot = copyLinkBtn.querySelector(".icon-slot");
 
+const fileDropdown = document.getElementById("fileDropdown");
+const fileDropdownBtn = document.getElementById("fileDropdownBtn");
+const fileDropdownMenu = document.getElementById("fileDropdownMenu");
+
 export function initCopyLinkBtn(getCurrentVideoId) {
     copyLinkBtn.addEventListener("click", async () => {
         const id = getCurrentVideoId();
@@ -70,9 +89,33 @@ export function initCopyLinkBtn(getCurrentVideoId) {
         try {
             await navigator.clipboard.writeText(`https://coub.com/view/${id}`);
             flashIconSuccess(copyLinkIconSlot);
+            showToast("✓ Ссылка скопирована");
         } catch (e) {
             console.error("Clipboard error:", e);
         }
+    });
+}
+
+/** Кнопка-список в нижней панели: папка с файлами ролика / его дубликат. */
+export function initControlDropdown() {
+    const close = () => fileDropdownMenu.classList.add("hidden");
+
+    fileDropdownBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        fileDropdownMenu.classList.toggle("hidden");
+        fileDropdownBtn.blur();
+    });
+
+    fileDropdownMenu.querySelectorAll(".ctl-dropdown-item").forEach((item) => {
+        item.addEventListener("click", close);
+    });
+
+    document.addEventListener("click", (e) => {
+        if (!fileDropdown.contains(e.target)) close();
+    });
+
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") close();
     });
 }
 
@@ -99,6 +142,7 @@ const DEFAULT_SEED = 42;
 export function initSortBar(onChange, initial = {}) {
     let sortType = initial.sortType ?? "order";
     let sortDirection = initial.sortDirection ?? "asc";
+    const madnessShufflesOrder = initial.madnessShufflesOrder ?? (() => true);
 
     seedInput.value = initial.randomSeed ?? DEFAULT_SEED;
 
@@ -110,9 +154,7 @@ export function initSortBar(onChange, initial = {}) {
 
     sortDirectionBtn.textContent = sortDirection === "asc" ? "↑" : "↓";
 
-    const random = sortType === "random";
-    seedInput.classList.toggle("hidden", !random);
-    sortDirectionBtn.classList.toggle("hidden", random);
+    syncSortControls(sortType, madnessShufflesOrder());
 
     const notify = () => onChange(sortType, sortDirection, parseInt(seedInput.value) || DEFAULT_SEED);
 
@@ -123,11 +165,7 @@ export function initSortBar(onChange, initial = {}) {
         btn.classList.add("active");
         sortType = btn.dataset.type;
 
-        const isRandom = sortType === "random";
-        seedInput.classList.toggle("hidden", !isRandom);
-        // Кнопка направления не нужна для random
-        sortDirectionBtn.classList.toggle("hidden", isRandom);
-
+        syncSortControls(sortType, madnessShufflesOrder());
         notify();
     });
 
@@ -141,6 +179,182 @@ export function initSortBar(onChange, initial = {}) {
         if (!seedInput.value || parseInt(seedInput.value) < 1) seedInput.value = DEFAULT_SEED;
         notify();
     });
+}
+
+/**
+ * Показывает/прячет seed и кнопку направления под текущий режим сортировки.
+ * Вынесено отдельно, потому что для «Безумия» ответ зависит ещё и от того,
+ * включена ли в нём рандомизация порядка: включена — нужен seed, выключена —
+ * порядок обычный и снова имеет смысл направление.
+ * @param {"order"|"random"|"madness"} sortType
+ * @param {boolean} madnessShufflesOrder
+ */
+export function syncSortControls(sortType, madnessShufflesOrder) {
+    const randomOrder =
+        sortType === "random" || (sortType === "madness" && madnessShufflesOrder);
+
+    seedInput.classList.toggle("hidden", !randomOrder);
+    sortDirectionBtn.classList.toggle("hidden", randomOrder);
+}
+
+/** Текущее значение seed из поля верхней панели. */
+export function setSeedInput(value) {
+    seedInput.value = value;
+}
+
+// ─── Madness panel ─────────────────────────────────────────────────────────
+
+const madnessWrap = document.getElementById("madnessWrap");
+const madnessTriggerBtn = document.getElementById("madnessSettingsBtn");
+const madnessPanel = document.getElementById("madnessPanel");
+const madnessClose = document.getElementById("madnessClose");
+const madnessList = document.getElementById("madnessList");
+const madnessCurrent = document.getElementById("madnessCurrent");
+const madnessNoneBtn = document.getElementById("madnessNone");
+const madnessAllBtn = document.getElementById("madnessAll");
+const madnessReshuffleBtn = document.getElementById("madnessReshuffle");
+
+let _madnessTraits = [];
+let _getMadnessState = () => ({});
+let _onMadnessChange = null;
+let _onMadnessReshuffle = null;
+
+/**
+ * @param {{
+ *   traits: Array<{key: string, label: string, hint?: string}>,
+ *   getEnabled: () => Record<string, boolean>,
+ *   onChange: (enabled: Record<string, boolean>) => void,
+ *   onReshuffle: () => void,
+ * }} options
+ */
+export function initMadnessPanel({ traits, getEnabled, onChange, onReshuffle }) {
+    _madnessTraits = traits;
+    _getMadnessState = getEnabled;
+    _onMadnessChange = onChange;
+    _onMadnessReshuffle = onReshuffle;
+
+    madnessTriggerBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        toggleMadnessPanel();
+    });
+
+    madnessClose.addEventListener("click", (e) => {
+        e.stopPropagation();
+        closeMadnessPanel();
+    });
+
+    madnessList.addEventListener("click", (e) => {
+        const row = e.target.closest("[data-trait]");
+        if (!row) return;
+        e.stopPropagation();
+        const enabled = { ..._getMadnessState() };
+        enabled[row.dataset.trait] = !enabled[row.dataset.trait];
+        _onMadnessChange?.(enabled);
+        renderMadnessRows();
+    });
+
+    madnessAllBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        setAllMadnessTraits(true);
+    });
+
+    madnessNoneBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        setAllMadnessTraits(false);
+    });
+
+    madnessReshuffleBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        _onMadnessReshuffle?.();
+    });
+
+    document.addEventListener("click", (e) => {
+        if (madnessPanel.classList.contains("hidden")) return;
+        if (madnessWrap.contains(e.target)) return;
+        closeMadnessPanel();
+    }, true);
+
+    document.addEventListener("keydown", (e) => {
+        if (e.target.matches("input, textarea")) return;
+        if (e.key === "Escape" && !madnessPanel.classList.contains("hidden")) {
+            e.preventDefault();
+            e.stopPropagation();
+            closeMadnessPanel();
+        }
+    });
+
+    renderMadnessRows();
+}
+
+function setAllMadnessTraits(value) {
+    const enabled = {};
+    for (const trait of _madnessTraits) enabled[trait.key] = value;
+    _onMadnessChange?.(enabled);
+    renderMadnessRows();
+}
+
+function renderMadnessRows() {
+    const enabled = _getMadnessState();
+    madnessList.innerHTML = "";
+
+    for (const trait of _madnessTraits) {
+        const row = document.createElement("div");
+        row.className = "madness-row" + (enabled[trait.key] ? " madness-row--on" : "");
+        row.dataset.trait = trait.key;
+
+        const box = document.createElement("div");
+        box.className = "madness-box";
+
+        const text = document.createElement("div");
+        text.className = "madness-text";
+
+        const label = document.createElement("div");
+        label.className = "madness-label";
+        label.textContent = trait.label;
+        text.appendChild(label);
+
+        if (trait.hint) {
+            const hint = document.createElement("div");
+            hint.className = "madness-hint";
+            hint.textContent = trait.hint;
+            text.appendChild(hint);
+        }
+
+        row.appendChild(box);
+        row.appendChild(text);
+        madnessList.appendChild(row);
+    }
+}
+
+/** Показывает кнопку-шестерёнку только в режиме «Безумие». */
+export function setMadnessAvailable(available) {
+    madnessTriggerBtn.classList.toggle("hidden", !available);
+    if (!available) closeMadnessPanel();
+}
+
+export function openMadnessPanel() {
+    renderMadnessRows();
+    madnessPanel.classList.remove("hidden");
+    document.body.classList.add("madness-open");
+}
+
+export function closeMadnessPanel() {
+    madnessPanel.classList.add("hidden");
+    document.body.classList.remove("madness-open");
+}
+
+export function isMadnessPanelOpen() {
+    return !madnessPanel.classList.contains("hidden");
+}
+
+function toggleMadnessPanel() {
+    if (madnessPanel.classList.contains("hidden")) openMadnessPanel();
+    else closeMadnessPanel();
+}
+
+/** Строка с настройками, выпавшими текущему ролику (или "" чтобы скрыть). */
+export function setMadnessCurrent(text) {
+    madnessCurrent.textContent = text || "";
 }
 
 // ─── Transition Mode Toggle (Fade / Flip) ──────────────────────────────────
@@ -169,6 +383,9 @@ export function initTransitionModeToggle(onChange, initialMode = "crossfade") {
 
 const READONLY_PLAYLISTS = ["bookmarks", "liked", "Все"];
 
+// «Все» собирается на лету и на сервере не существует — баннер ему не задать
+const VIRTUAL_PLAYLIST = "Все";
+
 const veOverlay = document.getElementById("videoEditorOverlay");
 const vePanel = document.getElementById("videoEditorPanel");
 const veSubtitle = document.getElementById("videoEditorSubtitle");
@@ -176,6 +393,7 @@ const veClose = document.getElementById("videoEditorClose");
 const veTabs = document.getElementById("videoEditorTabs");
 const veTabPlaylists = document.getElementById("veTabPlaylists");
 const veTabTags = document.getElementById("veTabTags");
+const veTabFx = document.getElementById("veTabFx");
 
 const editorSearch = document.getElementById("plSearchInput");
 const editorClear = document.getElementById("plSearchClear");
@@ -203,6 +421,7 @@ function isNavExempt(target) {
 }
 
 let _playlists = {};
+let _getEditorPlaylists = null;
 let _currentVideoId = null;
 let _currentTitle = "";
 let _onToggle = null;
@@ -221,7 +440,83 @@ let _tagsLoadedForVideo = null; // id видео, для которого уже
 export function initVideoEditor({
     getPlaylists, onToggle, onCreatePlaylist,
     getCoubTags, addTag, removeTag, getAllTags, onTagsChanged,
+    getFxContext, onFxChange, onDuplicate,
+    getPresets, onSavePreset, onDeletePreset,
 }) {
+    _getFxContext = getFxContext || _getFxContext;
+    _onFxChange = onFxChange;
+    _onDuplicate = onDuplicate;
+    _getPresets = getPresets || _getPresets;
+    _onSavePreset = onSavePreset;
+    _onDeletePreset = onDeletePreset;
+    _getEditorPlaylists = getPlaylists;
+
+    fxBgModeGroup.addEventListener("click", (e) => {
+        const btn = e.target.closest("button[data-bgmode]");
+        if (!btn || !_getFxContext().editable) return;
+        e.stopPropagation();
+
+        _bgSeparate = btn.dataset.bgmode === "separate";
+        // Переключились на «вместе» — правим снова видео, фон повторяет его
+        if (!_bgSeparate) _fxTarget = "video";
+        renderFxRows();
+        commitFx();
+    });
+
+    fxTargetGroup.addEventListener("click", (e) => {
+        const btn = e.target.closest("button[data-target]");
+        if (!btn) return;
+        e.stopPropagation();
+        _fxTarget = btn.dataset.target;
+        renderFxRows();
+    });
+
+    fxPresetsBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const willShow = fxPresetsBox.classList.contains("hidden");
+        fxPresetsBox.classList.toggle("hidden", !willShow);
+        if (willShow) renderPresetRows();
+    });
+
+    fxSavePresetBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        _suppressNextOverlayClose = true;
+
+        const name = prompt("Название пресета:");
+        if (!name?.trim()) return;
+
+        await _onSavePreset?.({
+            name: name.trim(),
+            fx: { ..._currentFx },
+            bgFx: _bgSeparate ? { ..._currentBgFx } : null,
+            bgSeparate: _bgSeparate,
+        });
+
+        fxPresetsBox.classList.remove("hidden");
+        renderPresetRows();
+    });
+
+    fxResetBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        _currentFx = {};
+        _currentBgFx = {};
+        _bgSeparate = false;
+        _fxTarget = "video";
+        renderFxRows();
+        commitFx();
+    });
+
+    fxDuplicateBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        _suppressNextOverlayClose = true;
+        fxDuplicateBtn.disabled = true;
+        try {
+            await _onDuplicate?.();
+        } finally {
+            fxDuplicateBtn.disabled = false;
+        }
+    });
+
     _onToggle = onToggle;
     _onCreatePlaylist = onCreatePlaylist;
     _onGetCoubTags = getCoubTags;
@@ -294,15 +589,17 @@ export function initVideoEditor({
 
 function switchVeTab(tab) {
     _activeVeTab = tab;
-    const isTags = tab === "tags";
 
     [...veTabs.children].forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
-    veTabPlaylists.classList.toggle("pl-tab-hidden", isTags);
-    veTabTags.classList.toggle("pl-tab-hidden", !isTags);
+    veTabPlaylists.classList.toggle("pl-tab-hidden", tab !== "playlists");
+    veTabTags.classList.toggle("pl-tab-hidden", tab !== "tags");
+    veTabFx.classList.toggle("pl-tab-hidden", tab !== "fx");
 
-    if (isTags) {
+    if (tab === "tags") {
         loadTagsForCurrentVideo();
         requestAnimationFrame(() => videoTagsInput.focus());
+    } else if (tab === "fx") {
+        renderFxRows();
     } else {
         renderEditorRows(editorSearch.value.trim());
         requestAnimationFrame(() => editorSearch.focus());
@@ -318,6 +615,7 @@ export function openVideoEditor(video, playlists, tab = _activeVeTab) {
     _currentTitle = video.title || video.id;
     _playlists = playlists;
     _tagsLoadedForVideo = null; // видео сменилось (или открывается впервые) — теги перечитаем
+    setFxTarget(video);
 
     veSubtitle.textContent = _currentTitle;
 
@@ -403,17 +701,21 @@ async function renderEditorRows(query) {
 }
 
 async function buildEditorRow(name, data) {
-    const isChecked = !!data.videos?.[_currentVideoId];
+    // ролик может лежать в плейлисте копией ("id#2"), поэтому ищем по id куба
+    const isChecked = !!findKeyForCoub(data.videos, _currentVideoId);
     const isReadonly = READONLY_PLAYLISTS.includes(name);
     const count = Object.keys(data.videos || {}).length;
 
     const row = document.createElement("div");
-    row.className = ["pl-row",
+    row.className = ["pl-row", "pl-row--banner",
         isChecked ? "pl-row--checked" : "",
         isReadonly ? "pl-row--readonly" : "",
     ].filter(Boolean).join(" ");
 
-    const icon = await buildIconEl(name, true);
+    const icon = await buildListBanner(name, data, {
+        className: "pl-row-icon",
+        hoverTarget: row,
+    });
 
     const text = document.createElement("div");
     text.className = "pl-row-text";
@@ -434,11 +736,19 @@ async function buildEditorRow(name, data) {
 
     row.appendChild(icon);
     row.appendChild(text);
+
+    if (name !== VIRTUAL_PLAYLIST) {
+        const actions = document.createElement("div");
+        actions.className = "pl-row-actions";
+        actions.appendChild(buildBannerButton(name, row));
+        row.appendChild(actions);
+    }
+
     row.appendChild(check);
 
     if (!isReadonly) {
         row.addEventListener("click", (e) => {
-            if (e.target.closest(".pl-row-icon--clickable")) return;
+            if (e.target.closest(".pl-row-actions, .pl-banner-menu")) return;
             handleToggle(row, name, data, countEl);
         });
     }
@@ -452,10 +762,11 @@ async function handleToggle(row, name, data, countEl) {
     row.classList.toggle("pl-row--checked", add);
     data.videos = data.videos || {};
 
+    const existingKey = findKeyForCoub(data.videos, _currentVideoId);
     if (add) {
         data.videos[_currentVideoId] = { title: _currentTitle };
-    } else {
-        delete data.videos[_currentVideoId];
+    } else if (existingKey) {
+        delete data.videos[existingKey];
     }
 
     countEl.textContent = `${Object.keys(data.videos).length} видео`;
@@ -481,7 +792,7 @@ async function handleToggle(row, name, data, countEl) {
 }
 
 let _toastTimer = null;
-function showToast(html) {
+export function showToast(html) {
     toast.innerHTML = html;
     toast.classList.add("show");
     clearTimeout(_toastTimer);
@@ -492,102 +803,209 @@ export function syncVideoEditorToVideo(video) {
     _currentVideoId = video.id;
     _currentTitle = video.title || video.id;
     _tagsLoadedForVideo = null;
+    setFxTarget(video);
 
     if (!veOverlay.classList.contains("show")) return;
 
     veSubtitle.textContent = _currentTitle;
     if (_activeVeTab === "tags") {
         loadTagsForCurrentVideo();
+    } else if (_activeVeTab === "fx") {
+        renderFxRows();
     } else {
         renderEditorRows(editorSearch.value.trim());
     }
 }
 
-// ─── Shared helpers (иконки плейлистов) ────────────────────────────────────
+// ─── Shared helpers (баннеры плейлистов) ───────────────────────────────────
 
-function emojiForPlaylist(name) {
-    const map = {
-        bookmarks: "🔖", liked: "❤️", favorites: "⭐", watch: "👁",
-        music: "🎵", anime: "✨", funny: "😂", art: "🎨",
-        nature: "🌿", games: "🎮", sport: "⚡",
-    };
-    const lower = name.toLowerCase();
-    for (const [key, emoji] of Object.entries(map)) {
-        if (lower.includes(key)) return emoji;
+let _getCoubMap = () => ({});
+let _onBannerChanged = null;
+
+/** Данные плейлиста по имени — из того источника, который сейчас свежее. */
+function playlistDataFor(name) {
+    return _getSelectorPlaylists?.()[name] || _playlists[name] || null;
+}
+
+/**
+ * Перерисовывает оба списка плейлистов после смены баннера.
+ * Данные о баннере лежат в playlists.json, поэтому сначала просим main.js
+ * перечитать их с сервера.
+ */
+async function afterBannerChange() {
+    await _onBannerChanged?.();
+
+    if (_getSelectorPlaylists) _selectorPlaylists = _getSelectorPlaylists();
+    if (_getEditorPlaylists) _playlists = _getEditorPlaylists();
+
+    if (sortingOverlay.classList.contains("show") && _activeSortingTab === "playlists") {
+        renderSelectorRows(sortingSearch.value.trim());
     }
-    return [...name][0] || "📋";
+    if (veOverlay.classList.contains("show") && _activeVeTab === "playlists") {
+        renderEditorRows(editorSearch.value.trim());
+    }
 }
 
-const _sessionCacheBust = Date.now();
-const _iconTimestamps = {};
-
-function iconUrlForPlaylist(name) {
-    const t = _iconTimestamps[name] || _sessionCacheBust;
-    return `/Data/icons/${encodeURIComponent(name)}.webp?t=${t}`;
-}
-
-function iconExists(url) {
+function pickFile(accept) {
     return new Promise((resolve) => {
-        const img = new Image();
-        img.onload = () => resolve(true);
-        img.onerror = () => resolve(false);
-        img.src = url + "?t=" + Date.now();
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = accept;
+        input.addEventListener("change", () => resolve(input.files?.[0] || null), { once: true });
+        input.click();
     });
 }
 
-function iconPick(name, onDone) {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "image/*";
+let _openBannerMenu = null;
 
-    input.addEventListener("change", async () => {
-        const file = input.files?.[0];
-        if (!file) return;
-        try {
-            const url = await setPlaylistIcon(name, file);
-            _iconTimestamps[name] = Date.now();
-            onDone(iconUrlForPlaylist(name));
-        } catch {
-            showToast("⚠ Не удалось загрузить изображение");
-        }
-    });
-
-    input.click();
+function closeBannerMenu() {
+    _openBannerMenu?.remove();
+    _openBannerMenu = null;
 }
 
-async function buildIconEl(name, allowClick) {
-    const wrap = document.createElement("div");
-    wrap.className = "pl-row-icon";
+/**
+ * Ставит меню рядом с кнопкой, разворачивая его вверх или влево,
+ * если внизу/справа не хватает места.
+ */
+function positionBannerMenu(menu, anchor) {
+    const a = anchor.getBoundingClientRect();
+    const m = menu.getBoundingClientRect();
+    const GAP = 6;
+    const EDGE = 8;
 
-    const url = iconUrlForPlaylist(name);
-    const exists = await iconExists(url);
-
-    const render = (srcUrl) => {
-        wrap.innerHTML = "";
-        if (srcUrl) {
-            const img = document.createElement("img");
-            img.src = iconUrlForPlaylist(name);
-            img.alt = name;
-            img.style.cssText =
-                "width:100%; height:100%; border-radius:6px; object-fit:cover; display:block;";
-            wrap.appendChild(img);
-        } else {
-            wrap.textContent = emojiForPlaylist(name);
-        }
-    };
-
-    render(exists ? url : null);
-
-    if (allowClick) {
-        wrap.title = "Нажмите чтобы сменить иконку";
-        wrap.classList.add("pl-row-icon--clickable");
-        wrap.addEventListener("click", (e) => {
-            e.stopPropagation();
-            iconPick(name, (newUrl) => render(newUrl));
-        });
+    let left = a.left;
+    if (left + m.width > window.innerWidth - EDGE) {
+        left = window.innerWidth - m.width - EDGE;
     }
 
-    return wrap;
+    let top = a.bottom + GAP;
+    if (top + m.height > window.innerHeight - EDGE) {
+        top = a.top - m.height - GAP;
+    }
+
+    menu.style.left = `${Math.max(EDGE, left)}px`;
+    menu.style.top = `${Math.max(EDGE, top)}px`;
+}
+
+/**
+ * Меню баннера: своя картинка (с кадрированием), свой ролик, сброс к превью
+ * первого видео плейлиста.
+ *
+ * Меню живёт в body, а не внутри плитки: список плейлистов прокручиваемый
+ * (overflow: auto) и обрезал бы его, а соседние плитки, нарисованные позже,
+ * перекрывали бы его собой.
+ * @param {HTMLElement} anchor — кнопка, у которой раскрыть меню
+ * @param {string} name
+ */
+function openBannerMenu(anchor, name) {
+    closeBannerMenu();
+
+    const data = playlistDataFor(name);
+    const menu = document.createElement("div");
+    menu.className = "pl-banner-menu";
+
+    const addItem = (label, disabled, onClick) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "pl-banner-menu-item";
+        btn.textContent = label;
+        btn.disabled = !!disabled;
+        btn.addEventListener("click", async (e) => {
+            e.stopPropagation();
+            closeBannerMenu();
+            await onClick();
+        });
+        menu.appendChild(btn);
+    };
+
+    addItem("Своя картинка…", false, () => pickBannerImage(name));
+    addItem("Свой ролик…", false, () => pickBannerVideo(name));
+
+    const sep = document.createElement("div");
+    sep.className = "pl-banner-menu-sep";
+    menu.appendChild(sep);
+
+    addItem("Сбросить картинку", !data?.banner?.image, () => resetBanner(name, "image"));
+    addItem("Сбросить анимацию", !data?.banner?.video, () => resetBanner(name, "video"));
+
+    document.body.appendChild(menu);
+    positionBannerMenu(menu, anchor);
+    _openBannerMenu = menu;
+}
+
+async function pickBannerImage(name) {
+    const file = await pickFile("image/*");
+    if (!file) return;
+
+    _suppressNextOverlayClose = true;
+    const blob = await cropBannerImage(file, name);
+    if (!blob) return;
+
+    try {
+        await setPlaylistBanner(name, blob);
+        await afterBannerChange();
+        showToast(`<span class="pl-toast-accent">✦</span> Баннер «${name}» обновлён`);
+    } catch (err) {
+        console.error("Banner upload error:", err);
+        showToast("⚠ Не удалось загрузить баннер");
+    }
+}
+
+async function pickBannerVideo(name) {
+    const file = await pickFile("video/mp4,video/webm");
+    if (!file) return;
+
+    _suppressNextOverlayClose = true;
+    try {
+        await setPlaylistBannerVideo(name, file);
+        await afterBannerChange();
+        showToast(`<span class="pl-toast-accent">✦</span> Анимация «${name}» обновлена`);
+    } catch (err) {
+        console.error("Banner video upload error:", err);
+        showToast("⚠ " + err.message);
+    }
+}
+
+async function resetBanner(name, kind) {
+    _suppressNextOverlayClose = true;
+    try {
+        await deletePlaylistBanner(name, kind);
+        if (kind === "image") {
+            // старая иконка плейлиста тоже считается «своей картинкой»
+            await deletePlaylistIcon(name).catch(() => { });
+            forgetLegacyIcon(name);
+        }
+        await afterBannerChange();
+    } catch (err) {
+        console.error("Banner reset error:", err);
+        showToast("⚠ Не удалось сбросить баннер");
+    }
+}
+
+/**
+ * Баннер для списка: собирает элемент и включает анимацию по наведению.
+ * Сам баннер не кликабелен — он лежит фоном под всей кнопкой, а её клик
+ * занят основным действием (выбрать плейлист / добавить в него ролик).
+ * Меню баннера открывается отдельной кнопкой (см. buildBannerButton).
+ */
+async function buildListBanner(name, data, { className, hoverTarget }) {
+    const banner = await buildBannerEl(name, data, { coubMap: _getCoubMap() });
+    banner.classList.add(className);
+    bindBannerHover(hoverTarget, banner);
+    return banner;
+}
+
+/** Кнопка вызова меню баннера — появляется при наведении на строку/плитку. */
+function buildBannerButton(name, anchor) {
+    const btn = document.createElement("button");
+    btn.className = "pl-row-action-btn pl-row-icon-btn";
+    btn.title = "Баннер плейлиста";
+    btn.innerHTML = `<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" width="13" height="13"><rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.2"/><circle cx="5.5" cy="5.5" r="1.2" fill="currentColor"/><path d="M2.5 11.5L6 8l2 2 3-3.5 2.5 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openBannerMenu(btn, name);
+    });
+    return btn;
 }
 
 // ─── Tags tab ──────────────────────────────────────────────────────────────
@@ -736,11 +1154,257 @@ async function removeTagChip(tag, chipEl) {
     }
 }
 
+// ─── Fx tab (персональная постобработка ролика) ────────────────────────────
+
+const fxList = document.getElementById("fxList");
+const fxNote = document.getElementById("fxNote");
+const fxResetBtn = document.getElementById("fxResetBtn");
+const fxDuplicateBtn = document.getElementById("fxDuplicateBtn");
+const fxBgModeGroup = document.getElementById("fxBgModeGroup");
+const fxTargetRow = document.getElementById("fxTargetRow");
+const fxTargetGroup = document.getElementById("fxTargetGroup");
+const fxPresetsBtn = document.getElementById("fxPresetsBtn");
+const fxSavePresetBtn = document.getElementById("fxSavePresetBtn");
+const fxPresetsBox = document.getElementById("fxPresetsBox");
+const fxPresetsList = document.getElementById("fxPresetsList");
+
+// Настройки уровня плейлиста (порядок) к постобработке не относятся
+const FX_TRAITS = RANDOM_TRAITS.filter((t) => t.scope !== "playlist");
+// Фон рисуется канвасом по кадрам активного видео и повторяет его темп сам —
+// отдельную скорость ему задать нельзя
+const FX_BG_TRAITS = FX_TRAITS.filter((t) => t.scope !== "playback");
+
+let _currentVideoKey = null;
+let _currentFx = {};
+let _currentBgFx = {};
+let _bgSeparate = false;
+let _fxTarget = "video"; // что правят ползунки: "video" | "bg"
+let _onFxChange = null;
+let _onDuplicate = null;
+let _getFxContext = () => ({ editable: true, note: "" });
+let _getPresets = () => [];
+let _onSavePreset = null;
+let _onDeletePreset = null;
+let _onApplyPreset = null;
+
+/** Набор значений, который сейчас правят ползунки. */
+function activeFxValues() {
+    return _fxTarget === "bg" ? _currentBgFx : _currentFx;
+}
+
+/** Список настроек, доступных для текущей цели. */
+function activeFxTraits() {
+    return _fxTarget === "bg" ? FX_BG_TRAITS : FX_TRAITS;
+}
+
+/** Диапазон ползунка для настройки. mirror — «переключатель» 0/1. */
+function fxSliderConfig(trait) {
+    if (trait.key === "mirror") return { min: 0, max: 1, step: 1 };
+    const step = trait.key === "hue" || trait.key === "rotate" ? 1
+        : trait.key === "blur" ? 0.1
+            : 0.05;
+    return { min: trait.min, max: trait.max, step };
+}
+
+function fxFormatValue(trait, value) {
+    if (trait.key === "mirror") return value ? "да" : "нет";
+    if (trait.key === "speed") return `${Number(value).toFixed(2)}×`;
+    if (trait.suffix === "deg") return `${Math.round(value)}°`;
+    if (trait.suffix === "px") return `${Number(value).toFixed(1)}px`;
+    return Number(value).toFixed(2);
+}
+
+function renderFxRows() {
+    const { editable, note } = _getFxContext();
+
+    fxNote.textContent = note || "";
+    fxNote.classList.toggle("fx-note--warn", !editable && !!note);
+    fxResetBtn.disabled = !editable;
+    fxDuplicateBtn.disabled = !editable;
+    fxSavePresetBtn.disabled = !editable;
+
+    // Цель правки нужна, только когда фон настраивается отдельно
+    fxTargetRow.classList.toggle("hidden", !_bgSeparate);
+    [...fxBgModeGroup.children].forEach((b) =>
+        b.classList.toggle("active", (b.dataset.bgmode === "separate") === _bgSeparate)
+    );
+    [...fxTargetGroup.children].forEach((b) =>
+        b.classList.toggle("active", b.dataset.target === _fxTarget)
+    );
+
+    const values = activeFxValues();
+    fxList.innerHTML = "";
+    for (const trait of activeFxTraits()) {
+        fxList.appendChild(buildFxRow(trait, editable, values));
+    }
+}
+
+function buildFxRow(trait, editable, values) {
+    const isOn = trait.key in values;
+    const cfg = fxSliderConfig(trait);
+    const value = isOn ? Number(values[trait.key]) : neutralValue(trait.key);
+
+    const row = document.createElement("div");
+    row.className = "fx-row" + (isOn ? " fx-row--on" : "");
+    row.dataset.trait = trait.key;
+
+    const head = document.createElement("div");
+    head.className = "fx-row-head";
+
+    const box = document.createElement("div");
+    box.className = "madness-box";
+
+    const label = document.createElement("div");
+    label.className = "fx-row-label";
+    label.textContent = trait.label;
+
+    const valueEl = document.createElement("div");
+    valueEl.className = "fx-row-value";
+    valueEl.textContent = isOn ? fxFormatValue(trait, value) : "—";
+
+    head.appendChild(box);
+    head.appendChild(label);
+    head.appendChild(valueEl);
+
+    const control = document.createElement("div");
+    control.className = "fx-row-control";
+
+    const slider = document.createElement("input");
+    slider.type = "range";
+    slider.className = "fx-slider";
+    slider.min = cfg.min;
+    slider.max = cfg.max;
+    slider.step = cfg.step;
+    slider.value = value;
+    slider.disabled = !editable;
+    control.appendChild(slider);
+
+    row.appendChild(head);
+    row.appendChild(control);
+
+    if (!editable) return row;
+
+    head.addEventListener("click", () => {
+        if (trait.key in values) delete values[trait.key];
+        else values[trait.key] = Number(slider.value);
+
+        const on = trait.key in values;
+        row.classList.toggle("fx-row--on", on);
+        valueEl.textContent = on ? fxFormatValue(trait, values[trait.key]) : "—";
+        commitFx();
+    });
+
+    slider.addEventListener("input", () => {
+        values[trait.key] = Number(slider.value);
+        row.classList.add("fx-row--on");
+        valueEl.textContent = fxFormatValue(trait, values[trait.key]);
+        commitFx();
+    });
+
+    return row;
+}
+
+// Ползунок сыплет событиями непрерывно: к плееру применяем сразу (чтобы
+// эффект был виден прямо во время перетаскивания), а на сервер пишем с
+// задержкой, иначе получим сотню запросов на одно движение.
+let _fxSaveTimer = null;
+
+function commitFx() {
+    const snapshot = {
+        fx: { ..._currentFx },
+        bgFx: { ..._currentBgFx },
+        bgSeparate: _bgSeparate,
+    };
+    _onFxChange?.(_currentVideoKey, snapshot, { persist: false });
+
+    clearTimeout(_fxSaveTimer);
+    _fxSaveTimer = setTimeout(() => {
+        _onFxChange?.(_currentVideoKey, snapshot, { persist: true });
+    }, 350);
+}
+
+/** Подставить в редактор постобработку другого ролика. */
+function setFxTarget(video) {
+    _currentVideoKey = video?.key ?? null;
+    _currentFx = { ...(video?.fx || {}) };
+    _currentBgFx = { ...(video?.bgFx || {}) };
+    _bgSeparate = !!video?.bgSeparate;
+    if (!_bgSeparate) _fxTarget = "video";
+    if (_activeVeTab === "fx") renderFxRows();
+}
+
+// ─── Пресеты постобработки ─────────────────────────────────────────────────
+
+function renderPresetRows() {
+    const presets = _getPresets() || [];
+    fxPresetsList.innerHTML = "";
+
+    if (!presets.length) {
+        const empty = document.createElement("div");
+        empty.className = "pl-empty";
+        empty.textContent = "Пресетов пока нет";
+        fxPresetsList.appendChild(empty);
+        return;
+    }
+
+    for (const preset of presets) {
+        fxPresetsList.appendChild(buildPresetRow(preset));
+    }
+}
+
+function buildPresetRow(preset) {
+    const row = document.createElement("div");
+    row.className = "fx-preset-row";
+    row.title = `Применить «${preset.name}» к этому ролику`;
+
+    const name = document.createElement("div");
+    name.className = "fx-preset-name";
+    name.textContent = preset.name;
+
+    const meta = document.createElement("div");
+    meta.className = "fx-preset-meta";
+    const count = Object.keys(preset.fx || {}).length;
+    meta.textContent = preset.bgSeparate ? `${count} + фон` : `${count}`;
+
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "fx-preset-del";
+    del.textContent = "✕";
+    del.title = "Удалить пресет";
+    del.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        if (!confirm(`Удалить пресет «${preset.name}»?`)) return;
+        _suppressNextOverlayClose = true;
+        await _onDeletePreset?.(preset.name);
+        renderPresetRows();
+    });
+
+    row.appendChild(name);
+    row.appendChild(meta);
+    row.appendChild(del);
+
+    row.addEventListener("click", (e) => {
+        e.stopPropagation();
+        _suppressNextOverlayClose = true;
+        applyPresetToCurrent(preset);
+    });
+
+    return row;
+}
+
+function applyPresetToCurrent(preset) {
+    _currentFx = { ...(preset.fx || {}) };
+    _currentBgFx = { ...(preset.bgFx || {}) };
+    _bgSeparate = !!preset.bgSeparate;
+    if (!_bgSeparate) _fxTarget = "video";
+    renderFxRows();
+    commitFx();
+    showToast(`<span class="pl-toast-accent">✦</span> Пресет «${preset.name}» применён`);
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // SORTING PANEL — Плейлисты + Теги в одном окне (табы)
 // ═════════════════════════════════════════════════════════════════════════════
-
-import { setPlaylistIcon } from "./api.js";
 
 const sortingOverlay = document.getElementById("sortingOverlay");
 const sortingPanel = document.getElementById("sortingPanel");
@@ -794,7 +1458,12 @@ export function initSortingPanel({
     getPlaylists, onSelect, onCreate, onDelete, onRename,
     getAllTags, getActiveTagFilter, getTagFilterMode, onTagFilterChange,
     onRenameTag, onDeleteTag, onDeleteAllTags,   // NEW
+    getCoubMap, onBannerChanged,
 }) {
+    _getCoubMap = getCoubMap || _getCoubMap;
+    _onBannerChanged = onBannerChanged;
+    initBannerCropper();
+
     _onSelectPlaylist = onSelect;
     _onCreateFromSelector = onCreate;
     _onDeletePlaylist = onDelete;
@@ -864,6 +1533,18 @@ export function initSortingPanel({
         if (e.target.matches("input, textarea")) return;
         if (e.key === "Escape" && sortingOverlay.classList.contains("show")) closeSortingPanel();
     });
+
+    // Меню баннера закрывается по клику мимо него; оно позиционировано
+    // фиксированно, поэтому при прокрутке списка его тоже надо убирать
+    document.addEventListener("click", (e) => {
+        if (!_openBannerMenu) return;
+        if (_openBannerMenu.contains(e.target)) return;
+        if (e.target.closest(".pl-row-icon-btn")) return;
+        closeBannerMenu();
+    }, true);
+
+    document.addEventListener("scroll", closeBannerMenu, true);
+    window.addEventListener("resize", closeBannerMenu);
 
     document.addEventListener("click", (e) => {
         if (
@@ -993,10 +1674,12 @@ async function buildSelectorRow(name, data) {
     const isRO = READONLY_SELECTOR.includes(name);
 
     const tile = document.createElement("div");
-    tile.className = "pl-tile" + (isActive ? " pl-tile--active" : "");
+    tile.className = "pl-tile pl-tile--banner" + (isActive ? " pl-tile--active" : "");
 
-    const thumb = await buildIconEl(name, false);
-    thumb.classList.add("pl-tile-thumb");
+    const thumb = await buildListBanner(name, data, {
+        className: "pl-tile-thumb",
+        hoverTarget: tile,
+    });
     tile.appendChild(thumb);
 
     const text = document.createElement("div");
@@ -1019,8 +1702,7 @@ async function buildSelectorRow(name, data) {
     tile.appendChild(check);
 
     tile.addEventListener("click", (e) => {
-        if (e.target.closest(".pl-row-icon--clickable")) return;
-        if (e.target.closest(".pl-row-actions")) return;
+        if (e.target.closest(".pl-row-actions, .pl-banner-menu")) return;
         _selectorSelected = name;
         closeSortingPanel();
         setPlaylistTriggerLabel(name);
@@ -1049,25 +1731,9 @@ async function buildSelectorRow(name, data) {
 
     actions.appendChild(shareBtn);
 
-    const iconBtn = document.createElement("button");
-    iconBtn.className = "pl-row-action-btn pl-row-icon-btn";
-    iconBtn.title = "Изменить иконку";
-    iconBtn.innerHTML = `<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" width="13" height="13"><rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.2"/><circle cx="5.5" cy="5.5" r="1.2" fill="currentColor"/><path d="M2.5 11.5L6 8l2 2 3-3.5 2.5 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-    iconBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        iconPick(name, (newUrl) => {
-            const thumb = tile.querySelector(".pl-row-icon");
-            if (thumb) {
-                thumb.innerHTML = "";
-                const img = document.createElement("img");
-                img.src = iconUrlForPlaylist(name);
-                img.alt = name;
-                img.style.cssText = "width:100%; height:100%; border-radius:6px; object-fit:cover; display:block;";
-                thumb.appendChild(img);
-            }
-        });
-    });
-    actions.appendChild(iconBtn);
+    if (name !== VIRTUAL_PLAYLIST) {
+        actions.appendChild(buildBannerButton(name, tile));
+    }
 
     if (!isRO) {
         const renameBtn = document.createElement("button");
@@ -1126,10 +1792,7 @@ export async function sanitizeBrokenPlaylists() {
 
         try {
             await _onRenamePlaylist(oldName, finalName);
-            if (_iconTimestamps[oldName]) {
-                _iconTimestamps[finalName] = _iconTimestamps[oldName];
-                delete _iconTimestamps[oldName];
-            }
+            forgetLegacyIcon(oldName);
             if (_selectorSelected === oldName) {
                 _selectorSelected = finalName;
                 setPlaylistTriggerLabel(finalName);
@@ -1190,6 +1853,7 @@ function startInlineRename(tile, oldName, nameEl, countEl) {
 
         try {
             await _onRenamePlaylist(oldName, newName);
+            forgetLegacyIcon(oldName);
 
             if (_selectorSelected === oldName) {
                 _selectorSelected = newName;

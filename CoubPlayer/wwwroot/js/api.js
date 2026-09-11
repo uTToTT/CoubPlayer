@@ -33,6 +33,58 @@ export async function setPlaylistIcon(playlist, file) {
     return url; // "/Data/icons/myplaylist.webp"
 }
 
+// ─── Баннеры плейлистов ───────────────────────────────────────────────────
+
+/**
+ * Загружает свою картинку баннера. Обрезка под 16:9 делается на клиенте,
+ * сюда приходит уже готовый кадр.
+ * @param {string} playlist
+ * @param {Blob} blob
+ * @returns {Promise<{url: string}>}
+ */
+export async function setPlaylistBanner(playlist, blob) {
+    const form = new FormData();
+    form.append("file", blob, "banner.webp");
+
+    const res = await fetch(`/api/playlists/${encodeURIComponent(playlist)}/banner`, {
+        method: "POST",
+        body: form,
+    });
+    if (!res.ok) throw new Error(`Banner upload failed: ${await res.text()}`);
+    return res.json();
+}
+
+/**
+ * Загружает свой анимированный баннер (mp4 или webm).
+ * @param {string} playlist
+ * @param {File} file
+ * @returns {Promise<{url: string}>}
+ */
+export async function setPlaylistBannerVideo(playlist, file) {
+    const form = new FormData();
+    form.append("file", file, file.name);
+
+    const res = await fetch(`/api/playlists/${encodeURIComponent(playlist)}/banner-video`, {
+        method: "POST",
+        body: form,
+    });
+    if (!res.ok) throw new Error(`Banner video upload failed: ${await res.text()}`);
+    return res.json();
+}
+
+/**
+ * Сбрасывает баннер к превью первого ролика.
+ * @param {string} playlist
+ * @param {"image"|"video"|"all"} kind
+ */
+export async function deletePlaylistBanner(playlist, kind = "all") {
+    const res = await fetch(
+        `/api/playlists/${encodeURIComponent(playlist)}/banner?kind=${kind}`,
+        { method: "DELETE" }
+    );
+    if (!res.ok) throw new Error(`Banner reset failed: ${await res.text()}`);
+}
+
 export async function deletePlaylistIcon(playlist) {
     await fetch(`/api/playlists/${encodeURIComponent(playlist)}/icon`, {
         method: "DELETE",
@@ -49,6 +101,66 @@ export async function addVideoToPlaylist(playlist, id, title) {
 
 export async function removeVideoFromPlaylist(playlist, id) {
     await post(`/api/playlists/${encodeURIComponent(playlist)}/remove`, { id });
+}
+
+/**
+ * Сохраняет новый порядок роликов в плейлисте.
+ * ids может быть подмножеством плейлиста — сервер переставит только их,
+ * по их же позициям, не трогая остальные (см. Reorder в PlaylistsController).
+ * @param {string} playlist
+ * @param {string[]} ids — в порядке возрастания order
+ */
+export async function reorderPlaylist(playlist, ids) {
+    await post(`/api/playlists/${encodeURIComponent(playlist)}/reorder`, { ids });
+}
+
+/**
+ * Добавляет в плейлист ещё одну запись того же ролика, сразу за исходной.
+ * Файлы не копируются — обе записи ссылаются на один и тот же куб.
+ * @param {string} playlist
+ * @param {string} key — ключ дублируемой записи
+ * @returns {Promise<{key: string}>} ключ созданной копии
+ */
+export async function duplicateVideo(playlist, key) {
+    const res = await post(`/api/playlists/${encodeURIComponent(playlist)}/duplicate`, { id: key });
+    return res.json();
+}
+
+/**
+ * Сохраняет персональную постобработку одной записи плейлиста.
+ * @param {string} playlist
+ * @param {string} key — ключ записи
+ * @param {{fx?: object, bgFx?: object, bgSeparate?: boolean}} settings
+ *        пустой fx снимает настройки; bgFx учитывается только при bgSeparate
+ */
+export async function setVideoFx(playlist, key, { fx, bgFx, bgSeparate } = {}) {
+    await post(`/api/playlists/${encodeURIComponent(playlist)}/fx`, {
+        id: key,
+        fx: fx || null,
+        bgFx: bgFx || null,
+        bgSeparate: !!bgSeparate,
+    });
+}
+
+// ─── Пресеты постобработки ────────────────────────────────────────────────
+
+/** @returns {Promise<Array<{name: string, fx?: object, bgFx?: object, bgSeparate: boolean}>>} */
+export async function getFxPresets() {
+    const res = await fetch("/api/fx-presets");
+    if (!res.ok) throw new Error("Failed to load fx presets");
+    return res.json();
+}
+
+/** Создаёт пресет или перезаписывает существующий с тем же именем. */
+export async function saveFxPreset(preset) {
+    const res = await post("/api/fx-presets", preset);
+    return res.json();
+}
+
+export async function deleteFxPreset(name) {
+    const res = await fetch(`/api/fx-presets/${encodeURIComponent(name)}`, { method: "DELETE" });
+    if (!res.ok) throw new Error(`Delete preset failed: ${await res.text()}`);
+    return res.json();
 }
 
 export async function markVideoViewed(playlist, id) {

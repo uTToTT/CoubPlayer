@@ -24,7 +24,7 @@
         "prev", "next", "fullscreen", "restart", "copy-link", "tags",
         "playlist-add", "folder", "playlist", "download", "link",
         "sync-liked", "sync-bookmarks", "add", "start", "rename", "delete",
-        "share", "import", "change-icon", "success",
+        "share", "import", "change-icon", "success", "grid", "duplicate", "fx",
     ];
 
     function tryLoad(name) {

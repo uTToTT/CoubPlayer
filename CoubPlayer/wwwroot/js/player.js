@@ -2,8 +2,12 @@
 import { markVideoViewed } from "./api.js";
 import { setLastVideoForPlaylist, getLastVideoForPlaylist } from "./state.js";
 import { initVideoFlip, setFlipMode, syncFlipStageSize, flipTransition, resetFlipAngle } from "./video-flip.js";
+import { composeSettings, NEUTRAL_SETTINGS } from "./randomizer.js";
 
 export class Player {
+    /** Длительность затухания фона при смене источника, мс (см. style.css). */
+    static BG_FADE_MS = 190;
+
     constructor(videoEls, audioEl, bgVideoEl) {
         this.videoEls = videoEls;
         this.audio = audioEl;
@@ -24,9 +28,25 @@ export class Player {
         this._activeAnimations = null;
         this._pendingOutgoing = null;
 
+        // Рандомизатор настроек (см. randomizer.js). null = эффекты выключены.
+        this._effects = null;
+        // Строка CSS filter, наложенная на каждый буфер эффектами. Хранится
+        // отдельно, потому что кроссфейд анимирует filter и должен подмешивать
+        // свой blur() к уже наложенному эффекту, а не затирать его.
+        this._fxFilter = new WeakMap();
+
+        // Компенсация поворота фона зависит от пропорций окна
+        this._bgFx = null;
+        // Фон может показывать не активное видео, а плитку под курсором (сетка)
+        this._bgSourceEl = null;
+        this._bgSwapTimer = null;
+
         window.addEventListener("resize", () => {
             this._fitVideo(this.activeVideo);
             if (this.transitionMode === "flip") syncFlipStageSize(this.activeVideo);
+            if (this._bgFx) {
+                this.bgCanvas.style.setProperty("--bg-fx-scale", this._bgCoverScale(this._bgFx));
+            }
         });
 
         this._bgRafId = null;
@@ -37,7 +57,8 @@ export class Player {
 
     _startBgLoop() {
         const draw = () => {
-            const v = this.activeVideo;
+            // Источником фона может быть не активное видео, а превью из сетки
+            const v = this._bgSourceEl || this.activeVideo;
             if (v.readyState >= 2 && v.videoWidth > 0) {
                 const canvas = this.bgCanvas;
                 if (canvas.width !== window.innerWidth) canvas.width = window.innerWidth;
@@ -125,10 +146,149 @@ export class Player {
     }
 
     getStartIndex() {
-        const savedId = getLastVideoForPlaylist(this.currentPlaylistName);
-        if (savedId == null) return 0;
-        const idx = this.playlist.findIndex((item) => item.id === savedId);
+        const savedKey = getLastVideoForPlaylist(this.currentPlaylistName);
+        if (savedKey == null) return 0;
+        const idx = this.playlist.findIndex((item) => item.key === savedKey);
         return idx === -1 ? 0 : idx;
+    }
+
+    /**
+     * Подключает рандомизатор настроек (randomizer.js) или снимает его (null).
+     * Эффекты применяются к текущему ролику сразу, к следующим — при переключении.
+     * @param {{settingsFor: (id: string) => {speed: number, filter: string, transform: string}} | null} randomizer
+     */
+    setEffects(randomizer) {
+        this._effects = randomizer || null;
+        this.refreshEffects();
+        // Второй буфер сбрасываем в нейтральное состояние: свои настройки он
+        // получит при переключении, а так на нём могли остаться прошлые
+        this._applyEffects(this.nextVideo, null);
+    }
+
+    /** Пересчитать и применить эффекты текущего ролика (например, после правки fx). */
+    refreshEffects() {
+        this._applyEffects(this.activeVideo, this.playlist[this.index] || null);
+    }
+
+    /**
+     * Показывать в фоне не активное видео, а конкретный элемент —
+     * плитку под курсором в режиме сетки. Смена источника проходит через
+     * затухание, иначе фон дёргано перескакивал бы между роликами.
+     * @param {HTMLVideoElement|null} videoEl — null возвращает фон к активному видео
+     * @param {object|null} item — запись плейлиста, чью постобработку показать
+     */
+    setBgPreview(videoEl, item) {
+        if (this._bgSourceEl === videoEl) return;
+
+        clearTimeout(this._bgSwapTimer);
+        this.bgCanvas.classList.add("bg-fading");
+
+        this._bgSwapTimer = setTimeout(() => {
+            this._bgSourceEl = videoEl;
+            this._applyBgEffects(item ?? this.playlist[this.index] ?? null);
+            this.bgCanvas.classList.remove("bg-fading");
+        }, Player.BG_FADE_MS);
+    }
+
+    /** Вернуть фон к текущему ролику плеера. */
+    clearBgPreview() {
+        this.setBgPreview(null, null);
+    }
+
+    /**
+     * Настройки фона. «Вместе» — те же, что у видео (включая случайные из
+     * «Безумия»); «отдельно» — только то, что задано фону вручную.
+     */
+    _bgSettingsFor(item) {
+        if (!item) return NEUTRAL_SETTINGS;
+        return item.bgSeparate
+            ? composeSettings(item.bgFx || {})
+            : this._settingsFor(item);
+    }
+
+    /**
+     * Накладывает постобработку на фон-канвас.
+     * Через CSS-переменные, а не через ctx.filter: фон рисуется каждый кадр
+     * на весь экран, и фильтровать его в canvas было бы заметно дороже.
+     * Скорость к фону не применяется — канвас просто перерисовывает кадры
+     * активного видео и повторяет его темп сам.
+     */
+    _applyBgEffects(item) {
+        const bg = this._bgSettingsFor(item);
+        this._bgFx = bg;
+
+        this.bgCanvas.style.setProperty("--bg-fx-filter", bg.filter);
+        this.bgCanvas.style.setProperty("--bg-fx-transform", bg.transform);
+        this.bgCanvas.style.setProperty("--bg-fx-scale", this._bgCoverScale(bg));
+    }
+
+    /**
+     * Во сколько раз растянуть фон, чтобы повёрнутый кадр всё ещё накрывал
+     * экран целиком и по углам не появлялись пустые треугольники.
+     */
+    _bgCoverScale(bg) {
+        const BASE = 1.05;
+        const angle = Number(bg?.values?.rotate) || 0;
+        if (!angle) return BASE;
+
+        const rad = (Math.abs(angle) * Math.PI) / 180;
+        const cos = Math.abs(Math.cos(rad));
+        const sin = Math.abs(Math.sin(rad));
+        const w = window.innerWidth || 1;
+        const h = window.innerHeight || 1;
+
+        return BASE * Math.max(cos + (sin * h) / w, cos + (sin * w) / h);
+    }
+
+    /**
+     * Итоговые настройки ролика.
+     * Случайные (режим «Безумие») служат основой, персональные настройки
+     * записи плейлиста накладываются сверху — вручную выставленное всегда
+     * важнее выпавшего. Ключ — item.key, а не item.id: у копий одного ролика
+     * настройки свои.
+     */
+    _settingsFor(item) {
+        if (!item) return NEUTRAL_SETTINGS;
+        const random = this._effects?.valuesFor(item.key) || null;
+        if (!random && !item.fx) return NEUTRAL_SETTINGS;
+        return composeSettings({ ...random, ...(item.fx || {}) });
+    }
+
+    /**
+     * Накладывает эффекты на конкретный видео-буфер.
+     * transform идёт через CSS-переменную --fx-transform, а не через style.transform:
+     * у .video-flip-face уже есть собственный transform (центрирование в кроссфейде,
+     * поворот задней грани в flip-режиме), и перетереть его нельзя.
+     * Скорость выставляется и видео, и аудио — иначе дорожки разъедутся.
+     */
+    _applyEffects(videoEl, item) {
+        if (!videoEl) return;
+        const fx = this._settingsFor(item);
+
+        this._fxFilter.set(videoEl, fx.filter);
+        videoEl.style.filter = fx.filter;
+        videoEl.style.setProperty("--fx-transform", fx.transform);
+
+        // defaultPlaybackRate тоже — при загрузке нового src браузер сбрасывает
+        // playbackRate именно в него, иначе скорость слетала бы на 1
+        videoEl.defaultPlaybackRate = fx.speed;
+        videoEl.playbackRate = fx.speed;
+        if (videoEl === this.activeVideo) {
+            this.audio.defaultPlaybackRate = fx.speed;
+            this.audio.playbackRate = fx.speed;
+            this._applyBgEffects(item);
+        }
+    }
+
+    /** Возвращает буферу тот filter, который на нём должен быть по эффектам. */
+    _restoreFilter(videoEl) {
+        videoEl.style.filter = this._fxFilter.get(videoEl) || "";
+    }
+
+    /** Строка filter буфера с подмешанным blur для анимации перехода. */
+    _filterWithBlur(videoEl, blurPx) {
+        const base = this._fxFilter.get(videoEl) || "";
+        return `${base} blur(${blurPx}px)`.trim();
     }
 
     setVolume(value) {
@@ -153,7 +313,7 @@ export class Player {
 
         this.videoEls.forEach((v) => {
             v.style.opacity = "1";
-            v.style.filter = "";
+            this._restoreFilter(v);
             v.style.display = "block";
         });
         if (this.transitionMode !== "flip") {
@@ -162,6 +322,7 @@ export class Player {
 
         this.activeVideo.src = item.video;
         this.audio.src = item.audio;
+        this._applyEffects(this.activeVideo, item);
 
         if (this.transitionMode === "flip") {
             syncFlipStageSize(this.activeVideo);
@@ -203,6 +364,10 @@ export class Player {
         this._pauseAll();
     }
 
+    async resume() {
+        await this._resumeAll();
+    }
+
     get isPaused() {
         return this.activeVideo.paused;
     }
@@ -240,7 +405,6 @@ export class Player {
 
         incoming.src = newItem.video;
         incoming.style.opacity = "0";
-        incoming.style.filter = "blur(12px)";
         incoming.style.display = "block";
 
         this.audio.src = newItem.audio;
@@ -249,25 +413,36 @@ export class Player {
         this.activeIdx = 1 - this.activeIdx;
         this.index = newIndex;
 
+        this._applyEffects(incoming, newItem);
+        incoming.style.filter = this._filterWithBlur(incoming, 12);
+
         await this._playAll();
 
-        if (generation !== this._generation) return;
+        if (generation !== this._generation) {
+            // Нас обогнало следующее переключение — анимацию не заводим,
+            // но blur, выставленный до await, снять обязаны: иначе буфер
+            // так и останется размытым
+            this._restoreFilter(incoming);
+            return;
+        }
 
         const DURATION = 320;
         const EASING = "cubic-bezier(0.4, 0, 0.2, 1)";
 
+        // blur подмешивается к фильтру эффектов, иначе анимация затирала бы его
+        // на время перехода и ролик «моргал» бы настройками
         const fadeIn = incoming.animate(
             [
-                { opacity: 0, filter: "blur(12px)" },
-                { opacity: 1, filter: "blur(0px)" },
+                { opacity: 0, filter: this._filterWithBlur(incoming, 12) },
+                { opacity: 1, filter: this._filterWithBlur(incoming, 0) },
             ],
             { duration: DURATION, easing: EASING, fill: "forwards" }
         );
 
         const fadeOut = outgoing.animate(
             [
-                { opacity: 1, filter: "blur(0px)" },
-                { opacity: 0, filter: "blur(12px)" },
+                { opacity: 1, filter: this._filterWithBlur(outgoing, 0) },
+                { opacity: 0, filter: this._filterWithBlur(outgoing, 12) },
             ],
             { duration: DURATION, easing: EASING, fill: "forwards" }
         );
@@ -282,10 +457,10 @@ export class Player {
             fadeOut.cancel();
 
             incoming.style.opacity = "1";
-            incoming.style.filter = "";
+            this._restoreFilter(incoming);
             outgoing.style.display = "none";
             outgoing.style.opacity = "1";
-            outgoing.style.filter = "";
+            this._restoreFilter(outgoing);
             this._activeAnimations = null;
             this._pendingOutgoing = null;
         }).catch(() => {
@@ -309,13 +484,14 @@ export class Player {
 
         incoming.style.display = "block";
         incoming.style.opacity = "1";
-        incoming.style.filter = "";
         incoming.src = newItem.video;
         this.audio.src = newItem.audio;
 
         outgoing.pause();
         this.activeIdx = 1 - this.activeIdx;
         this.index = newIndex;
+
+        this._applyEffects(incoming, newItem);
 
         syncFlipStageSize(incoming);
 
@@ -340,7 +516,7 @@ export class Player {
         if (this._pendingOutgoing) {
             this._pendingOutgoing.style.display = "none";
             this._pendingOutgoing.style.opacity = "1";
-            this._pendingOutgoing.style.filter = "";
+            this._restoreFilter(this._pendingOutgoing);
             this._pendingOutgoing = null;
         }
     }
@@ -408,15 +584,15 @@ export class Player {
     }
 
     _notifyChange(item) {
-        setLastVideoForPlaylist(this.currentPlaylistName, item.id);
+        setLastVideoForPlaylist(this.currentPlaylistName, item.key);
         if (this.onVideoChange) this.onVideoChange(item);
     }
 
     async _markViewed(item) {
-        if (!this.currentPlaylistName || !item.id) return;
+        if (!this.currentPlaylistName || !item.key) return;
         if (this.isVirtualPlaylist(this.currentPlaylistName)) return;
         try {
-            await markVideoViewed(this.currentPlaylistName, item.id);
+            await markVideoViewed(this.currentPlaylistName, item.key);
             item.lastViewed = new Date().toISOString();
         } catch (err) {
             console.warn("Не удалось обновить время просмотра:", err);
@@ -438,7 +614,7 @@ export class Player {
             this.videoEls.forEach((v) => {
                 v.style.display = "block";
                 v.style.opacity = "1";
-                v.style.filter = "";
+                this._restoreFilter(v);
             });
             syncFlipStageSize(this.activeVideo);
             resetFlipAngle(this.activeIdx);
@@ -447,7 +623,7 @@ export class Player {
             this.nextVideo.style.display = "none";
             this.activeVideo.style.display = "block";
             this.activeVideo.style.opacity = "1";
-            this.activeVideo.style.filter = "";
+            this._restoreFilter(this.activeVideo);
         }
     }
 }

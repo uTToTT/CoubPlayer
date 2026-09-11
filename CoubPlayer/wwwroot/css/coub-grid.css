@@ -1,0 +1,491 @@
+/* ═══════════════════════════════════════════════════════════
+   COUB GRID — просмотр текущего плейлиста плиткой.
+   Не модалка, а альтернатива основному виду: тело получает класс
+   view-grid, плеерная обвязка прячется, сетка занимает её место.
+   ═══════════════════════════════════════════════════════════ */
+
+.grid-view {
+  position: fixed;
+  top: 68px;
+  bottom: 76px;
+  left: 16px;
+  right: 16px;
+  z-index: 3;
+  display: none;
+  flex-direction: column;
+  min-height: 0;
+
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  overflow: hidden;
+}
+
+body.view-grid .grid-view {
+  display: flex;
+}
+
+/* В режиме плитки плеерная обвязка не нужна — само видео, стрелки
+   переключения, таймлайн, счётчик и название текущего ролика.
+   Фон-канвас, верхняя и нижняя панели остаются. */
+body.view-grid .video-wrapper,
+body.view-grid #prev,
+body.view-grid #next,
+body.view-grid #seekBarWrapper,
+body.view-grid #videoInfo,
+body.view-grid #videoIndexWrapper,
+body.view-grid .pause-overlay {
+  display: none !important;
+}
+
+/* Переход между роликами и эффекты «Безумия» относятся к плееру, который
+   в этом режиме выключен. Саму кнопку «Безумие» прячем только когда режим
+   не выбран — иначе в группе сортировки не осталось бы активной кнопки. */
+body.view-grid #transitionModeGroup,
+body.view-grid #madnessSettingsBtn,
+body.view-grid #sortTypeGroup button[data-type="madness"]:not(.active) {
+  display: none !important;
+}
+
+/* ─── Шапка сетки ─────────────────────────────────────────── */
+
+.grid-view-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  flex-shrink: 0;
+}
+
+.grid-view-caption {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.42);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+  max-width: 52%;
+}
+
+.grid-view-search {
+  flex: 1;
+  padding: 0;
+  border-bottom: none;
+  min-width: 0;
+}
+
+.grid-view-search .pl-search-icon {
+  left: 11px;
+}
+
+.grid-view-search .pl-search-clear {
+  right: 8px;
+}
+
+.coub-grid {
+  /* .pl-editor-list — flex-колонка; для сетки переопределяем */
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--coub-tile-min, 220px), 1fr));
+  gap: 14px;
+  padding: 18px 20px;
+  align-content: start;
+}
+
+.coub-grid .pl-empty {
+  grid-column: 1 / -1;
+  padding: 60px 0;
+}
+
+/* Маячок подгрузки следующей порции плиток при скролле */
+.coub-grid-sentinel {
+  grid-column: 1 / -1;
+  height: 1px;
+}
+
+/* ─── Плитка ──────────────────────────────────────────────── */
+
+/* Плитка — это сам кадр: подпись лежит поверх него на затемнённом крае,
+   отдельной строки под превью нет. Обрезка и скругление живут на .coub-tile-media,
+   а не на плитке: overflow: hidden на грид-элементе обнулил бы его минимальный
+   размер, и сетка посчитала бы высоту строки по пустому содержимому. */
+.coub-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  cursor: pointer;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  transition:
+    border-color 0.16s ease,
+    transform 0.16s ease;
+}
+
+.coub-tile:hover {
+  border-color: rgba(255, 255, 255, 0.14);
+  transform: translateY(-2px);
+}
+
+.coub-tile--active {
+  border-color: rgba(244, 63, 94, 0.5);
+}
+
+.coub-tile-media {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #170a12;
+}
+
+.coub-tile-media video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.coub-tile-media video.is-ready {
+  opacity: 1;
+}
+
+.coub-tile--active .coub-tile-media {
+  box-shadow: 0 0 0 2px var(--accent) inset;
+}
+
+/* Номер — правый верхний угол; у текущего ролика его место занимает «Сейчас» */
+.coub-tile-index {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(6, 3, 5, 0.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: rgba(255, 255, 255, 0.75);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  line-height: 1.4;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.coub-tile--active .coub-tile-index {
+  display: none;
+}
+
+/* Бейдж текущего ролика — правый верхний угол */
+.coub-tile-now {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  box-shadow: 0 0 12px rgba(244, 63, 94, 0.5);
+  pointer-events: none;
+  display: none;
+}
+
+.coub-tile--active .coub-tile-now {
+  display: block;
+}
+
+/* Подпись поверх кадра на затемнённом нижнем крае */
+.coub-tile-title {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  padding: 20px 9px 8px;
+  font-size: 11.5px;
+  line-height: 1.32;
+  color: #fff;
+  text-shadow:
+    0 1px 4px rgba(0, 0, 0, 0.9),
+    0 0 2px rgba(0, 0, 0, 0.7);
+  background: linear-gradient(
+    to top,
+    rgba(6, 3, 5, 0.92) 0%,
+    rgba(6, 3, 5, 0.7) 42%,
+    rgba(6, 3, 5, 0) 100%
+  );
+  border-radius: 0 0 12px 12px;
+  pointer-events: none;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ─── Перетаскивание ──────────────────────────────────────── */
+
+.coub-grid--reorderable .coub-tile {
+  cursor: grab;
+}
+
+.coub-grid--reorderable .coub-tile:active {
+  cursor: grabbing;
+}
+
+.coub-tile--dragging {
+  opacity: 0.35;
+  transform: none !important;
+}
+
+/* Плитка, на место которой встанет перетаскиваемая */
+.coub-grid--dragging .coub-tile:not(.coub-tile--dragging) {
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease;
+}
+
+/* Во время перетаскивания превью не должны перехватывать dragover —
+   события должны приходить от самой плитки, а не от video/бейджей */
+.coub-grid--dragging .coub-tile * {
+  pointer-events: none;
+}
+
+/* ─── Чекбокс выделения ───────────────────────────────────── */
+
+.coub-tile-check {
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.45);
+  background: rgba(6, 3, 5, 0.6);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.14s ease,
+    background 0.14s ease,
+    border-color 0.14s ease;
+  z-index: 3;
+}
+
+.coub-tile-check::after {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 3.5px;
+  width: 5px;
+  height: 10px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+  opacity: 0;
+  transition: opacity 0.14s ease;
+}
+
+.coub-tile:hover .coub-tile-check,
+.coub-grid--selecting .coub-tile-check {
+  opacity: 1;
+}
+
+.coub-tile--selected .coub-tile-check {
+  opacity: 1;
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 12px rgba(244, 63, 94, 0.5);
+}
+
+.coub-tile--selected .coub-tile-check::after {
+  opacity: 1;
+}
+
+.coub-tile--selected {
+  border-color: rgba(244, 63, 94, 0.55);
+  background: rgba(244, 63, 94, 0.12);
+}
+
+.coub-tile--selected .coub-tile-media {
+  box-shadow: 0 0 0 2px var(--accent) inset;
+}
+
+/* ─── Панель массовых действий ─────────────────────────────── */
+
+.grid-bulk-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(244, 63, 94, 0.06);
+  flex-shrink: 0;
+}
+
+.grid-bulk-info {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.grid-bulk-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.grid-bulk-hint {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.grid-bulk-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.grid-bulk-btn {
+  padding: 7px 13px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--glass-border);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--transition);
+}
+
+.grid-bulk-btn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.15);
+  background: var(--glass-hover);
+}
+
+.grid-bulk-btn--accent {
+  color: var(--accent);
+  border-color: rgba(244, 63, 94, 0.3);
+  background: var(--accent-dim);
+}
+
+.grid-bulk-btn--accent:hover:not(:disabled) {
+  color: #fff;
+  background: var(--accent);
+  border-color: transparent;
+}
+
+.grid-bulk-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ─── Выпадашка выбора плейлиста / тега ────────────────────── */
+
+.grid-bulk-popover {
+  position: absolute;
+  right: 20px;
+  bottom: 68px;
+  z-index: 5;
+  width: min(340px, calc(100% - 40px));
+  max-height: min(420px, 60%);
+  display: flex;
+  flex-direction: column;
+  background: var(--glass-strong);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(24px) saturate(160%);
+  overflow: hidden;
+}
+
+.grid-bulk-popover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  font-size: 13px;
+  font-weight: 600;
+  color: #f0f0f0;
+  flex-shrink: 0;
+}
+
+.grid-bulk-popover-input {
+  display: flex;
+  gap: 6px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  flex-shrink: 0;
+}
+
+.grid-bulk-popover-input .pl-search-input {
+  padding: 8px 10px;
+}
+
+.grid-bulk-popover-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 8px;
+  min-height: 0;
+}
+
+.grid-bulk-popover-list::-webkit-scrollbar {
+  width: 3px;
+}
+
+.grid-bulk-popover-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.grid-bulk-popover-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
+
+/* ─── Переключатель размера плиток в шапке ────────────────── */
+
+.grid-size-group {
+  flex-shrink: 0;
+}
+
+.grid-size-group button {
+  padding: 5px 9px;
+  font-family: "JetBrains Mono", monospace;
+}
+
+/* ─── Кнопка открытия сетки ───────────────────────────────── */
+
+.control-btn--grid .icon-slot {
+  font-size: 15px;
+}
+
+@media (max-width: 640px) {
+  .coub-grid {
+    gap: 10px;
+    padding: 12px;
+  }
+  .grid-size-group {
+    display: none;
+  }
+}

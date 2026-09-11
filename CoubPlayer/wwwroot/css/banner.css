@@ -1,0 +1,451 @@
+/* ═══════════════════════════════════════════════════════════
+   BANNERS — баннеры плейлистов.
+   По умолчанию баннер — превью первого ролика: неподвижный кадр,
+   при наведении анимация (всегда без звука). Своя картинка и свой
+   ролик перекрывают это по отдельности.
+   ═══════════════════════════════════════════════════════════ */
+
+.pl-banner {
+  position: relative;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.pl-banner-still,
+.pl-banner-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.pl-banner-video {
+  opacity: 0;
+  transition: opacity 0.22s ease;
+}
+
+/* Без своей картинки неподвижным кадром служит само видео */
+.pl-banner:not(.pl-banner--has-still) .pl-banner-video.is-ready {
+  opacity: 1;
+}
+
+/* Со своей картинкой видео проявляется только под курсором */
+.pl-tile:hover .pl-banner--has-still .pl-banner-video.is-ready,
+.pl-row:hover .pl-banner--has-still .pl-banner-video.is-ready {
+  opacity: 1;
+}
+
+/* Баннер лежит фоном под подписями — клики забирает сама кнопка */
+.pl-tile--banner .pl-banner,
+.pl-row--banner .pl-banner {
+  pointer-events: none;
+}
+
+.pl-banner-fallback {
+  font-size: 1.8em;
+  line-height: 1;
+  font-family:
+    "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Плитка селектора: баннер занимает её целиком, подписи и
+   чекбокс лежат поверх. Чтобы они читались на любой картинке —
+   градиентная подложка снизу плюс тень у текста.
+   ═══════════════════════════════════════════════════════════ */
+
+/* Без overflow: hidden — он обнуляет автоматический минимальный размер
+   грид-элемента, и строка сетки считается по пустому содержимому, отчего
+   плитки наезжают друг на друга. Обрезка и скругление живут на самом
+   баннере, у него overflow: hidden уже есть. */
+.pl-tile--banner {
+  padding: 0;
+  gap: 0;
+  border-radius: 14px;
+}
+
+/* Баннер остаётся в потоке и своим соотношением сторон задаёт высоту плитки.
+   Если сделать его absolute, а aspect-ratio повесить на саму плитку, грид
+   посчитает высоту строки по пустому содержимому — и плитки наедут друг
+   на друга. Подписи же поверх баннера лежат абсолютом. */
+.pl-tile--banner .pl-tile-thumb.pl-banner {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  height: auto;
+  border: none;
+  border-radius: 14px;
+  font-size: 30px;
+}
+
+/* Подложка под подписи */
+.pl-tile--banner::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 64%;
+  background: linear-gradient(
+    to top,
+    rgba(6, 3, 5, 0.93) 0%,
+    rgba(6, 3, 5, 0.75) 32%,
+    rgba(6, 3, 5, 0) 100%
+  );
+  border-radius: 0 0 14px 14px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.pl-tile--banner .pl-tile-text {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  padding: 10px 12px 11px;
+  text-align: left;
+}
+
+.pl-tile--banner .pl-tile-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #fff;
+  text-shadow:
+    0 1px 4px rgba(0, 0, 0, 0.9),
+    0 0 2px rgba(0, 0, 0, 0.7);
+}
+
+.pl-tile--banner .pl-tile-count {
+  color: rgba(255, 255, 255, 0.72);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+/* Чекбокс и кнопки — со своей тёмной подложкой, иначе на светлом
+   кадре их попросту не видно */
+.pl-tile--banner .pl-row-check {
+  top: 10px;
+  right: 10px;
+  background: rgba(6, 3, 5, 0.5);
+  border-color: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.55);
+}
+
+.pl-tile--banner .pl-row-actions {
+  top: 10px;
+  left: 10px;
+}
+
+.pl-tile--banner.pl-tile--active {
+  background: transparent;
+  border-color: transparent;
+  box-shadow:
+    0 0 0 2px var(--accent) inset,
+    0 0 18px rgba(244, 63, 94, 0.35);
+}
+
+/* Инлайн-переименование поверх баннера */
+.pl-tile--banner.pl-row--editing .pl-tile-text {
+  padding-bottom: 10px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Строка редактора видео: то же самое, но подложка слева направо —
+   текст и чекбокс стоят в ряд, а не друг под другом.
+   ═══════════════════════════════════════════════════════════ */
+
+.pl-row--banner {
+  padding: 0;
+  gap: 0;
+  height: 58px;
+  flex-shrink: 0; /* список — flex-колонка, иначе строки сплющит */
+  border-radius: 11px;
+  overflow: hidden;
+}
+
+.pl-row--banner .pl-row-icon.pl-banner {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+  border-radius: 0;
+}
+
+.pl-row--banner::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(6, 3, 5, 0.92) 0%,
+    rgba(6, 3, 5, 0.74) 48%,
+    rgba(6, 3, 5, 0.34) 100%
+  );
+  pointer-events: none;
+  z-index: 1;
+  transition: opacity 0.16s ease;
+}
+
+.pl-row--banner:hover::after {
+  opacity: 0.82;
+}
+
+.pl-row--banner .pl-row-text {
+  position: relative;
+  z-index: 2;
+  padding-left: 13px;
+}
+
+.pl-row--banner .pl-row-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  text-shadow:
+    0 1px 4px rgba(0, 0, 0, 0.9),
+    0 0 2px rgba(0, 0, 0, 0.7);
+}
+
+.pl-row--banner .pl-row-count {
+  color: rgba(255, 255, 255, 0.7);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+.pl-row--banner .pl-row-check,
+.pl-row--banner .pl-row-actions {
+  position: relative;
+  z-index: 2;
+}
+
+.pl-row--banner .pl-row-check {
+  margin-right: 12px;
+  background: rgba(6, 3, 5, 0.5);
+  border-color: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.55);
+}
+
+.pl-row--banner .pl-row-actions {
+  margin-left: 0;
+  margin-right: 8px;
+}
+
+/* Галочка «ролик в плейлисте» — рамкой по всей кнопке,
+   подсветкой фона тут уже не обойтись */
+.pl-row--banner.pl-row--checked {
+  box-shadow: 0 0 0 2px var(--accent) inset;
+}
+
+.pl-row--banner.pl-row--checked .pl-row-icon {
+  background: none;
+  border: none;
+}
+
+.pl-row--banner:hover:not(.pl-row--readonly) {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.pl-row--banner .pl-row-rename-input {
+  margin-right: 8px;
+}
+
+/* Лёгкое приближение под курсором — плитка «оживает» */
+.pl-tile-thumb.pl-banner .pl-banner-still,
+.pl-tile-thumb.pl-banner .pl-banner-video {
+  transition:
+    opacity 0.22s ease,
+    transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.pl-tile:hover .pl-tile-thumb.pl-banner .pl-banner-still,
+.pl-tile:hover .pl-tile-thumb.pl-banner .pl-banner-video {
+  transform: scale(1.04);
+}
+
+/* ─── Баннер в строке редактора видео ─────────────────────── */
+
+.pl-row-icon.pl-banner {
+  width: 64px;
+  height: 36px;
+  border-radius: 7px;
+  font-size: 14px;
+}
+
+.pl-row-icon.pl-banner .pl-banner-fallback {
+  font-size: 15px;
+}
+
+/* ─── Меню баннера на плитке ──────────────────────────────── */
+
+/* Лежит в body и позиционируется по кнопке — иначе его обрезал бы
+   прокручиваемый список, а соседние плитки перекрывали бы собой */
+.pl-banner-menu {
+  position: fixed;
+  z-index: 200;
+  min-width: 178px;
+  padding: 5px;
+  border-radius: 12px;
+  background: var(--glass-strong);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(20px) saturate(160%);
+}
+
+.pl-banner-menu-item {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.14s ease;
+}
+
+.pl-banner-menu-item:hover {
+  background: var(--glass-hover);
+}
+
+.pl-banner-menu-item:disabled {
+  opacity: 0.35;
+  cursor: default;
+  background: transparent;
+}
+
+.pl-banner-menu-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CROPPER — кадрирование своей картинки
+   ═══════════════════════════════════════════════════════════ */
+
+.banner-crop-panel {
+  top: 50%;
+  left: 50%;
+  right: auto;
+  width: min(92vw, 560px);
+  max-height: 92vh;
+  transform: translate(-50%, -50%) scale(0.96);
+  transition:
+    transform var(--transition-panel),
+    opacity var(--transition);
+}
+
+.pl-editor-overlay.show .banner-crop-panel {
+  transform: translate(-50%, -50%) scale(1);
+  opacity: 1;
+}
+
+.banner-crop-body {
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.banner-crop-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #0a070a;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.banner-crop-frame.is-dragging {
+  cursor: grabbing;
+}
+
+.banner-crop-frame img {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  max-width: none;
+  max-height: none;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+/* Направляющие по третям — как в редакторах кадрирования */
+.banner-crop-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(
+      to right,
+      transparent calc(33.33% - 1px),
+      rgba(255, 255, 255, 0.18) calc(33.33% - 1px),
+      rgba(255, 255, 255, 0.18) 33.33%,
+      transparent 33.33%,
+      transparent calc(66.66% - 1px),
+      rgba(255, 255, 255, 0.18) calc(66.66% - 1px),
+      rgba(255, 255, 255, 0.18) 66.66%,
+      transparent 66.66%
+    ),
+    linear-gradient(
+      to bottom,
+      transparent calc(33.33% - 1px),
+      rgba(255, 255, 255, 0.18) calc(33.33% - 1px),
+      rgba(255, 255, 255, 0.18) 33.33%,
+      transparent 33.33%,
+      transparent calc(66.66% - 1px),
+      rgba(255, 255, 255, 0.18) calc(66.66% - 1px),
+      rgba(255, 255, 255, 0.18) 66.66%,
+      transparent 66.66%
+    );
+}
+
+.banner-crop-hint {
+  margin-top: 11px;
+  text-align: center;
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.banner-crop-zoom {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.banner-crop-zoom-icon {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.4);
+  flex-shrink: 0;
+}
+
+.banner-crop-zoom-slider {
+  flex: 1;
+}
+
+.banner-crop-foot {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.banner-crop-foot .grid-bulk-btn {
+  min-width: 120px;
+  text-align: center;
+}
