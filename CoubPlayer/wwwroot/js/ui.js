@@ -25,6 +25,82 @@ import { revealSimple, revealChars } from "./text-reveal.js";
 
 
 
+// ─── Метрика верхней панели ───────────────────────────────────────────────────
+// В узком окне панель переносится на вторую строку, и режим плитки должен
+// начинаться ниже. Отдаём её высоту в CSS-переменную, а не гадаем в стилях.
+
+// ─── Появление панелей у краёв экрана ─────────────────────────────────────────
+// Панели спрятаны, пока курсор не подойдёт к своему краю. Ловим это мышью, а не
+// :hover на невидимой зоне: зона перехватывала бы клики по видео (пауза).
+// Раз панель показалась, её удерживает собственный :hover — поэтому она не
+// прячется, пока пользователь ведёт мышь по ней или по раскрытому в ней меню.
+
+(function trackPointerEdges() {
+    const EDGE = 120;
+    const IDLE_MS = 2200;
+
+    const topBar = document.querySelector(".top-controls");
+    let idleTimer = null;
+
+    // Часы стоят по центру сверху и должны уходить под панель, когда та выехала.
+    // Ориентироваться на близость курсора нельзя: панель остаётся видимой,
+    // пока курсор лежит на ней самой, даже если он уже «уснул».
+    const syncTopBarState = () => {
+        const shown =
+            document.body.classList.contains("chrome-top") ||
+            document.body.classList.contains("madness-open") ||
+            !!topBar?.matches(":hover");
+        document.body.classList.toggle("top-bar-shown", shown);
+    };
+
+    const wake = () => {
+        document.body.classList.remove("cursor-idle");
+        clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => {
+            document.body.classList.add("cursor-idle");
+            // Вместе с курсором прячем и обвязку: она появилась из-за него же
+            document.body.classList.remove("chrome-top", "chrome-bottom");
+            syncTopBarState();
+        }, IDLE_MS);
+    };
+
+    const apply = (y) => {
+        document.body.classList.toggle("chrome-top", y <= EDGE);
+        document.body.classList.toggle("chrome-bottom", y >= window.innerHeight - EDGE);
+        syncTopBarState();
+    };
+
+    document.addEventListener("mousemove", (e) => {
+        wake();
+        apply(e.clientY);
+    });
+
+    // Любое действие — курсор снова нужен
+    ["mousedown", "wheel", "keydown"].forEach((type) =>
+        document.addEventListener(type, wake, { passive: true })
+    );
+
+    // Курсор ушёл за пределы окна — прятать нечего ждать
+    document.addEventListener("mouseleave", () => {
+        document.body.classList.remove("chrome-top", "chrome-bottom");
+    });
+
+    wake();
+})();
+
+(function trackTopBarHeight() {
+    const bar = document.querySelector(".top-controls");
+    if (!bar) return;
+
+    const publish = () => {
+        const h = Math.round(bar.getBoundingClientRect().height);
+        document.documentElement.style.setProperty("--top-bar-h", `${h}px`);
+    };
+
+    new ResizeObserver(publish).observe(bar);
+    publish();
+})();
+
 // ─── Go To Start Button ───────────────────────────────────────────────────────
 
 const goToStartBtn = document.getElementById("goToStartBtn");
@@ -50,6 +126,12 @@ export function updateVideoInfo(index, title, total) {
     revealChars(videoTitleLabel, title || "—");
     revealSimple(videoIndexInput, index + 1);
     revealSimple(videoTotal, `/ ${total}`);
+
+    // Растворение у правого края включаем только если имя не поместилось
+    requestAnimationFrame(() => {
+        const clipped = videoTitleLabel.scrollWidth > videoTitleLabel.clientWidth + 1;
+        videoTitleLabel.classList.toggle("is-clipped", clipped);
+    });
 }
 // ─── Volume Slider ────────────────────────────────────────────────────────────
 
@@ -76,7 +158,6 @@ export function initVolumeSlider(onChange, initialValue = 50) {
 // ─── Copy Link Button ─────────────────────────────────────────────────────────
 
 const copyLinkBtn = document.getElementById("copyLinkBtn");
-const copyLinkIconSlot = copyLinkBtn.querySelector(".icon-slot");
 
 const fileDropdown = document.getElementById("fileDropdown");
 const fileDropdownBtn = document.getElementById("fileDropdownBtn");
@@ -88,7 +169,7 @@ export function initCopyLinkBtn(getCurrentVideoId) {
         if (!id) return;
         try {
             await navigator.clipboard.writeText(`https://coub.com/view/${id}`);
-            flashIconSuccess(copyLinkIconSlot);
+            flashCopied(copyLinkBtn);
             showToast("✓ Ссылка скопирована");
         } catch (e) {
             console.error("Clipboard error:", e);
@@ -121,6 +202,17 @@ export function initControlDropdown() {
 
 let _iconSuccessTimers = new WeakMap();
 
+/** Кратко подменяет иконку кнопки галочкой. */
+function flashCopied(btn, duration = 1200) {
+    if (!btn) return;
+    clearTimeout(_iconSuccessTimers.get(btn));
+    btn.classList.add("is-copied");
+    _iconSuccessTimers.set(
+        btn,
+        setTimeout(() => btn.classList.remove("is-copied"), duration)
+    );
+}
+
 function flashIconSuccess(iconSlotEl, duration = 1200) {
     if (!iconSlotEl) return;
     clearTimeout(_iconSuccessTimers.get(iconSlotEl));
@@ -136,8 +228,17 @@ function flashIconSuccess(iconSlotEl, duration = 1200) {
 const sortTypeGroup = document.getElementById("sortTypeGroup");
 const sortDirectionBtn = document.getElementById("sortDirectionBtn");
 const seedInput = document.getElementById("seedInput");
+const sortDropdown = document.getElementById("sortDropdown");
+const sortTriggerBtn = document.getElementById("sortTriggerBtn");
+const sortTriggerLabel = document.getElementById("sortTriggerLabel");
+const sortMenu = document.getElementById("sortMenu");
+const sortDirectionRow = document.getElementById("sortDirectionRow");
+const sortSeedRow = document.getElementById("sortSeedRow");
 
 const DEFAULT_SEED = 42;
+
+const SORT_LABEL = { order: "Порядок", random: "Случайно", madness: "Безумие" };
+const DIRECTION_LABEL = { asc: "↑ По возрастанию", desc: "↓ По убыванию" };
 
 export function initSortBar(onChange, initial = {}) {
     let sortType = initial.sortType ?? "order";
@@ -152,9 +253,10 @@ export function initSortBar(onChange, initial = {}) {
         activeBtn.classList.add("active");
     }
 
-    sortDirectionBtn.textContent = sortDirection === "asc" ? "↑" : "↓";
+    sortDirectionBtn.textContent = DIRECTION_LABEL[sortDirection];
 
     syncSortControls(sortType, madnessShufflesOrder());
+    initSortMenu();
 
     const notify = () => onChange(sortType, sortDirection, parseInt(seedInput.value) || DEFAULT_SEED);
 
@@ -171,7 +273,7 @@ export function initSortBar(onChange, initial = {}) {
 
     sortDirectionBtn.addEventListener("click", () => {
         sortDirection = sortDirection === "asc" ? "desc" : "asc";
-        sortDirectionBtn.textContent = sortDirection === "asc" ? "↑" : "↓";
+        sortDirectionBtn.textContent = DIRECTION_LABEL[sortDirection];
         notify();
     });
 
@@ -193,8 +295,42 @@ export function syncSortControls(sortType, madnessShufflesOrder) {
     const randomOrder =
         sortType === "random" || (sortType === "madness" && madnessShufflesOrder);
 
-    seedInput.classList.toggle("hidden", !randomOrder);
-    sortDirectionBtn.classList.toggle("hidden", randomOrder);
+    // Прячем строки целиком, а не сами контролы: .hidden гасит прозрачность,
+    // но оставляет элемент в раскладке — в меню это была бы дыра
+    sortSeedRow.classList.toggle("hidden", !randomOrder);
+    sortDirectionRow.classList.toggle("hidden", randomOrder);
+
+    sortTriggerLabel.textContent = SORT_LABEL[sortType] || sortType;
+}
+
+/** Кнопка-список сортировки: раскрытие и закрытие. */
+function initSortMenu() {
+    const close = () => {
+        sortMenu.classList.add("hidden");
+        sortDropdown.classList.remove("open");
+    };
+
+    sortTriggerBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const willOpen = sortMenu.classList.contains("hidden");
+        sortMenu.classList.toggle("hidden", !willOpen);
+        sortDropdown.classList.toggle("open", willOpen);
+        sortTriggerBtn.blur();
+    });
+
+    // Выбор типа закрывает меню, настройка направления и seed — нет:
+    // их обычно крутят, сразу глядя на результат
+    sortTypeGroup.addEventListener("click", (e) => {
+        if (e.target.closest("button[data-type]")) close();
+    });
+
+    document.addEventListener("click", (e) => {
+        if (!sortDropdown.contains(e.target)) close();
+    });
+
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") close();
+    });
 }
 
 /** Текущее значение seed из поля верхней панели. */
@@ -360,21 +496,53 @@ export function setMadnessCurrent(text) {
 // ─── Transition Mode Toggle (Fade / Flip) ──────────────────────────────────
 
 const transitionModeGroup = document.getElementById("transitionModeGroup");
+const transitionDropdown = document.getElementById("transitionDropdown");
+const transitionTriggerBtn = document.getElementById("transitionTriggerBtn");
+const transitionTriggerLabel = document.getElementById("transitionTriggerLabel");
+const transitionMenu = document.getElementById("transitionMenu");
 
 export function initTransitionModeToggle(onChange, initialMode = "crossfade") {
+    const syncLabel = () => {
+        const active = transitionModeGroup.querySelector("button.active");
+        transitionTriggerLabel.textContent = active?.textContent.trim() || "Fade";
+    };
+
     const activeBtn = transitionModeGroup.querySelector(`[data-mode="${initialMode}"]`);
     if (activeBtn) {
         [...transitionModeGroup.children].forEach((b) => b.classList.remove("active"));
         activeBtn.classList.add("active");
     }
+    syncLabel();
 
     transitionModeGroup.addEventListener("click", (e) => {
         const btn = e.target.closest("button");
         if (!btn) return;
         [...transitionModeGroup.children].forEach((b) => b.classList.remove("active"));
         btn.classList.add("active");
+        syncLabel();
+        closeTransitionMenu();
         onChange(btn.dataset.mode);
     });
+
+    transitionTriggerBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const willOpen = transitionMenu.classList.contains("hidden");
+        transitionMenu.classList.toggle("hidden", !willOpen);
+        transitionDropdown.classList.toggle("open", willOpen);
+        transitionTriggerBtn.blur();
+    });
+
+    document.addEventListener("click", (e) => {
+        if (!transitionDropdown.contains(e.target)) closeTransitionMenu();
+    });
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") closeTransitionMenu();
+    });
+}
+
+function closeTransitionMenu() {
+    transitionMenu.classList.add("hidden");
+    transitionDropdown.classList.remove("open");
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -389,6 +557,8 @@ const VIRTUAL_PLAYLIST = "Все";
 const veOverlay = document.getElementById("videoEditorOverlay");
 const vePanel = document.getElementById("videoEditorPanel");
 const veSubtitle = document.getElementById("videoEditorSubtitle");
+const veTitle = document.getElementById("videoEditorTitle");
+const veThumb = document.getElementById("videoEditorThumb");
 const veClose = document.getElementById("videoEditorClose");
 const veTabs = document.getElementById("videoEditorTabs");
 const veTabPlaylists = document.getElementById("veTabPlaylists");
@@ -414,6 +584,8 @@ const NAV_EXEMPT_SELECTORS = [
     "#prev", "#next", "#restart", "#fullscreen",
     "#videoIndexWrapper", ".volume-slider", "#copyLinkBtn",
     "#videoEditorPanel", "#videoEditBtn",
+    // меню баннера и групп рисуются в body, но относятся к этому окну
+    ".pl-banner-menu",
 ];
 
 function isNavExempt(target) {
@@ -436,6 +608,27 @@ let _suppressNextOverlayClose = false;
 
 let _activeVeTab = "playlists";
 let _tagsLoadedForVideo = null; // id видео, для которого уже подгружены теги
+
+/**
+ * Шапка окна: кадр ролика + его название. Раньше в заголовке стояло слово
+ * «Видео», а имя ютилось в подзаголовке — теперь наоборот, плюс превью,
+ * чтобы было видно, к какому ролику относятся настройки.
+ */
+function setVideoEditorHeader(video) {
+    veTitle.textContent = video?.title || video?.id || "—";
+    veSubtitle.textContent = video?.id || "";
+
+    veThumb.innerHTML = "";
+    if (!video?.video) return;
+
+    const preview = document.createElement("video");
+    preview.muted = true;
+    preview.loop = true;
+    preview.playsInline = true;
+    preview.preload = "metadata";
+    preview.src = video.video + "#t=0.1";
+    veThumb.appendChild(preview);
+}
 
 export function initVideoEditor({
     getPlaylists, onToggle, onCreatePlaylist,
@@ -616,8 +809,7 @@ export function openVideoEditor(video, playlists, tab = _activeVeTab) {
     _playlists = playlists;
     _tagsLoadedForVideo = null; // видео сменилось (или открывается впервые) — теги перечитаем
     setFxTarget(video);
-
-    veSubtitle.textContent = _currentTitle;
+    setVideoEditorHeader(video);
 
     if (!wasOpen) {
         editorSearch.value = "";
@@ -670,31 +862,44 @@ async function renderEditorRows(query) {
         const restEntries = entries.filter(([name]) => !recentSet.has(name));
 
         if (recentEntries.length) {
-            const label = document.createElement("div");
-            label.className = "pl-section-label";
-            label.textContent = "Недавние";
             if (gen !== _editorRenderGen) return;
-            editorList.appendChild(label);
+            editorList.appendChild(buildGroupLabel("Недавние"));
             for (const [name, data] of recentEntries) {
                 const row = await buildEditorRow(name, data);
                 if (gen !== _editorRenderGen) return;
                 editorList.appendChild(row);
             }
-            if (restEntries.length) {
-                const label2 = document.createElement("div");
-                label2.className = "pl-section-label";
-                label2.textContent = "Все плейлисты";
-                if (gen !== _editorRenderGen) return;
-                editorList.appendChild(label2);
-            }
         }
         entries = restEntries;
     }
 
-    for (const [name, data] of entries) {
-        const row = await buildEditorRow(name, data);
-        if (gen !== _editorRenderGen) return;
-        editorList.appendChild(row);
+    // Остальные плейлисты — по группам; при поиске группировка только мешает
+    const groups = q
+        ? [{ name: "", items: entries.map(([name, data]) => ({ key: name, payload: data })) }]
+        : groupEntries(
+            entries.map(([name, data]) => ({
+                key: name,
+                group: playlistGroupOf(name, data),
+                payload: data,
+            }))
+        );
+
+    // Если групп нет, заголовки не появятся — тогда отделяем остаток
+    // от «Недавних» общей подписью, иначе они сольются в один список
+    const needsPlainLabel =
+        editorList.children.length > 0 && groups.length === 1 && !groups[0].name;
+    if (needsPlainLabel) editorList.appendChild(buildGroupLabel("Все плейлисты"));
+
+    for (const group of groups) {
+        if (group.name) {
+            if (gen !== _editorRenderGen) return;
+            editorList.appendChild(buildGroupLabel(group.name));
+        }
+        for (const entry of group.items) {
+            const row = await buildEditorRow(entry.key, entry.payload);
+            if (gen !== _editorRenderGen) return;
+            editorList.appendChild(row);
+        }
     }
 
     window.refreshCustomIcons?.();
@@ -807,7 +1012,7 @@ export function syncVideoEditorToVideo(video) {
 
     if (!veOverlay.classList.contains("show")) return;
 
-    veSubtitle.textContent = _currentTitle;
+    setVideoEditorHeader(video);
     if (_activeVeTab === "tags") {
         loadTagsForCurrentVideo();
     } else if (_activeVeTab === "fx") {
@@ -834,7 +1039,11 @@ function playlistDataFor(name) {
  */
 async function afterBannerChange() {
     await _onBannerChanged?.();
+    rerenderPlaylistLists();
+}
 
+/** Перерисовать оба списка плейлистов из свежих данных. */
+export function rerenderPlaylistLists() {
     if (_getSelectorPlaylists) _selectorPlaylists = _getSelectorPlaylists();
     if (_getEditorPlaylists) _playlists = _getEditorPlaylists();
 
@@ -843,6 +1052,13 @@ async function afterBannerChange() {
     }
     if (veOverlay.classList.contains("show") && _activeVeTab === "playlists") {
         renderEditorRows(editorSearch.value.trim());
+    }
+}
+
+/** Перерисовать список тегов (после смены группы). */
+export function rerenderTagList() {
+    if (sortingOverlay.classList.contains("show") && _activeSortingTab === "tags") {
+        renderTagFilterRows(sortingSearch.value.trim());
     }
 }
 
@@ -861,6 +1077,165 @@ let _openBannerMenu = null;
 function closeBannerMenu() {
     _openBannerMenu?.remove();
     _openBannerMenu = null;
+}
+
+/**
+ * Всплывающее меню у кнопки. Живёт в body: списки плейлистов и тегов
+ * прокручиваемые, внутри них меню обрезалось бы краем списка.
+ * @param {HTMLElement} anchor
+ * @param {Array<{label?: string, hint?: string, disabled?: boolean, active?: boolean,
+ *                separator?: boolean, onClick?: () => any}>} items
+ */
+function openMenu(anchor, items) {
+    closeBannerMenu();
+
+    const menu = document.createElement("div");
+    menu.className = "pl-banner-menu";
+
+    for (const item of items) {
+        if (item.separator) {
+            const sep = document.createElement("div");
+            sep.className = "pl-banner-menu-sep";
+            menu.appendChild(sep);
+            continue;
+        }
+
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "pl-banner-menu-item" + (item.active ? " is-active" : "");
+        btn.textContent = item.label;
+        btn.disabled = !!item.disabled;
+        btn.addEventListener("click", async (e) => {
+            e.stopPropagation();
+            closeBannerMenu();
+            await item.onClick?.();
+        });
+        menu.appendChild(btn);
+    }
+
+    document.body.appendChild(menu);
+    positionBannerMenu(menu, anchor);
+
+    menu.animate(
+        [
+            { opacity: 0, transform: "translateY(-8px) scale(0.97)" },
+            { opacity: 1, transform: "none" },
+        ],
+        { duration: 150, easing: "cubic-bezier(0.16, 1, 0.3, 1)" }
+    );
+
+    _openBannerMenu = menu;
+    return menu;
+}
+
+// ─── Группы плейлистов и тегов ─────────────────────────────────────────────
+
+const SPECIAL_GROUP = "Специальные";
+const UNGROUPED_LABEL = "Без группы";
+
+let _getTagGroups = () => ({});
+let _onSetPlaylistGroup = null;
+let _onSetTagGroup = null;
+
+/** Группа плейлиста. «Все» виртуальный и живёт в «Специальных» всегда. */
+function playlistGroupOf(name, data) {
+    if (name === VIRTUAL_PLAYLIST) return SPECIAL_GROUP;
+    return data?.group || null;
+}
+
+function tagGroupOf(tag) {
+    return _getTagGroups()[tag] || null;
+}
+
+/** Все группы, на которые кто-то уже ссылается — отдельной сущности у них нет. */
+function knownGroups(kind) {
+    const set = new Set([SPECIAL_GROUP]);
+    if (kind === "playlist") {
+        for (const [name, data] of Object.entries(_getSelectorPlaylists?.() || {})) {
+            const g = playlistGroupOf(name, data);
+            if (g) set.add(g);
+        }
+    } else {
+        for (const g of Object.values(_getTagGroups())) if (g) set.add(g);
+    }
+    return [...set].sort((a, b) => a.localeCompare(b, "ru"));
+}
+
+/**
+ * Раскладывает записи по группам: сначала «Специальные», потом остальные
+ * по алфавиту, в конце — то, что никуда не отнесли.
+ * @param {Array<{key: string, group: string|null, payload: any}>} entries
+ */
+function groupEntries(entries) {
+    const buckets = new Map();
+    for (const entry of entries) {
+        const key = entry.group || "";
+        if (!buckets.has(key)) buckets.set(key, []);
+        buckets.get(key).push(entry);
+    }
+
+    const names = [...buckets.keys()].filter(Boolean).sort((a, b) => {
+        if (a === SPECIAL_GROUP) return -1;
+        if (b === SPECIAL_GROUP) return 1;
+        return a.localeCompare(b, "ru");
+    });
+    if (buckets.has("")) names.push("");
+
+    return names.map((name) => ({
+        name: name || (buckets.size > 1 ? UNGROUPED_LABEL : ""),
+        items: buckets.get(name),
+    }));
+}
+
+function buildGroupLabel(text) {
+    const label = document.createElement("div");
+    label.className = "pl-group-label";
+    label.textContent = text;
+    return label;
+}
+
+/** Меню «собрать в группу» для плейлиста или тега. */
+function openGroupMenu(anchor, kind, name, currentGroup) {
+    const apply = (group) =>
+        kind === "playlist"
+            ? _onSetPlaylistGroup?.(name, group)
+            : _onSetTagGroup?.(name, group);
+
+    const items = knownGroups(kind).map((g) => ({
+        label: g,
+        active: g === currentGroup,
+        onClick: () => apply(g),
+    }));
+
+    items.push({ separator: true });
+    items.push({
+        label: "Новая группа…",
+        onClick: () => {
+            _suppressNextOverlayClose = true;
+            const value = prompt("Название группы:", currentGroup || "");
+            if (value?.trim()) apply(value.trim());
+        },
+    });
+    items.push({
+        label: "Убрать из группы",
+        disabled: !currentGroup,
+        onClick: () => apply(null),
+    });
+
+    openMenu(anchor, items);
+}
+
+/** Кнопка вызова меню групп. */
+function buildGroupButton(kind, name, currentGroup) {
+    const btn = document.createElement("button");
+    btn.className = "pl-row-action-btn pl-row-group-btn";
+    btn.title = currentGroup ? `Группа: ${currentGroup}` : "Собрать в группу";
+    btn.innerHTML = `<svg class="ico ico-sm" viewBox="0 0 20 20" aria-hidden="true"><path d="M2.8 6.2a1.6 1.6 0 0 1 1.6-1.6h2.9l1.5 1.8h6.8a1.6 1.6 0 0 1 1.6 1.6v6.2a1.6 1.6 0 0 1-1.6 1.6H4.4a1.6 1.6 0 0 1-1.6-1.6z"/></svg>`;
+    btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openGroupMenu(btn, kind, name, currentGroup);
+    });
+    return btn;
 }
 
 /**
@@ -898,39 +1273,23 @@ function positionBannerMenu(menu, anchor) {
  * @param {string} name
  */
 function openBannerMenu(anchor, name) {
-    closeBannerMenu();
-
     const data = playlistDataFor(name);
-    const menu = document.createElement("div");
-    menu.className = "pl-banner-menu";
 
-    const addItem = (label, disabled, onClick) => {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "pl-banner-menu-item";
-        btn.textContent = label;
-        btn.disabled = !!disabled;
-        btn.addEventListener("click", async (e) => {
-            e.stopPropagation();
-            closeBannerMenu();
-            await onClick();
-        });
-        menu.appendChild(btn);
-    };
-
-    addItem("Своя картинка…", false, () => pickBannerImage(name));
-    addItem("Свой ролик…", false, () => pickBannerVideo(name));
-
-    const sep = document.createElement("div");
-    sep.className = "pl-banner-menu-sep";
-    menu.appendChild(sep);
-
-    addItem("Сбросить картинку", !data?.banner?.image, () => resetBanner(name, "image"));
-    addItem("Сбросить анимацию", !data?.banner?.video, () => resetBanner(name, "video"));
-
-    document.body.appendChild(menu);
-    positionBannerMenu(menu, anchor);
-    _openBannerMenu = menu;
+    openMenu(anchor, [
+        { label: "Своя картинка…", onClick: () => pickBannerImage(name) },
+        { label: "Свой ролик…", onClick: () => pickBannerVideo(name) },
+        { separator: true },
+        {
+            label: "Сбросить картинку",
+            disabled: !data?.banner?.image,
+            onClick: () => resetBanner(name, "image"),
+        },
+        {
+            label: "Сбросить анимацию",
+            disabled: !data?.banner?.video,
+            onClick: () => resetBanner(name, "video"),
+        },
+    ]);
 }
 
 async function pickBannerImage(name) {
@@ -1459,9 +1818,13 @@ export function initSortingPanel({
     getAllTags, getActiveTagFilter, getTagFilterMode, onTagFilterChange,
     onRenameTag, onDeleteTag, onDeleteAllTags,   // NEW
     getCoubMap, onBannerChanged,
+    getTagGroups, onSetPlaylistGroup, onSetTagGroup,
 }) {
     _getCoubMap = getCoubMap || _getCoubMap;
     _onBannerChanged = onBannerChanged;
+    _getTagGroups = getTagGroups || _getTagGroups;
+    _onSetPlaylistGroup = onSetPlaylistGroup;
+    _onSetTagGroup = onSetTagGroup;
     initBannerCropper();
 
     _onSelectPlaylist = onSelect;
@@ -1550,6 +1913,8 @@ export function initSortingPanel({
         if (
             sortingOverlay.classList.contains("show") &&
             !sortingPanel.contains(e.target) &&
+            // всплывающие меню лежат в body, но принадлежат этой панели
+            !e.target.closest(".pl-banner-menu") &&
             !e.target.closest("#playlistTriggerBtn")
         ) {
             closeSortingPanel();
@@ -1646,10 +2011,24 @@ async function renderSelectorRows(query) {
         return;
     }
 
-    for (const [name, data] of entries) {
-        const row = await buildSelectorRow(name, data);
-        if (gen !== _selectorRenderGen) return; // NEW
-        plSelectorList.appendChild(row);
+    const groups = groupEntries(
+        entries.map(([name, data]) => ({
+            key: name,
+            group: playlistGroupOf(name, data),
+            payload: data,
+        }))
+    );
+
+    for (const group of groups) {
+        if (group.name) {
+            if (gen !== _selectorRenderGen) return;
+            plSelectorList.appendChild(buildGroupLabel(group.name));
+        }
+        for (const entry of group.items) {
+            const row = await buildSelectorRow(entry.key, entry.payload);
+            if (gen !== _selectorRenderGen) return; // NEW
+            plSelectorList.appendChild(row);
+        }
     }
 
     window.refreshCustomIcons?.();
@@ -1733,6 +2112,7 @@ async function buildSelectorRow(name, data) {
 
     if (name !== VIRTUAL_PLAYLIST) {
         actions.appendChild(buildBannerButton(name, tile));
+        actions.appendChild(buildGroupButton("playlist", name, playlistGroupOf(name, data)));
     }
 
     if (!isRO) {
@@ -1931,8 +2311,15 @@ function renderTagFilterRows(query) {
         return;
     }
 
-    for (const { tag, count } of filtered) {
-        tagFilterListEl.appendChild(buildTagTile(tag, count));
+    const groups = groupEntries(
+        filtered.map((t) => ({ key: t.tag, group: tagGroupOf(t.tag), payload: t }))
+    );
+
+    for (const group of groups) {
+        if (group.name) tagFilterListEl.appendChild(buildGroupLabel(group.name));
+        for (const entry of group.items) {
+            tagFilterListEl.appendChild(buildTagTile(entry.payload.tag, entry.payload.count));
+        }
     }
 }
 
@@ -1977,6 +2364,8 @@ function buildTagTile(tag, count) {
 
     const actions = document.createElement("div");
     actions.className = "pl-row-actions";
+
+    actions.appendChild(buildGroupButton("tag", tag, tagGroupOf(tag)));
 
     const renameBtn = document.createElement("button");
     renameBtn.className = "pl-row-action-btn pl-row-rename-btn";

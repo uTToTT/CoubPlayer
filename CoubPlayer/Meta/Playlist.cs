@@ -12,5 +12,12 @@ namespace CoubPlayer.Meta
         /// </summary>
         [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
         public PlaylistBanner? banner { get; set; }
+
+        /// <summary>
+        /// Группа, в которую плейлист собран в списке. null — без группы.
+        /// Лежит в самом плейлисте, поэтому переименование её не теряет.
+        /// </summary>
+        [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+        public string? group { get; set; }
     }
 }

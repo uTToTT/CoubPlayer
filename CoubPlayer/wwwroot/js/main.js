@@ -41,6 +41,8 @@ import {
     syncSortControls,
     setSeedInput,
     showToast,
+    rerenderPlaylistLists,
+    rerenderTagList,
 } from "./ui.js";
 
 const ALL_PLAYLIST_NAME = "Все";
@@ -608,6 +610,15 @@ async function applyVideoFx(key, settings, { persist }) {
 
 // ─── Пресеты постобработки ───────────────────────────────────────────────────
 
+async function refreshTagGroups() {
+    try {
+        state.tagGroups = await api.getTagGroups();
+    } catch (err) {
+        console.error("Не удалось загрузить группы тегов:", err);
+        state.tagGroups = {};
+    }
+}
+
 async function refreshFxPresets() {
     try {
         state.fxPresets = await api.getFxPresets();
@@ -678,6 +689,7 @@ async function init() {
     await refreshData();
     await refreshAllTags();
     await refreshFxPresets();
+    await refreshTagGroups();
     await refreshTagFilterIds(); // фильтр мог сохраниться с прошлой сессии
 
     initClickEffects({
@@ -949,6 +961,18 @@ async function init() {
         // баннеры
         getCoubMap: () => state.coubMap,
         onBannerChanged: () => refreshData(),
+
+        // группы
+        getTagGroups: () => state.tagGroups,
+        onSetPlaylistGroup: async (name, group) => {
+            await api.setPlaylistGroup(name, group);
+            await refreshData();
+            rerenderPlaylistLists();
+        },
+        onSetTagGroup: async (tag, group) => {
+            state.tagGroups = await api.setTagGroup(tag, group);
+            rerenderTagList();
+        },
         onDeleteAllTags: async () => {
             await api.deleteAllTags();
             state.allTags = [];

@@ -1,6 +1,8 @@
 ﻿using CoubPlayer.Meta;
+using CoubPlayer.Requests;
 using CoubPlayer.Services;
 using Microsoft.AspNetCore.Mvc;
+using Newtonsoft.Json;
 using System.Diagnostics;
 
 [ApiController]
@@ -9,6 +11,71 @@ public class CoubsController : ControllerBase
 {
     private readonly CoubListService _coubListService;
     public CoubsController(CoubListService coubListService) => _coubListService = coubListService;
+
+    #region Tag groups
+
+    // Теги — это просто строки в coub_list.json, вешать на них поле некуда,
+    // поэтому принадлежность к группе хранится отдельной картой «тег → группа».
+    private readonly string _tagGroupsPath = Path.Combine(
+        Directory.GetCurrentDirectory(), "wwwroot", "Data", "tag_groups.json");
+
+    private static readonly object _tagGroupsLock = new();
+
+    private Dictionary<string, string> ReadTagGroupsUnsafe()
+    {
+        if (!System.IO.File.Exists(_tagGroupsPath)) return new();
+        try
+        {
+            var json = System.IO.File.ReadAllText(_tagGroupsPath);
+            return JsonConvert.DeserializeObject<Dictionary<string, string>>(json) ?? new();
+        }
+        catch (JsonException)
+        {
+            return new();
+        }
+    }
+
+    private void WriteTagGroupsUnsafe(Dictionary<string, string> map)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(_tagGroupsPath)!);
+
+        var json = JsonConvert.SerializeObject(map, Formatting.Indented);
+        var tempPath = _tagGroupsPath + ".tmp";
+        System.IO.File.WriteAllText(tempPath, json);
+
+        if (System.IO.File.Exists(_tagGroupsPath))
+            System.IO.File.Replace(tempPath, _tagGroupsPath, null);
+        else
+            System.IO.File.Move(tempPath, _tagGroupsPath);
+    }
+
+    [HttpGet("tag-groups")]
+    public IActionResult GetTagGroups()
+    {
+        lock (_tagGroupsLock) return Ok(ReadTagGroupsUnsafe());
+    }
+
+    /// <summary>Собирает тег в группу (пустое имя — убрать из группы).</summary>
+    [HttpPost("tag-groups")]
+    public IActionResult SetTagGroup([FromBody] SetGroupRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req?.Tag))
+            return BadRequest("Tag is required");
+
+        lock (_tagGroupsLock)
+        {
+            var map = ReadTagGroupsUnsafe();
+            var group = req.Group?.Trim();
+
+            if (string.IsNullOrEmpty(group)) map.Remove(req.Tag);
+            else map[req.Tag] = group;
+
+            WriteTagGroupsUnsafe(map);
+            return Ok(map);
+        }
+    }
+
+    #endregion
 
     [HttpGet("tags")]
     public IActionResult GetAllTags() =>
@@ -54,7 +121,20 @@ public class CoubsController : ControllerBase
             return BadRequest("newName не указан");
 
         var count = _coubListService.RenameTagGlobally(tag, req.NewName);
-        return count == 0 ? NotFound() : Ok(new { renamed = count });
+        if (count == 0) return NotFound();
+
+        // Карта групп ключуется именем тега — переносим запись за ним
+        lock (_tagGroupsLock)
+        {
+            var map = ReadTagGroupsUnsafe();
+            if (map.Remove(tag, out var group))
+            {
+                map[req.NewName.Trim()] = group;
+                WriteTagGroupsUnsafe(map);
+            }
+        }
+
+        return Ok(new { renamed = count });
     }
 
     // DELETE /api/coubs/tags/{tag}
@@ -62,7 +142,15 @@ public class CoubsController : ControllerBase
     public IActionResult DeleteTagGlobally(string tag)
     {
         var count = _coubListService.DeleteTagGlobally(tag);
-        return count == 0 ? NotFound() : Ok(new { removed = count });
+        if (count == 0) return NotFound();
+
+        lock (_tagGroupsLock)
+        {
+            var map = ReadTagGroupsUnsafe();
+            if (map.Remove(tag)) WriteTagGroupsUnsafe(map);
+        }
+
+        return Ok(new { removed = count });
     }
 
     // DELETE /api/coubs/tags
@@ -70,6 +158,9 @@ public class CoubsController : ControllerBase
     public IActionResult DeleteAllTags()
     {
         var count = _coubListService.DeleteAllTags();
+
+        lock (_tagGroupsLock) WriteTagGroupsUnsafe(new());
+
         return Ok(new { removed = count });
     }
 

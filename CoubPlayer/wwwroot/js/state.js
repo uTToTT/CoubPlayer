@@ -57,6 +57,7 @@ const _state = {
     madnessTraits: persisted.madnessTraits ?? null,
     allTags: [], // не персистим — тянем с сервера при старте/после изменения тегов
     fxPresets: [], // пресеты постобработки — тоже с сервера
+    tagGroups: {}, // карта «тег → группа», с сервера
 };
 
 export const state = new Proxy(_state, {

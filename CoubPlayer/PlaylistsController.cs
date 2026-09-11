@@ -520,6 +520,21 @@ namespace CoubPlayer
             });
         }
 
+        /// <summary>Собирает плейлист в группу (пустое имя — убрать из группы).</summary>
+        [HttpPost("{playlist}/group")]
+        public IActionResult SetGroup([FromRoute] string playlist, [FromBody] SetGroupRequest req)
+        {
+            return ExecuteLocked(data =>
+            {
+                if (!data.ContainsKey(playlist))
+                    return NotFound();
+
+                var group = req?.Group?.Trim();
+                data[playlist].group = string.IsNullOrEmpty(group) ? null : group;
+                return Ok();
+            });
+        }
+
         [HttpPost("{playlist}/viewed")]
         public IActionResult MarkViewed([FromRoute] string playlist, [FromBody] ViewVideoRequest req)
         {

@@ -47,6 +47,74 @@
   --transition: 0.2s cubic-bezier(0.22, 1, 0.36, 1);
   --transition-panel: 0.32s cubic-bezier(0.22, 1, 0.36, 1);
   --transition-bounce: 0.34s cubic-bezier(0.34, 1.4, 0.64, 1);
+
+  /* ─── Движение ────────────────────────────────────────────
+     Панели и меню не проявляются на месте, а выезжают со
+     стороны своего источника и резко тормозят в конце — так
+     это сделано в macOS и Windows 11. Отсюда одна кривая
+     с сильным замедлением и три длительности: мелкие меню
+     появляются быстро, крупные поверхности — заметно. */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-fast: 150ms;
+  --dur-base: 230ms;
+  --dur-slow: 320ms;
+
+  /* Насколько поверхность выезжает к своему месту */
+  --slide-sm: 8px;
+  --slide-md: 26px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ИКОНКИ — один стиль на весь интерфейс: контурные, 20×20,
+   толщина 1.6, скруглённые концы, цвет наследуется от кнопки.
+   ═══════════════════════════════════════════════════════════ */
+
+.ico {
+  width: 17px;
+  height: 17px;
+  display: block;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ico-sm {
+  width: 14px;
+  height: 14px;
+}
+
+.ico-lg {
+  width: 26px;
+  height: 26px;
+  stroke-width: 1.5;
+}
+
+/* Курсор прячется при бездействии (класс ставит ui.js) */
+body.cursor-idle,
+body.cursor-idle * {
+  cursor: none !important;
+}
+
+/* Часы: видны всегда, но нарочито тихие. Когда выезжает верхняя панель,
+   они уходят под неё — иначе панель их просто накрывала бы. */
+.rt-clock {
+  position: fixed;
+  top: 15px;
+  left: 50%;
+  transform: translateX(-50%);
+  transition: top var(--dur-base) var(--ease-out);
+  z-index: 15;
+  color: rgba(255, 255, 255, 0.22);
+  font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 11.5px;
+  letter-spacing: 0.6px;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+  user-select: none;
 }
 
 /* ─── Reset ──────────────────────────────────────────────── */
@@ -183,7 +251,7 @@ body {
   height: 40px;
   border-radius: 50%;
   background: var(--glass);
-  border: 1px solid var(--glass-border);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   backdrop-filter: var(--blur);
   color: var(--text-muted);
   font-size: 18px;
@@ -192,38 +260,42 @@ body {
   justify-content: center;
   cursor: pointer;
   z-index: 30;
-  transition: all var(--transition);
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
 }
 
 .fullscreen-btn:hover {
-  background: var(--accent);
-  color: #fff;
-  border-color: transparent;
-  transform: scale(1.1);
-  box-shadow: 0 0 20px rgba(244, 63, 94, 0.4);
+  background: var(--glass-hover);
+  color: var(--text);
+}
+
+.fullscreen-btn:active {
+  transform: scale(0.94);
 }
 
 /* ─── Top Controls ───────────────────────────────────────── */
+/* В узком окне содержимое переносится на вторую строку, а не обрезается
+   краем экрана. Свою высоту панель отдаёт в --top-bar-h (см. ui.js),
+   чтобы режим плитки всегда начинался под ней. */
 .top-controls {
   position: fixed;
   top: 14px;
   left: 14px;
+  max-width: calc(100vw - 84px); /* оставляем место кнопке полного экрана */
+  flex-wrap: wrap;
+  row-gap: 8px;
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 8px 12px;
   background: var(--glass);
-  border: 1px solid var(--glass-border);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   backdrop-filter: var(--blur);
-  border-radius: var(--radius-md);
+  border-radius: 14px;
   box-shadow: var(--shadow);
   z-index: 20;
-  opacity: 0.15;
-  transition: opacity 0.4s ease;
-}
-
-.top-controls:hover {
-  opacity: 1;
 }
 
 /* ─── Dropdown плейлистов ────────────────────────────────── */
@@ -327,6 +399,7 @@ body {
 .sort-bar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
@@ -335,10 +408,17 @@ body {
   gap: 3px;
 }
 
+/* Переключатели — сегментами внутри общей подложки, без рамок у каждой кнопки */
+.sort-group {
+  padding: 2px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
 .sort-group button,
 #sortDirectionBtn {
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-sm);
+  border: none;
+  border-radius: 9px;
   padding: 6px 10px;
   background: transparent;
   color: var(--text-muted);
@@ -346,20 +426,25 @@ body {
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  transition: all var(--transition);
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+
+#sortDirectionBtn {
+  border-radius: 10px;
+  padding: 7px 10px;
 }
 
 .sort-group button:hover,
 #sortDirectionBtn:hover {
   color: var(--text);
-  border-color: rgba(255, 255, 255, 0.15);
   background: var(--glass-hover);
 }
 
 .sort-group button.active {
   background: var(--accent-dim);
   color: var(--accent);
-  border-color: rgba(244, 63, 94, 0.3);
 }
 
 #seedInput {
@@ -391,28 +476,27 @@ body {
   gap: 8px;
   padding: 10px 14px;
   background: var(--glass);
-  border: 1px solid var(--glass-border);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   backdrop-filter: var(--blur);
-  border-radius: var(--radius-md);
+  border-radius: 14px;
   box-shadow: var(--shadow);
   z-index: 20;
-  opacity: 0.15;
-  transition: opacity 0.4s ease;
 }
 
-.bottom-controls:hover {
-  opacity: 1;
-}
-
+/* Нижняя панель — два уровня заметности: вспомогательные действия приглушены
+   и проявляются под курсором, главное (плейлисты/теги/эффекты) всегда акцентное */
 .control-btn {
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-sm);
-  padding: 8px 12px;
-  background: var(--glass-hover);
-  color: var(--text);
-  font-size: 15px;
+  position: relative;
+  border: none;
+  border-radius: 10px;
+  padding: 9px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
   cursor: pointer;
-  transition: all var(--transition);
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
   line-height: 1;
   display: flex;
   align-items: center;
@@ -420,14 +504,55 @@ body {
 }
 
 .control-btn:hover {
-  background: var(--accent);
-  border-color: transparent;
-  transform: scale(1.1);
-  box-shadow: 0 0 16px rgba(244, 63, 94, 0.35);
+  background: var(--glass-hover);
+  color: #fff;
 }
 
 .control-btn:active {
-  transform: scale(0.95);
+  transform: scale(0.94);
+}
+
+/* Главная кнопка панели */
+.control-btn--accent {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 3px 14px rgba(244, 63, 94, 0.35);
+}
+
+.control-btn--accent:hover {
+  background: var(--accent-hover);
+  color: #fff;
+}
+
+/* Разделитель между громкостью и действиями */
+.ctl-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 3px;
+  background: rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+}
+
+/* Галочка успеха поверх иконки копирования */
+.control-btn .ico-check {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  color: #4ade80;
+  opacity: 0;
+  transform: scale(0.7);
+  transition:
+    opacity var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+
+.control-btn.is-copied .ico-check {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.control-btn.is-copied .ico:not(.ico-check) {
+  opacity: 0;
 }
 
 /* ─── Volume Slider ──────────────────────────────────────── */
@@ -471,27 +596,24 @@ body {
 }
 
 /* ─── Video Index ────────────────────────────────────────── */
+/* Название и счётчик стоят строкой над панелью кнопок, а не рядом с ней:
+   в узком окне они иначе наезжают друг на друга */
 #videoIndexWrapper {
   position: fixed;
-  bottom: 16px;
-  right: 16px;
+  bottom: 76px;
+  right: 24px;
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 12px;
-  background: var(--glass);
-  border: 1px solid var(--glass-border);
-  backdrop-filter: var(--blur);
-  border-radius: var(--radius-md);
+  padding: 0;
+  background: none;
+  border: none;
+  backdrop-filter: none;
   z-index: 20;
   font-size: 13px;
   font-family: "JetBrains Mono", monospace;
-  opacity: 0.4;
-  transition: opacity 0.3s ease;
-}
-
-#videoIndexWrapper:hover {
-  opacity: 1;
+  color: rgba(255, 255, 255, 0.7);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.85);
 }
 
 #videoIndexInput {
@@ -519,34 +641,47 @@ body {
 }
 
 /* ─── Video Info ─────────────────────────────────────────── */
+/* Название — просто крупный текст поверх кадра, без плашки: рамка вокруг
+   заголовка только утяжеляла его. Длинное имя не обрезается многоточием
+   (посимвольная анимация ломает text-overflow), а растворяется у правого
+   края маской — заодно это выглядит опрятнее. */
 .video-info {
   position: fixed;
-  bottom: 16px;
-  left: 16px;
-  padding: 8px 12px;
-  background: var(--glass);
-  border: 1px solid var(--glass-border);
-  backdrop-filter: var(--blur);
-  border-radius: var(--radius-md);
+  bottom: 72px;
+  left: 24px;
+  padding: 0;
+  background: none;
+  border: none;
+  backdrop-filter: none;
   z-index: 20;
-  font-size: 12px;
-  max-width: 500px;
-  opacity: 0.4;
-  transition: opacity 0.3s ease;
-}
-
-.video-info:hover {
-  opacity: 1;
+  width: fit-content;
+  max-width: min(56vw, 620px);
 }
 
 #videoTitleLabel {
   display: block;
   white-space: nowrap;
   overflow: hidden;
-  /* text-overflow: ellipsis; */
-  color: var(--text);
-  font-weight: 550;
-  font-size: 22px;
+  color: #fff;
+  font-weight: 600;
+  font-size: 25px;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+  text-shadow:
+    0 2px 16px rgba(0, 0, 0, 0.8),
+    0 1px 3px rgba(0, 0, 0, 0.75);
+}
+
+/* Многоточие тут не работает — посимвольная анимация дробит заголовок
+   на span'ы. Слишком длинное имя растворяем у правого края; класс ставит
+   ui.js, только когда текст действительно не помещается. */
+#videoTitleLabel.is-clipped {
+  mask-image: linear-gradient(to right, #000 calc(100% - 56px), transparent);
+  -webkit-mask-image: linear-gradient(
+    to right,
+    #000 calc(100% - 56px),
+    transparent
+  );
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -887,17 +1022,19 @@ body {
 }
 
 /* ─── Сама панель ──────────────────────────────────────────── */
+/* Боковая панель выезжает от правого края — короткий сдвиг плюс проявление,
+   а не проезд через весь экран: так она ощущается отзывчивее */
 .pl-editor-panel {
   position: fixed;
   top: 50%;
   right: 20px;
-  transform: translateY(-50%) translateX(calc(100% + 30px));
+  transform: translateY(-50%) translateX(var(--slide-md));
   width: 280px;
   max-height: min(620px, 88vh);
 
   background: var(--glass-strong);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 16px;
   box-shadow:
     0 24px 64px rgba(0, 0, 0, 0.7),
     0 0 0 1px rgba(255, 255, 255, 0.03) inset;
@@ -908,8 +1045,8 @@ body {
   overflow: hidden;
 
   transition:
-    transform var(--transition-panel),
-    opacity var(--transition);
+    transform var(--dur-base) var(--ease-out),
+    opacity var(--dur-fast) var(--ease-out);
   opacity: 0;
   pointer-events: none;
   z-index: 61;
@@ -921,6 +1058,23 @@ body {
   pointer-events: auto;
 }
 
+/* Модальные окна — по центру, выезжают снизу вверх (листы macOS,
+   диалоги Windows 11). Правило перекрывает боковую раскладку выше. */
+.pl-editor-overlay--modal .pl-editor-panel {
+  top: 50%;
+  left: 50%;
+  right: auto;
+  transform: translate(-50%, calc(-50% + var(--slide-md))) scale(0.99);
+  transition:
+    transform var(--dur-slow) var(--ease-out),
+    opacity var(--dur-base) var(--ease-out);
+}
+
+.pl-editor-overlay--modal.show .pl-editor-panel {
+  transform: translate(-50%, -50%) scale(1);
+  opacity: 1;
+}
+
 /* ─── Шапка ────────────────────────────────────────────────── */
 .pl-editor-header {
   display: flex;
@@ -928,7 +1082,7 @@ body {
   justify-content: space-between;
   gap: 10px;
   padding: 16px 16px 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   flex-shrink: 0;
 }
 
@@ -980,7 +1134,7 @@ body {
 .pl-editor-search {
   position: relative;
   padding: 10px 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   flex-shrink: 0;
 }
 
@@ -1207,21 +1361,22 @@ body {
 /* Тост-уведомление */
 .pl-toast {
   position: fixed;
-  bottom: 80px;
+  bottom: 84px;
   left: 50%;
-  transform: translateX(-50%) translateY(12px);
-  background: rgba(20, 20, 24, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(16px);
-  border-radius: 10px;
-  padding: 9px 16px;
+  transform: translateX(-50%) translateY(14px);
+  background: var(--glass-strong);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(20px) saturate(160%);
+  border-radius: 999px;
+  padding: 9px 18px;
   font-size: 12.5px;
   color: #f0f0f0;
+  box-shadow: var(--shadow);
   z-index: 100;
   opacity: 0;
   transition:
-    opacity 0.18s ease,
-    transform 0.18s ease;
+    opacity var(--dur-fast) var(--ease-out),
+    transform var(--dur-base) var(--ease-out);
   pointer-events: none;
   white-space: nowrap;
 }
@@ -1239,7 +1394,7 @@ body {
 /* ─── Футер ────────────────────────────────────────────────── */
 .pl-editor-footer {
   padding: 10px 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
   flex-shrink: 0;
 }
 
@@ -1279,24 +1434,24 @@ body {
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 6px 11px 6px 9px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--glass-border);
-  background: var(--glass-hover);
+  padding: 7px 11px 7px 9px;
+  border-radius: 10px;
+  border: none;
+  background: rgba(255, 255, 255, 0.045);
   color: var(--text);
   font-family: "DM Sans", system-ui, sans-serif;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: all var(--transition);
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
   white-space: nowrap;
   max-width: 160px;
 }
 
 .pl-trigger-btn:hover {
-  background: var(--accent);
-  border-color: transparent;
-  color: #fff;
+  background: var(--glass-hover);
 }
 
 .pl-trigger-icon {
@@ -1600,7 +1755,7 @@ body {
   display: flex;
   gap: 6px;
   padding: 10px 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
 .video-tags-add input {
   flex: 1;
@@ -1634,31 +1789,24 @@ body {
 
 .pl-editor-overlay--modal {
   background: rgba(6, 3, 5, 0);
-  transition: background var(--transition-panel);
+  backdrop-filter: blur(0px);
+  -webkit-backdrop-filter: blur(0px);
+  transition:
+    background var(--dur-base) var(--ease-out),
+    backdrop-filter var(--dur-base) var(--ease-out);
 }
 .pl-editor-overlay--modal.show {
-  background: rgba(6, 3, 5, 0.75);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  background: rgba(6, 3, 5, 0.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   pointer-events: auto;
 }
 
+/* Размеры; появление задаёт общее правило .pl-editor-overlay--modal выше */
 .pl-fullscreen-panel {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  right: auto;
   width: min(94vw, 1400px);
   height: 88vh;
   max-height: 88vh;
-  transform: translate(-50%, -50%) scale(0.96);
-  transition:
-    transform var(--transition-panel),
-    opacity var(--transition);
-}
-.pl-editor-overlay.show .pl-fullscreen-panel {
-  transform: translate(-50%, -50%) scale(1);
-  opacity: 1;
 }
 
 .pl-fullscreen-panel .pl-editor-title {
@@ -1802,7 +1950,7 @@ body {
   display: flex;
   gap: 6px;
   padding: 12px 20px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   flex-shrink: 0;
 }
 
@@ -1882,12 +2030,12 @@ body {
   box-shadow: var(--shadow-lg);
   z-index: 100;
   transform-origin: top left;
-  transform: translateY(-6px) scale(0.97);
+  transform: translateY(calc(var(--slide-sm) * -1)) scale(0.97);
   opacity: 0;
   pointer-events: none;
   transition:
-    opacity var(--transition),
-    transform var(--transition);
+    opacity var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
 }
 
 .dl-dropdown-menu:not(.hidden) {
@@ -1928,42 +2076,55 @@ body {
 }
 
 /* ─── Seek Bar ───────────────────────────────────────────── */
+/* Таймлайн прижат к нижнему краю на всю ширину: в покое это тонкая полоска
+   прогресса, под курсором он утолщается и показывает время. */
 .seek-bar-wrapper {
   position: fixed;
-  bottom: 68px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: min(70vw, 900px);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 16px;
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 16px;
-  background: var(--glass);
-  border: 1px solid var(--glass-border);
-  backdrop-filter: var(--blur);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow);
-  z-index: 20;
-  opacity: 0.15;
-  transition: opacity 0.4s ease;
-}
-
-.seek-bar-wrapper:hover {
-  opacity: 1;
+  align-items: flex-end;
+  z-index: 25;
 }
 
 .seek-bar-track {
   position: relative;
   flex: 1;
-  height: 4px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.15);
+  height: 3px;
+  background: rgba(255, 255, 255, 0.14);
   cursor: pointer;
+  transition: height var(--dur-fast) var(--ease-out);
 }
 
-.seek-bar-wrapper:hover .seek-bar-track,
+body.chrome-bottom .seek-bar-track,
 .seek-bar-track.seek-bar-track--dragging {
   height: 6px;
+}
+
+/* Время всплывает над полоской только когда нижняя панель показана */
+.seek-bar-time {
+  position: absolute;
+  bottom: 16px;
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity var(--dur-fast) var(--ease-out),
+    transform var(--dur-base) var(--ease-out);
+  pointer-events: none;
+}
+
+#seekBarCurrent {
+  left: 18px;
+}
+#seekBarDuration {
+  right: 18px;
+}
+
+body.chrome-bottom .seek-bar-time {
+  opacity: 1;
+  transform: none;
 }
 
 .seek-bar-fill {
@@ -1972,7 +2133,6 @@ body {
   left: 0;
   height: 100%;
   width: 0%;
-  border-radius: 999px;
   background: var(--accent);
   pointer-events: none;
 }
@@ -1991,15 +2151,16 @@ body {
   pointer-events: none;
 }
 
-.seek-bar-wrapper:hover .seek-bar-thumb,
-.seek-bar-track--dragging ~ .seek-bar-thumb {
+body.chrome-bottom .seek-bar-thumb,
+.seek-bar-track--dragging .seek-bar-thumb {
   transform: translate(-50%, -50%) scale(1);
 }
 
 .seek-bar-time {
   font-family: "JetBrains Mono", monospace;
   font-size: 11px;
-  color: var(--text-muted);
+  color: rgba(255, 255, 255, 0.75);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
   white-space: nowrap;
   user-select: none;
 }
@@ -2211,4 +2372,70 @@ body {
 
 .pl-tab-hidden {
   display: none !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Обвязка плеера прячется, пока курсор не подойдёт к своему краю
+   экрана (классы chrome-top / chrome-bottom ставит ui.js).
+   Пока курсор на самой панели или в раскрытом из неё меню,
+   она остаётся на месте — за это отвечает :hover / :focus-within.
+   ═══════════════════════════════════════════════════════════ */
+
+.top-controls,
+.fullscreen-btn,
+.bottom-controls,
+.video-info,
+#videoIndexWrapper {
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity var(--dur-base) var(--ease-out),
+    transform var(--dur-base) var(--ease-out);
+}
+
+.top-controls,
+.fullscreen-btn {
+  transform: translateY(-12px);
+}
+
+.video-info,
+#videoIndexWrapper {
+  transform: translateY(12px);
+}
+
+.bottom-controls {
+  transform: translateX(-50%) translateY(12px);
+}
+
+body.chrome-top .top-controls,
+body.chrome-top .fullscreen-btn,
+body.madness-open .top-controls,
+.top-controls:hover,
+.top-controls:focus-within,
+.fullscreen-btn:hover {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+/* Панель выехала — часы отходят под неё (класс ставит ui.js по её
+   фактической видимости, а не по близости курсора) */
+body.top-bar-shown .rt-clock {
+  top: calc(var(--top-bar-h, 54px) + 24px);
+}
+
+body.chrome-bottom .bottom-controls,
+body.chrome-bottom .video-info,
+body.chrome-bottom #videoIndexWrapper,
+.bottom-controls:hover,
+.bottom-controls:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+body.chrome-bottom .bottom-controls,
+.bottom-controls:hover,
+.bottom-controls:focus-within {
+  transform: translateX(-50%) translateY(0);
 }

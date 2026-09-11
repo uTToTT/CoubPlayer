@@ -171,6 +171,28 @@ export async function deletePlaylist(name) {
     await post(`/api/playlists/${encodeURIComponent(name)}/delete`, {});
 }
 
+// ─── Группы плейлистов и тегов ────────────────────────────────────────────
+// Отдельной сущности «группа» нет: группа существует, пока на неё кто-то
+// ссылается. Поэтому создание группы — это просто назначение её имени.
+
+/** @param {string|null} group — пустое значение убирает плейлист из группы */
+export async function setPlaylistGroup(playlist, group) {
+    await post(`/api/playlists/${encodeURIComponent(playlist)}/group`, { group: group || "" });
+}
+
+/** @returns {Promise<Record<string, string>>} карта «тег → группа» */
+export async function getTagGroups() {
+    const res = await fetch("/api/coubs/tag-groups");
+    if (!res.ok) throw new Error("Failed to load tag groups");
+    return res.json();
+}
+
+/** @param {string|null} group — пустое значение убирает тег из группы */
+export async function setTagGroup(tag, group) {
+    const res = await post("/api/coubs/tag-groups", { tag, group: group || "" });
+    return res.json();
+}
+
 export async function renamePlaylist(oldName, newName) {
     await post(`/api/playlists/${encodeURIComponent(oldName)}/rename`, { newName });
 }

@@ -142,6 +142,56 @@
 .pl-tile--banner .pl-row-actions {
   top: 10px;
   left: 10px;
+  gap: 5px;
+}
+
+/* Кнопки лежат прямо на кадре и на светлом баннере пропадали.
+   Даём затемнение под верхним краем — тем же приёмом, что и под подписью,
+   плюс каждой кнопке свою плотную подложку. */
+.pl-tile--banner::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 46%;
+  background: linear-gradient(
+    to bottom,
+    rgba(6, 3, 5, 0.72) 0%,
+    rgba(6, 3, 5, 0.35) 45%,
+    rgba(6, 3, 5, 0) 100%
+  );
+  border-radius: 14px 14px 0 0;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.pl-tile--banner:hover::before {
+  opacity: 1;
+}
+
+.pl-tile--banner .pl-row-action-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(6, 3, 5, 0.72);
+  color: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px) saturate(140%);
+  -webkit-backdrop-filter: blur(8px) saturate(140%);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.55);
+}
+
+.pl-tile--banner .pl-row-action-btn:hover {
+  background: rgba(20, 10, 16, 0.92);
+  border-color: rgba(255, 255, 255, 0.28);
+  color: #fff;
+}
+
+.pl-tile--banner .pl-row-delete-btn:hover {
+  background: rgba(190, 45, 60, 0.92);
+  border-color: rgba(255, 120, 130, 0.5);
+  color: #fff;
 }
 
 .pl-tile--banner.pl-tile--active {
@@ -294,9 +344,9 @@
   z-index: 200;
   min-width: 178px;
   padding: 5px;
-  border-radius: 12px;
+  border-radius: 14px;
   background: var(--glass-strong);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.07);
   box-shadow: var(--shadow-lg);
   backdrop-filter: blur(20px) saturate(160%);
 }
@@ -336,21 +386,10 @@
    CROPPER — кадрирование своей картинки
    ═══════════════════════════════════════════════════════════ */
 
+/* Размеры; появление задаёт общее правило модальных окон в style.css */
 .banner-crop-panel {
-  top: 50%;
-  left: 50%;
-  right: auto;
   width: min(92vw, 560px);
   max-height: 92vh;
-  transform: translate(-50%, -50%) scale(0.96);
-  transition:
-    transform var(--transition-panel),
-    opacity var(--transition);
-}
-
-.pl-editor-overlay.show .banner-crop-panel {
-  transform: translate(-50%, -50%) scale(1);
-  opacity: 1;
 }
 
 .banner-crop-body {
