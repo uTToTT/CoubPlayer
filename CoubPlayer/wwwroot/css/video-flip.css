@@ -14,11 +14,12 @@
   perspective: 700px;
 }
 
-/* Слой наклона (tilt) — крутится мгновенно вслед за мышью */
+/* Слой наклона (tilt). Сглаживание делает покадровый догон в video-flip.js,
+   поэтому CSS-перехода тут нет — иначе он добавлял бы поверх него свою
+   задержку, и карточка тянулась бы за курсором с ощутимым запозданием. */
 .video-flip-tilt {
   position: relative;
   transform-style: preserve-3d;
-  transition: transform 0.2s ease-out;
   will-change: transform;
   transform: rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg))
     scale3d(var(--tilt-scale, 1), var(--tilt-scale, 1), var(--tilt-scale, 1));
@@ -36,9 +37,9 @@
 
 /* ─── Активно ТОЛЬКО в режиме flip (#videoFlipStage.video-flip-mode) ─── */
 
-#videoFlipStage.video-flip-mode {
-  pointer-events: auto; /* нужно, чтобы ловить mousemove для tilt */
-}
+/* Сцена не перехватывает указатель: курсор для наклона отслеживается
+   на уровне окна, а клик по кадру должен доходить до тех же обработчиков,
+   что и в обычном режиме. */
 
 #videoFlipStage.video-flip-mode video.video-flip-face {
   display: block !important;

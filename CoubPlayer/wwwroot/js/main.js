@@ -83,7 +83,9 @@ function buildAllPlaylist() {
             lastViewed: null,
         };
     }
-    return { videos };
+    // Место в списке плейлистов серверу неизвестно — «Все» там просто нет,
+    // поэтому его позицию храним локально
+    return { videos, order: state.allPlaylistOrder ?? undefined };
 }
 
 // ─── DOM ──────────────────────────────────────────────────────────────────────
@@ -619,6 +621,15 @@ async function refreshTagGroups() {
     }
 }
 
+async function refreshGroupOrder() {
+    try {
+        state.groupOrder = await api.getGroupOrder();
+    } catch (err) {
+        console.error("Не удалось загрузить порядок групп:", err);
+        state.groupOrder = {};
+    }
+}
+
 async function refreshFxPresets() {
     try {
         state.fxPresets = await api.getFxPresets();
@@ -690,6 +701,7 @@ async function init() {
     await refreshAllTags();
     await refreshFxPresets();
     await refreshTagGroups();
+    await refreshGroupOrder();
     await refreshTagFilterIds(); // фильтр мог сохраниться с прошлой сессии
 
     initClickEffects({
@@ -964,10 +976,40 @@ async function init() {
 
         // группы
         getTagGroups: () => state.tagGroups,
-        onSetPlaylistGroup: async (name, group) => {
+        getGroupOrder: () => state.groupOrder,
+        // silent — плейлист перетащили в другую группу: список уже стоит как надо,
+        // перерисовка сбросила бы незавершённую расстановку
+        onSetPlaylistGroup: async (name, group, { silent = false } = {}) => {
             await api.setPlaylistGroup(name, group);
+            if (silent) {
+                const pl = state.playlists[name];
+                if (pl) pl.group = group || undefined;
+                return;
+            }
             await refreshData();
             rerenderPlaylistLists();
+        },
+        onReorderPlaylists: async (names) => {
+            try {
+                await api.reorderPlaylists(names);
+            } catch (err) {
+                console.error("Не удалось сохранить порядок плейлистов:", err);
+                showToast("⚠ Не удалось сохранить порядок");
+                return;
+            }
+            names.forEach((name, i) => {
+                if (state.playlists[name]) state.playlists[name].order = i;
+            });
+            const allIndex = names.indexOf(ALL_PLAYLIST_NAME);
+            state.allPlaylistOrder = allIndex === -1 ? null : allIndex;
+        },
+        onSetGroupOrder: async (kind, groups) => {
+            try {
+                state.groupOrder = await api.setGroupOrder(kind, groups);
+            } catch (err) {
+                console.error("Не удалось сохранить порядок групп:", err);
+                showToast("⚠ Не удалось сохранить порядок групп");
+            }
         },
         onSetTagGroup: async (tag, group) => {
             state.tagGroups = await api.setTagGroup(tag, group);

@@ -239,8 +239,66 @@ body.madness-open .top-controls {
 }
 
 /* Первый заголовок не отбиваем сверху — он и так у края списка */
-.pl-group-label:first-child {
+.pl-group-label:first-child,
+.pl-group:first-child .pl-group-label {
   padding-top: 2px;
+}
+
+/* ─── Перетаскивание плейлистов и групп ──────────────────────────────────── */
+
+.pl-group {
+  border-radius: 14px;
+  padding: 0 6px 10px;
+  margin: 0 -6px;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    opacity var(--dur-fast) var(--ease-out);
+}
+
+.pl-group-label--draggable {
+  cursor: grab;
+}
+
+/* Точка-«ручка» слева от названия: намекает, что заголовок можно тянуть */
+.pl-group-label--draggable::before {
+  content: "";
+  width: 12px;
+  height: 10px;
+  flex: none;
+  opacity: 0;
+  background-image: radial-gradient(
+    rgba(255, 255, 255, 0.85) 1.1px,
+    transparent 1.3px
+  );
+  background-size: 4px 4px;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+.pl-group:hover .pl-group-label--draggable::before {
+  opacity: 0.85;
+}
+
+.pl-group.is-dragging {
+  background: rgba(255, 255, 255, 0.045);
+  opacity: 0.75;
+}
+
+.pl-group.is-dragging .pl-group-label--draggable {
+  cursor: grabbing;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+/* Перетаскиваемая плитка остаётся на месте как «дырка» в списке —
+   сам курсор ведёт её призрак, отрисованный браузером */
+.pl-tile.is-dragging {
+  opacity: 0.32;
+  transform: none;
+  border-color: rgba(244, 63, 94, 0.4);
+}
+
+.pl-tile.is-dragging .pl-row-actions,
+.pl-tile.is-dragging .pl-row-check {
+  opacity: 0;
 }
 
 /* Активная группа в меню */

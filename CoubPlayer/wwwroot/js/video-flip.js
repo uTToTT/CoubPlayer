@@ -7,57 +7,117 @@ const inner = document.getElementById("videoFlipInner");
 let angle = 0;           // накопительный угол поворота .video-flip-inner (кратно 180)
 let mode = "crossfade";  // "crossfade" | "flip"
 
-/**
- * Включает обработку mousemove/mouseleave на сцене для tilt-эффекта.
- * Работает только когда активен режим "flip" (см. setFlipMode).
- */
-export function initVideoFlip({ tiltLimit = 15, tiltScale = 1.23, tiltEffect = "repel", edgeDeadzone = 0.10 } = {}) {
-    const mult = tiltEffect === "repel" ? -1 : 1;
+const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
-    const resetTilt = () => {
-        tiltLayer.style.setProperty("--tilt-x", "0deg");
-        tiltLayer.style.setProperty("--tilt-y", "0deg");
-        tiltLayer.style.setProperty("--tilt-scale", "1");
+/**
+ * Наклон карточки вслед за курсором.
+ *
+ * Курсор отслеживается на уровне окна, а не на самой сцене: иначе наклон
+ * замирал, стоило увести мышь на панель или за пределы кадра — события туда
+ * попросту не доходили.
+ *
+ * Вместо «мёртвой зоны» у краёв (она скачком сбрасывала наклон и масштаб)
+ * действует плавное затухание по расстоянию: на карточке эффект полный, дальше
+ * сходит на нет. Само значение догоняется покадрово, поэтому движение остаётся
+ * мягким даже при рывках мыши.
+ *
+ * @param {{tiltLimit?: number, tiltScale?: number, tiltEffect?: "attract"|"repel",
+ *          falloff?: number, ease?: number}} options
+ *        falloff — за сколько «радиусов карточки» эффект гаснет
+ *        ease    — доля пути за кадр (меньше — тяжелее и плавнее)
+ */
+export function initVideoFlip({
+    tiltLimit = 10,
+    tiltScale = 1.04,
+    tiltEffect = "attract",
+    falloff = 2.2,
+    ease = 0.14,
+} = {}) {
+    const dir = tiltEffect === "repel" ? -1 : 1;
+
+    const target = { x: 0, y: 0, scale: 1 };
+    const current = { x: 0, y: 0, scale: 1 };
+    let rafId = null;
+
+    const setTarget = (clientX, clientY) => {
+        const rect = inner.getBoundingClientRect();
+        if (!rect.width || !rect.height) return;
+
+        // Смещение от центра карточки в её же «радиусах»: ±1 на краю кадра
+        const dx = (clientX - (rect.left + rect.width / 2)) / (rect.width / 2);
+        const dy = (clientY - (rect.top + rect.height / 2)) / (rect.height / 2);
+
+        // За пределами карточки эффект плавно гаснет, а не обрывается
+        const distance = Math.hypot(dx, dy);
+        const strength = clamp(1 - Math.max(0, distance - 1) / falloff, 0, 1);
+
+        // Угол считаем по позиции внутри карточки, дальше края он не растёт
+        const nx = clamp(dx, -1, 1);
+        const ny = clamp(dy, -1, 1);
+
+        target.x = -ny * tiltLimit * strength * dir;
+        target.y = nx * tiltLimit * strength * dir;
+        target.scale = 1 + (tiltScale - 1) * strength;
     };
 
-    // Растягивает долю позиции из "активной" центральной области (deadzone..1-deadzone)
-    // обратно на полный диапазон 0..1 — вызывается только когда курсор уже
-    // прошёл проверку на попадание в мёртвую зону, поэтому клэмп тут не нужен.
-    const remap = (fraction, deadzone) => (fraction - deadzone) / (1 - deadzone * 2);
+    const resetTarget = () => {
+        target.x = 0;
+        target.y = 0;
+        target.scale = 1;
+    };
 
-    stage.addEventListener("mousemove", (e) => {
+    const tick = () => {
+        rafId = null;
+
+        current.x += (target.x - current.x) * ease;
+        current.y += (target.y - current.y) * ease;
+        current.scale += (target.scale - current.scale) * ease;
+
+        tiltLayer.style.setProperty("--tilt-x", `${current.x.toFixed(3)}deg`);
+        tiltLayer.style.setProperty("--tilt-y", `${current.y.toFixed(3)}deg`);
+        tiltLayer.style.setProperty("--tilt-scale", current.scale.toFixed(4));
+
+        // Досчитали до цели и стоим в покое — останавливаемся до следующего движения
+        const settled =
+            Math.abs(target.x - current.x) < 0.01 &&
+            Math.abs(target.y - current.y) < 0.01 &&
+            Math.abs(target.scale - current.scale) < 0.0005;
+
+        if (!settled) schedule();
+    };
+
+    const schedule = () => {
+        if (rafId === null) rafId = requestAnimationFrame(tick);
+    };
+
+    window.addEventListener("pointermove", (e) => {
         if (mode !== "flip") return;
-        const rect = stage.getBoundingClientRect();
-
-        const rawX = (e.clientY - rect.top) / rect.height;
-        const rawY = (e.clientX - rect.left) / rect.width;
-
-        // Мёртвая зона — полоса вдоль ЛЮБОГО края (верх/низ/лево/право).
-        // Если курсор попал в неё хотя бы по одной оси — наклон сбрасывается в 0,
-        // а не "замирает" на граничном значении.
-        const inDeadzone =
-            rawX < edgeDeadzone || rawX > 1 - edgeDeadzone ||
-            rawY < edgeDeadzone || rawY > 1 - edgeDeadzone;
-
-        if (inDeadzone) {
-            resetTilt();
-            return;
-        }
-
-        const fracX = remap(rawX, edgeDeadzone);
-        const fracY = remap(rawY, edgeDeadzone);
-
-        const tiltX = (fracX - 0.5) * (tiltLimit * 2) * mult;
-        const tiltY = (fracY - 0.5) * -(tiltLimit * 2) * mult;
-        tiltLayer.style.setProperty("--tilt-x", `${tiltX}deg`);
-        tiltLayer.style.setProperty("--tilt-y", `${tiltY}deg`);
-        tiltLayer.style.setProperty("--tilt-scale", tiltScale);
+        setTarget(e.clientX, e.clientY);
+        schedule();
     });
+
+    // Курсор ушёл из окна — возвращаем карточку в исходное положение
+    document.addEventListener("pointerleave", () => {
+        resetTarget();
+        schedule();
+    });
+
+    window.addEventListener("blur", () => {
+        resetTarget();
+        schedule();
+    });
+
+    /** Сброс при выходе из flip-режима (см. setFlipMode). */
+    initVideoFlip._reset = () => {
+        resetTarget();
+        schedule();
+    };
 }
 
 export function setFlipMode(enabled) {
     mode = enabled ? "flip" : "crossfade";
     stage.classList.toggle("video-flip-mode", enabled);
+    if (!enabled) initVideoFlip._reset?.();
 }
 
 export function isFlipMode() {

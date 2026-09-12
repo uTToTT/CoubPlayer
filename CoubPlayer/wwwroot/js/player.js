@@ -52,7 +52,7 @@ export class Player {
         this._bgRafId = null;
         this._startBgLoop();
         this.transitionMode = "crossfade"; // "crossfade" | "flip"
-        initVideoFlip({ tiltLimit: 15, tiltScale: 1.23, tiltEffect: "repel" });
+        initVideoFlip({ tiltLimit: 10, tiltScale: 1.04, tiltEffect: "attract" });
     }
 
     _startBgLoop() {

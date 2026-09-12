@@ -19,5 +19,12 @@ namespace CoubPlayer.Meta
         /// </summary>
         [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
         public string? group { get; set; }
+
+        /// <summary>
+        /// Положение плейлиста в списке. null — порядок ещё не задавали:
+        /// такие идут после расставленных, в том порядке, в каком лежат в файле.
+        /// </summary>
+        [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+        public int? order { get; set; }
     }
 }

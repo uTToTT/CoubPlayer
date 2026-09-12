@@ -1,0 +1,306 @@
+/* popup.css — та же палитра, что у CoubPlayer */
+
+:root {
+  --bg: #0e0e11;
+  --bg-soft: rgba(255, 255, 255, 0.04);
+  --line: rgba(255, 255, 255, 0.08);
+  --text: #f0f0f0;
+  --muted: rgba(255, 255, 255, 0.4);
+  --accent: #f43f5e;
+  --accent-dim: rgba(244, 63, 94, 0.16);
+  --ok: #4ade80;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  width: 320px;
+  margin: 0;
+  padding: 0 0 14px;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.45 -apple-system, "Segoe UI", system-ui, sans-serif;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+h1 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+h2 {
+  margin: 0 0 9px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.section {
+  padding: 14px 16px 0;
+}
+
+.status {
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.status--wait {
+  background: var(--bg-soft);
+  color: var(--muted);
+}
+
+.status--ok {
+  background: rgba(74, 222, 128, 0.14);
+  color: var(--ok);
+}
+
+.status--err {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.field {
+  display: block;
+}
+
+.field-label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+input[type="text"] {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--bg-soft);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  transition: border-color 0.16s var(--ease);
+}
+
+input[type="text"]:focus {
+  outline: none;
+  border-color: rgba(244, 63, 94, 0.5);
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 9px;
+}
+
+.radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.72);
+  cursor: pointer;
+}
+
+.radio input {
+  accent-color: var(--accent);
+  margin: 0;
+}
+
+.btn {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--bg-soft);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background 0.16s var(--ease),
+    border-color 0.16s var(--ease),
+    opacity 0.16s var(--ease);
+}
+
+.btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.btn--accent:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.btn--ghost {
+  width: 100%;
+  flex: none;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.progress {
+  margin-top: 4px;
+}
+
+.progress-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 11.5px;
+}
+
+.progress-line--foot {
+  align-items: center;
+  margin: 7px 0 0;
+  min-height: 22px;
+}
+
+.btn--stop {
+  flex: none;
+  padding: 4px 11px;
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.btn--stop:hover:not(:disabled) {
+  background: rgba(244, 63, 94, 0.9);
+  border-color: rgba(244, 63, 94, 0.9);
+  color: #fff;
+}
+
+.progress-track {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--bg-soft);
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  width: 0;
+  border-radius: 2px;
+  background: var(--accent);
+  transition: width 0.23s var(--ease);
+}
+
+/* Ход сбора ссылок предсказать нельзя — вместо доли показываем бегунок */
+.progress-bar.is-indeterminate {
+  width: 34%;
+  animation: cpd-slide 1.1s var(--ease) infinite alternate;
+}
+
+@keyframes cpd-slide {
+  from {
+    transform: translateX(-110%);
+  }
+
+  to {
+    transform: translateX(300%);
+  }
+}
+
+.switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.78);
+  cursor: pointer;
+}
+
+.switch input {
+  accent-color: var(--accent);
+  margin: 0;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.probe-intro {
+  margin-top: 12px;
+}
+
+#probeResult,
+#requestList {
+  margin-top: 8px;
+}
+
+/* Адреса tRPC длинные — даём им перенос, иначе строка уезжает */
+#requestList .cookie-name {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.diag {
+  margin-top: 10px;
+}
+
+.diag p {
+  margin: 0 0 8px;
+}
+
+.cookie-list {
+  max-height: 190px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--bg-soft);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+}
+
+.cookie {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 9px;
+  border-bottom: 1px solid var(--line);
+}
+
+.cookie:last-child {
+  border-bottom: none;
+}
+
+.cookie-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cookie-flags {
+  flex: none;
+  color: var(--muted);
+}
+
+.cookie--key .cookie-name {
+  color: var(--ok);
+}

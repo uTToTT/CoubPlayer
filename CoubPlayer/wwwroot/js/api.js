@@ -175,6 +175,30 @@ export async function deletePlaylist(name) {
 // Отдельной сущности «группа» нет: группа существует, пока на неё кто-то
 // ссылается. Поэтому создание группы — это просто назначение её имени.
 
+/**
+ * Сохраняет порядок плейлистов. Приходит полный список имён в нужном порядке.
+ * @param {string[]} names
+ */
+export async function reorderPlaylists(names) {
+    await post("/api/playlists/order", { names });
+}
+
+/** @returns {Promise<{playlists?: string[], tags?: string[]}>} */
+export async function getGroupOrder() {
+    const res = await fetch("/api/groups/order");
+    if (!res.ok) throw new Error("Failed to load group order");
+    return res.json();
+}
+
+/**
+ * @param {"playlists"|"tags"} kind
+ * @param {string[]} groups
+ */
+export async function setGroupOrder(kind, groups) {
+    const res = await post("/api/groups/order", { kind, groups });
+    return res.json();
+}
+
 /** @param {string|null} group — пустое значение убирает плейлист из группы */
 export async function setPlaylistGroup(playlist, group) {
     await post(`/api/playlists/${encodeURIComponent(playlist)}/group`, { group: group || "" });

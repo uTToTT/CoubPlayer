@@ -1821,14 +1821,24 @@ body {
 
 /* ─── Grid list ─────────────────────────────────────────────────────────── */
 
+/* Список — колонка групп; сеткой плиток становится уже сама группа,
+   чтобы её можно было перетаскивать целиком */
 .pl-selector-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 18px;
+}
+
+.pl-group-items {
   display: grid;
   /* баннеры 16:9 шире прежних квадратных иконок — колонку можно сузить,
      чтобы в узком окне помещалось больше одной */
   grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
   gap: 16px;
-  padding: 18px;
   align-content: start;
+  /* пустая группа всё равно должна принимать плитку */
+  min-height: 8px;
 }
 .pl-selector-grid .pl-empty {
   grid-column: 1 / -1;

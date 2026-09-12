@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ru">
+
+<head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="popup.css" />
+    <title>CoubPlayer</title>
+</head>
+
+<body>
+    <header class="head">
+        <h1>CoubPlayer</h1>
+        <div id="serverStatus" class="status status--wait">проверяю…</div>
+    </header>
+
+    <section class="section">
+        <label class="field">
+            <span class="field-label">Адрес плеера</span>
+            <input id="serverUrl" type="text" spellcheck="false" placeholder="http://localhost:5000" />
+        </label>
+    </section>
+
+    <section class="section">
+        <h2>Догрузить ленту</h2>
+
+        <div class="row">
+            <label class="radio">
+                <input type="radio" name="mode" value="new" checked />
+                <span>только новое</span>
+            </label>
+            <label class="radio">
+                <input type="radio" name="mode" value="all" />
+                <span>всю ленту</span>
+            </label>
+        </div>
+
+        <div class="row">
+            <button id="syncLiked" class="btn btn--accent" data-category="liked">Лайки</button>
+            <button id="syncBookmarks" class="btn btn--accent" data-category="bookmarks">Закладки</button>
+        </div>
+
+        <div id="progress" class="progress" hidden>
+            <div class="progress-line">
+                <span id="progressPhase">…</span>
+                <span id="progressCounts" class="muted"></span>
+            </div>
+            <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
+            <div class="progress-line progress-line--foot">
+                <span id="progressEta" class="muted"></span>
+                <button id="stopBtn" class="btn btn--stop" type="button" hidden>Стоп</button>
+            </div>
+        </div>
+    </section>
+
+    <section class="section">
+        <label class="switch">
+            <input id="cardButtons" type="checkbox" checked />
+            <span>Кнопки на карточках ленты</span>
+        </label>
+    </section>
+
+    <section class="section">
+        <button id="toggleDiag" class="btn btn--ghost" type="button">Диагностика</button>
+        <div id="diag" class="diag" hidden>
+            <p class="muted">
+                Куки coub.com, которые видит расширение. HttpOnly из консоли
+                сайта не читается — здесь читается.
+            </p>
+            <div id="cookieList" class="cookie-list">…</div>
+
+            <p class="muted probe-intro">
+                Разведка: перебирает способы запроса по адресам приватного API
+                и показывает, что ответил каждый.
+            </p>
+            <button id="runProbe" class="btn btn--ghost" type="button">Проверить доступ к ленте</button>
+            <div id="probeResult" class="cookie-list" hidden></div>
+
+            <p class="muted probe-intro">
+                Запросы страницы: что coub.com вызывает сам. Откройте свои
+                лайки или закладки, пролистайте и нажмите сюда.
+            </p>
+            <div class="row">
+                <button id="readRequests" class="btn btn--ghost" type="button">Показать запросы</button>
+                <button id="copyRequests" class="btn btn--ghost" type="button" disabled>Скопировать</button>
+            </div>
+            <div id="requestList" class="cookie-list" hidden></div>
+        </div>
+    </section>
+
+    <script type="module" src="popup.js"></script>
+</body>
+
+</html>

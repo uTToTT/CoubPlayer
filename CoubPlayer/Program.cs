@@ -4,6 +4,13 @@ namespace CoubPlayer
 {
     public class Program
     {
+        /// <summary>
+        /// РџРѕР»РёС‚РёРєР° РґР»СЏ Р±СЂР°СѓР·РµСЂРЅРѕРіРѕ СЂР°СЃС€РёСЂРµРЅРёСЏ. РџСѓСЃРєР°РµРј С‚РѕР»СЊРєРѕ origin'С‹ РІРёРґР°
+        /// chrome-extension://вЂ¦ вЂ” РѕР±С‹С‡РЅР°СЏ РІРµР±-СЃС‚СЂР°РЅРёС†Р° С‚Р°РєРѕР№ origin РїРѕРґРґРµР»Р°С‚СЊ
+        /// РЅРµ РјРѕР¶РµС‚, С‚Р°Рє С‡С‚Рѕ Р»РѕРєР°Р»СЊРЅС‹Р№ API РѕСЃС‚Р°С‘С‚СЃСЏ Р·Р°РєСЂС‹С‚ РѕС‚ РїРѕСЃС‚РѕСЂРѕРЅРЅРёС… СЃР°Р№С‚РѕРІ.
+        /// </summary>
+        private const string ExtensionCorsPolicy = "extension";
+
         public static void Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
@@ -15,17 +22,31 @@ namespace CoubPlayer
             builder.Services.AddHttpClient("Coub")
     .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
     {
-        UseCookies = false, // критично: не даём хендлеру подмешивать свой Set-Cookie
-                            // поверх ручного заголовка Cookie с remember_token
+        UseCookies = false, // РєСЂРёС‚РёС‡РЅРѕ: РЅРµ РґР°С‘Рј С…РµРЅРґР»РµСЂСѓ РїРѕРґРјРµС€РёРІР°С‚СЊ СЃРІРѕР№ Set-Cookie
+                            // РїРѕРІРµСЂС… СЂСѓС‡РЅРѕРіРѕ Р·Р°РіРѕР»РѕРІРєР° Cookie СЃ remember_token
         AutomaticDecompression = System.Net.DecompressionMethods.All
     });
+
+            builder.Services.AddCors(options =>
+            {
+                options.AddPolicy(ExtensionCorsPolicy, policy => policy
+                    .SetIsOriginAllowed(origin =>
+                        origin.StartsWith("chrome-extension://", StringComparison.Ordinal) ||
+                        origin.StartsWith("moz-extension://", StringComparison.Ordinal))
+                    .AllowAnyHeader()
+                    .AllowAnyMethod());
+            });
+
             var app = builder.Build();
 
-            // Переносит старые ролики (скачанные консольным CoubDownloader в wwwroot/Coubs)
-            // в новую раскладку wwwroot/Data/Coubs и переписывает пути в coub_list.json.
-            // Идемпотентно — безопасно вызывать при каждом старте.
+            // РџРµСЂРµРЅРѕСЃРёС‚ СЃС‚Р°СЂС‹Рµ СЂРѕР»РёРєРё (СЃРєР°С‡Р°РЅРЅС‹Рµ РєРѕРЅСЃРѕР»СЊРЅС‹Рј CoubDownloader РІ wwwroot/Coubs)
+            // РІ РЅРѕРІСѓСЋ СЂР°СЃРєР»Р°РґРєСѓ wwwroot/Data/Coubs Рё РїРµСЂРµРїРёСЃС‹РІР°РµС‚ РїСѓС‚Рё РІ coub_list.json.
+            // РРґРµРјРїРѕС‚РµРЅС‚РЅРѕ вЂ” Р±РµР·РѕРїР°СЃРЅРѕ РІС‹Р·С‹РІР°С‚СЊ РїСЂРё РєР°Р¶РґРѕРј СЃС‚Р°СЂС‚Рµ.
             CoubLibraryMigrator.MigrateOldPaths();
 
+            // Р”Рѕ UseStaticFiles вЂ” РёРЅР°С‡Рµ СЂР°СЃС€РёСЂРµРЅРёРµ РЅРµ СЃРјРѕР¶РµС‚ РїСЂРѕС‡РёС‚Р°С‚СЊ
+            // Data/coub_list.json, РїРѕ РєРѕС‚РѕСЂРѕРјСѓ РѕРЅРѕ СЃРІРµСЂСЏРµС‚ Р±РёР±Р»РёРѕС‚РµРєСѓ
+            app.UseCors(ExtensionCorsPolicy);
             app.UseStaticFiles();
             app.MapControllers();
 
@@ -42,7 +63,7 @@ namespace CoubPlayer
             }
             catch
             {
-                Console.WriteLine($"Не удалось открыть браузер. Перейдите вручную на {url}");
+                Console.WriteLine($"РќРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РєСЂС‹С‚СЊ Р±СЂР°СѓР·РµСЂ. РџРµСЂРµР№РґРёС‚Рµ РІСЂСѓС‡РЅСѓСЋ РЅР° {url}");
             }
             app.Run();
         }

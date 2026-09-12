@@ -1,0 +1,371 @@
+/* content.css
+   Кнопка на страницах coub.com. Палитра — как в самом CoubPlayer
+   (акцент #f43f5e на тёмной полупрозрачной подложке). Все размеры в px:
+   страница чужая, её rem-базу наследовать нельзя. */
+
+.cpd-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px 7px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  background: rgba(18, 18, 22, 0.82);
+  backdrop-filter: blur(10px);
+  color: #f5f5f5;
+  font: 500 12.5px/1 -apple-system, "Segoe UI", system-ui, sans-serif;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  transition:
+    background 0.16s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.16s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.16s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.cpd-btn:hover {
+  background: rgba(244, 63, 94, 0.92);
+  border-color: rgba(244, 63, 94, 0.6);
+  transform: translateY(-1px);
+}
+
+.cpd-btn:active {
+  transform: translateY(0);
+}
+
+.cpd-btn.is-busy {
+  opacity: 0.7;
+  cursor: progress;
+}
+
+.cpd-btn.is-done {
+  background: rgba(22, 101, 52, 0.85);
+  border-color: rgba(74, 222, 128, 0.45);
+}
+
+.cpd-btn.is-error {
+  background: rgba(127, 29, 29, 0.85);
+  border-color: rgba(248, 113, 113, 0.5);
+}
+
+/* Плавающая кнопка на странице отдельного куба.
+   z-index заведомо выше плеера, но не 2147483647: оставляем запас,
+   чтобы не перекрывать системные оверлеи браузера. */
+.cpd-floating {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 99999;
+}
+
+/* Кнопка на карточке ленты — в углу, проявляется по наведению */
+.cpd-card-slot {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 50;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition:
+    opacity 0.16s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+[data-cpd-ready]:hover .cpd-card-slot,
+.cpd-card-slot:focus-within {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* На карточке место дорого — оставляем только иконку */
+.cpd-card-slot .cpd-btn {
+  padding: 7px;
+}
+
+.cpd-card-slot .cpd-btn-label {
+  display: none;
+}
+
+.cpd-card-slot .cpd-btn.is-done .cpd-btn-label,
+.cpd-card-slot .cpd-btn.is-error .cpd-btn-label {
+  display: inline;
+}
+
+.cpd-btn-caret {
+  flex: none;
+  opacity: 0.6;
+}
+
+/* На карточке от кнопки остаётся одна иконка — стрелка там лишняя,
+   как и после того, как загрузка уже случилась */
+.cpd-card-slot .cpd-btn-caret,
+.cpd-btn.is-busy .cpd-btn-caret,
+.cpd-btn.is-done .cpd-btn-caret,
+.cpd-btn.is-error .cpd-btn-caret {
+  display: none;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Меню выбора плейлиста
+   ═══════════════════════════════════════════════════════════ */
+
+.cpd-menu {
+  position: fixed;
+  z-index: 100000;
+  width: 232px;
+  padding: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(18, 18, 22, 0.94);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.45);
+  color: #f5f5f5;
+  font: 400 12.5px/1.4 -apple-system, "Segoe UI", system-ui, sans-serif;
+  animation: cpd-menu-in 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes cpd-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+.cpd-menu-title {
+  padding: 6px 8px 7px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.38);
+}
+
+.cpd-menu-search {
+  display: block;
+  width: 100%;
+  margin: 0 0 4px;
+  padding: 7px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #f5f5f5;
+  font: inherit;
+  font-size: 12.5px;
+  transition: border-color 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.cpd-menu-search::placeholder {
+  color: rgba(255, 255, 255, 0.32);
+}
+
+.cpd-menu-search:focus {
+  outline: none;
+  border-color: rgba(244, 63, 94, 0.55);
+}
+
+/* Заголовок группы — как в плеере: подпись с линией на всю ширину */
+.cpd-menu-group {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 9px 5px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.34);
+  user-select: none;
+}
+
+.cpd-menu-group::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.cpd-menu-group:first-child {
+  padding-top: 3px;
+}
+
+.cpd-menu-empty {
+  padding: 10px 9px 12px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.cpd-menu-body {
+  max-height: 268px;
+  overflow-y: auto;
+  /* Докрутив список до конца, не прокручиваем страницу под ним —
+     иначе меню закроется прямо под рукой */
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.cpd-menu-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.cpd-menu-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cpd-menu-body::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.18);
+  background-clip: content-box;
+}
+
+.cpd-menu-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+  background-clip: content-box;
+}
+
+.cpd-menu-loading {
+  padding: 6px 8px 10px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.cpd-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 9px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.14s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.cpd-menu-item:hover {
+  background: rgba(244, 63, 94, 0.9);
+}
+
+.cpd-menu-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cpd-menu-note {
+  flex: none;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.35);
+  font-variant-numeric: tabular-nums;
+}
+
+.cpd-menu-item:hover .cpd-menu-note {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* ─── Создание плейлиста ─────────────────────────────────────────────────── */
+
+.cpd-menu-footer {
+  margin-top: 4px;
+  padding-top: 5px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.cpd-menu-create .cpd-menu-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.cpd-menu-create:hover .cpd-menu-name {
+  color: #fff;
+}
+
+.cpd-menu-create svg {
+  flex: none;
+}
+
+/* Длинный запрос из поиска не должен распирать меню */
+.cpd-menu-create .cpd-create-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cpd-menu-create-form {
+  display: flex;
+  gap: 6px;
+  padding: 2px;
+}
+
+.cpd-menu-create-input {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #f5f5f5;
+  font: inherit;
+  font-size: 12.5px;
+  transition: border-color 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.cpd-menu-create-input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.cpd-menu-create-input:focus {
+  outline: none;
+  border-color: rgba(244, 63, 94, 0.55);
+}
+
+/* Имя занято или сервер отказал — причина лежит в подсказке поля */
+.cpd-menu-create-input.is-error {
+  border-color: rgba(248, 113, 113, 0.7);
+  background: rgba(127, 29, 29, 0.25);
+}
+
+.cpd-menu-create-submit {
+  flex: none;
+  padding: 7px 11px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(244, 63, 94, 0.9);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.cpd-menu-create-submit:hover {
+  opacity: 0.88;
+}
+
+.cpd-menu-create-submit:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Куда клали в прошлый раз */
+.cpd-menu-item.is-recent .cpd-menu-name::before {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: #f43f5e;
+  vertical-align: middle;
+}
+
+/* Ролик уже в этом плейлисте — не запрещаем, но и не зовём */
+.cpd-menu-item.is-there .cpd-menu-name {
+  color: rgba(255, 255, 255, 0.45);
+}

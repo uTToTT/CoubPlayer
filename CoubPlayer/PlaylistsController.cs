@@ -402,14 +402,10 @@ namespace CoubPlayer
 
         /// <summary>
         /// Ключ записи в плейлисте — это либо id куба, либо "id#N" для копии.
-        /// Сами файлы при дублировании не копируются: обе записи ссылаются
-        /// на один и тот же ролик в coub_list.json.
+        /// Определение живёт в <see cref="PlaylistKeys"/>: им пользуется и
+        /// ExtensionController, а расходиться этим двум местам нельзя.
         /// </summary>
-        private static string BaseCoubId(string key)
-        {
-            var i = key.IndexOf('#');
-            return i < 0 ? key : key.Substring(0, i);
-        }
+        private static string BaseCoubId(string key) => PlaylistKeys.BaseCoubId(key);
 
         private static string NextInstanceKey(Playlist pl, string baseId)
         {
@@ -516,6 +512,26 @@ namespace CoubPlayer
                 for (var i = 0; i < req.Ids.Count; i++)
                     pl.videos[req.Ids[i]].order = slots[i];
 
+                return Ok();
+            });
+        }
+
+        /// <summary>
+        /// Раскладывает плейлисты в заданном порядке. Приходит полный список,
+        /// поэтому просто нумеруем по позиции; не названные оставляем как были.
+        /// </summary>
+        [HttpPost("order")]
+        public IActionResult ReorderPlaylists([FromBody] ReorderPlaylistsRequest req)
+        {
+            if (req?.Names == null || req.Names.Count == 0)
+                return BadRequest("No names provided");
+
+            return ExecuteLocked(data =>
+            {
+                for (var i = 0; i < req.Names.Count; i++)
+                {
+                    if (data.TryGetValue(req.Names[i], out var pl)) pl.order = i;
+                }
                 return Ok();
             });
         }
@@ -703,6 +719,12 @@ namespace CoubPlayer
             var index = 0;
             var needsDelay = false;
 
+            // Куда класть следующий добавленный ролик. Все новые идут в начало
+            // плейлиста, но внутри пачки сохраняют свой порядок: лента приходит
+            // от новых к старым, и если каждый вставлять в нулевую позицию,
+            // пачка переворачивается — самый свежий ролик оказывается последним.
+            var insertAt = 0;
+
             ConsoleLog.Section($"ЗАГРУЗКА: {playlist} ({total} роликов)");
 
             foreach (var url in urls)
@@ -732,6 +754,9 @@ namespace CoubPlayer
 
                 UpsertCoubListEntry(result);
 
+                var position = insertAt;
+                var inserted = false;
+
                 ExecuteLocked(data =>
                 {
                     if (!data.ContainsKey(playlist)) return NotFound();
@@ -741,17 +766,22 @@ namespace CoubPlayer
                     if (pl.videos.ContainsKey(result.Id))
                         return Ok();
 
+                    // Раздвигаем только то, что лежит на этой позиции и ниже:
+                    // уже вставленные из этой же пачки остаются выше нового
                     foreach (var video in pl.videos.Values)
-                        video.order += 1;
+                        if (video.order >= position) video.order += 1;
 
                     pl.videos[result.Id] = new VideoMeta
                     {
                         title = result.Title ?? result.Id,
-                        order = 0
+                        order = position
                     };
 
+                    inserted = true;
                     return Ok();
                 });
+
+                if (inserted) insertAt++;
             }
 
             ConsoleLog.Divider();

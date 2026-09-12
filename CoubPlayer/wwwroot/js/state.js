@@ -9,7 +9,7 @@ const PERSIST_KEYS = [
     "selectedPlaylist", "sortType", "sortDirection", "randomSeed",
     "volume", "lastVideoByPlaylist", "coubAccessToken",
     "activeTagFilter", "tagFilterMode", "transitionMode", "gridTileSize",
-    "viewMode", "madnessTraits",
+    "viewMode", "madnessTraits", "allPlaylistOrder",
 ];
 
 function loadPersistedState() {
@@ -55,9 +55,13 @@ const _state = {
     // ключам RANDOM_TRAITS из randomizer.js. null = ещё не настраивали,
     // main.js подставит набор по умолчанию.
     madnessTraits: persisted.madnessTraits ?? null,
+    // Позиция виртуального плейлиста «Все» в списке: сервер о нём не знает,
+    // а порядок остальных хранит у себя (Playlist.order)
+    allPlaylistOrder: persisted.allPlaylistOrder ?? null,
     allTags: [], // не персистим — тянем с сервера при старте/после изменения тегов
     fxPresets: [], // пресеты постобработки — тоже с сервера
     tagGroups: {}, // карта «тег → группа», с сервера
+    groupOrder: {}, // { playlists: [...], tags: [...] } — порядок групп, с сервера
 };
 
 export const state = new Proxy(_state, {

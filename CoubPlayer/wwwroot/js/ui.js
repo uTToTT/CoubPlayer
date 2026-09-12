@@ -855,22 +855,21 @@ async function renderEditorRows(query) {
         return;
     }
 
+    // «Недавние» — не отдельная группа, а ярлык поверх обычного списка:
+    // плейлист остаётся и в своей группе, просто сюда вынесена ещё одна его
+    // строка. Иначе привычное место плейлиста уезжало бы, стоило его тронуть.
     if (!q) {
         const recentNames = getRecentPlaylists().filter((n) => _playlists[n]);
-        const recentSet = new Set(recentNames);
-        const recentEntries = recentNames.map((name) => [name, _playlists[name]]);
-        const restEntries = entries.filter(([name]) => !recentSet.has(name));
 
-        if (recentEntries.length) {
+        if (recentNames.length) {
             if (gen !== _editorRenderGen) return;
             editorList.appendChild(buildGroupLabel("Недавние"));
-            for (const [name, data] of recentEntries) {
-                const row = await buildEditorRow(name, data);
+            for (const name of recentNames) {
+                const row = await buildEditorRow(name, _playlists[name]);
                 if (gen !== _editorRenderGen) return;
                 editorList.appendChild(row);
             }
         }
-        entries = restEntries;
     }
 
     // Остальные плейлисты — по группам; при поиске группировка только мешает
@@ -916,6 +915,9 @@ async function buildEditorRow(name, data) {
         isChecked ? "pl-row--checked" : "",
         isReadonly ? "pl-row--readonly" : "",
     ].filter(Boolean).join(" ");
+    // Один плейлист может быть на экране дважды — в «Недавних» и в своей
+    // группе. По этому имени обе строки и находятся, чтобы обновлять их вместе
+    row.dataset.playlist = name;
 
     const icon = await buildListBanner(name, data, {
         className: "pl-row-icon",
@@ -954,27 +956,42 @@ async function buildEditorRow(name, data) {
     if (!isReadonly) {
         row.addEventListener("click", (e) => {
             if (e.target.closest(".pl-row-actions, .pl-banner-menu")) return;
-            handleToggle(row, name, data, countEl);
+            handleToggle(row, name, data);
         });
     }
     return row;
 }
 
-async function handleToggle(row, name, data, countEl) {
+/**
+ * Приводит все строки плейлиста к одному состоянию. Их может быть две —
+ * в «Недавних» и в своей группе, и разъезжаться им нельзя.
+ */
+function syncEditorRows(name, checked, count) {
+    for (const row of editorList.querySelectorAll(".pl-row")) {
+        if (row.dataset.playlist !== name) continue;
+        row.classList.toggle("pl-row--checked", checked);
+        const countEl = row.querySelector(".pl-row-count");
+        if (countEl) countEl.textContent = `${count} видео`;
+    }
+}
+
+async function handleToggle(row, name, data) {
     const wasChecked = row.classList.contains("pl-row--checked");
     const add = !wasChecked;
 
-    row.classList.toggle("pl-row--checked", add);
     data.videos = data.videos || {};
 
     const existingKey = findKeyForCoub(data.videos, _currentVideoId);
+    // Что убрали — чтобы вернуть на то же место, если сохранение не пройдёт
+    const removed = existingKey ? { key: existingKey, meta: data.videos[existingKey] } : null;
+
     if (add) {
-        data.videos[_currentVideoId] = { title: _currentTitle };
+        insertVideoAtStart(data.videos, _currentVideoId, _currentTitle);
     } else if (existingKey) {
         delete data.videos[existingKey];
     }
 
-    countEl.textContent = `${Object.keys(data.videos).length} видео`;
+    syncEditorRows(name, add, Object.keys(data.videos).length);
     showToast(add
         ? `<span class="pl-toast-accent">+</span> Добавлено в «${name}»`
         : `Удалено из «${name}»`
@@ -984,16 +1001,27 @@ async function handleToggle(row, name, data, countEl) {
         await _onToggle(name, add);
         addRecentPlaylist(name);
     } catch (err) {
-        row.classList.toggle("pl-row--checked", wasChecked);
-        if (wasChecked) {
-            data.videos[_currentVideoId] = { title: _currentTitle };
+        if (wasChecked && removed) {
+            data.videos[removed.key] = removed.meta;
         } else {
             delete data.videos[_currentVideoId];
         }
-        countEl.textContent = `${Object.keys(data.videos).length} видео`;
+        syncEditorRows(name, wasChecked, Object.keys(data.videos).length);
         showToast("⚠ Ошибка сохранения");
         console.error("Playlist toggle error:", err);
     }
+}
+
+/**
+ * Кладёт ролик в начало плейлиста — так же, как это делает сервер
+ * (AddVideo в PlaylistsController). Без order запись попадала бы в конец:
+ * сортировка сравнивает числа, и undefined ломал бы её молча.
+ */
+function insertVideoAtStart(videos, coubId, title) {
+    for (const meta of Object.values(videos)) {
+        if (Number.isFinite(meta.order)) meta.order += 1;
+    }
+    videos[coubId] = { title, order: 0 };
 }
 
 let _toastTimer = null;
@@ -1134,8 +1162,11 @@ const SPECIAL_GROUP = "Специальные";
 const UNGROUPED_LABEL = "Без группы";
 
 let _getTagGroups = () => ({});
+let _getGroupOrder = () => ({});
 let _onSetPlaylistGroup = null;
 let _onSetTagGroup = null;
+let _onReorderPlaylists = null;
+let _onSetGroupOrder = null;
 
 /** Группа плейлиста. «Все» виртуальный и живёт в «Специальных» всегда. */
 function playlistGroupOf(name, data) {
@@ -1162,11 +1193,13 @@ function knownGroups(kind) {
 }
 
 /**
- * Раскладывает записи по группам: сначала «Специальные», потом остальные
+ * Раскладывает записи по группам. Порядок: сначала те группы, которые
+ * пользователь расставил перетаскиванием, затем «Специальные» и остальные
  * по алфавиту, в конце — то, что никуда не отнесли.
  * @param {Array<{key: string, group: string|null, payload: any}>} entries
+ * @param {"playlists"|"tags"} kind
  */
-function groupEntries(entries) {
+function groupEntries(entries, kind = "playlists") {
     const buckets = new Map();
     for (const entry of entries) {
         const key = entry.group || "";
@@ -1174,7 +1207,13 @@ function groupEntries(entries) {
         buckets.get(key).push(entry);
     }
 
+    const saved = _getGroupOrder()[kind] || [];
+    const rank = new Map(saved.map((name, i) => [name, i]));
+
     const names = [...buckets.keys()].filter(Boolean).sort((a, b) => {
+        const ra = rank.has(a) ? rank.get(a) : Infinity;
+        const rb = rank.has(b) ? rank.get(b) : Infinity;
+        if (ra !== rb) return ra - rb;
         if (a === SPECIAL_GROUP) return -1;
         if (b === SPECIAL_GROUP) return 1;
         return a.localeCompare(b, "ru");
@@ -1183,6 +1222,7 @@ function groupEntries(entries) {
 
     return names.map((name) => ({
         name: name || (buckets.size > 1 ? UNGROUPED_LABEL : ""),
+        key: name,
         items: buckets.get(name),
     }));
 }
@@ -1819,13 +1859,18 @@ export function initSortingPanel({
     onRenameTag, onDeleteTag, onDeleteAllTags,   // NEW
     getCoubMap, onBannerChanged,
     getTagGroups, onSetPlaylistGroup, onSetTagGroup,
+    getGroupOrder, onReorderPlaylists, onSetGroupOrder,
 }) {
     _getCoubMap = getCoubMap || _getCoubMap;
     _onBannerChanged = onBannerChanged;
     _getTagGroups = getTagGroups || _getTagGroups;
+    _getGroupOrder = getGroupOrder || _getGroupOrder;
     _onSetPlaylistGroup = onSetPlaylistGroup;
     _onSetTagGroup = onSetTagGroup;
+    _onReorderPlaylists = onReorderPlaylists;
+    _onSetGroupOrder = onSetGroupOrder;
     initBannerCropper();
+    initSelectorDnd();
 
     _onSelectPlaylist = onSelect;
     _onCreateFromSelector = onCreate;
@@ -2016,35 +2061,195 @@ async function renderSelectorRows(query) {
             key: name,
             group: playlistGroupOf(name, data),
             payload: data,
-        }))
+        })),
+        "playlists"
     );
 
+    // Поиск перетасовывать нельзя: на экране лишь часть списка
+    const canDrag = !query;
+
     for (const group of groups) {
+        const block = document.createElement("div");
+        block.className = "pl-group";
+        block.dataset.group = group.key;
+
         if (group.name) {
-            if (gen !== _selectorRenderGen) return;
-            plSelectorList.appendChild(buildGroupLabel(group.name));
+            const label = buildGroupLabel(group.name);
+            if (canDrag && group.key) {
+                label.draggable = true;
+                label.classList.add("pl-group-label--draggable");
+                label.title = "Перетащите, чтобы переставить группу";
+            }
+            block.appendChild(label);
         }
+
+        const items = document.createElement("div");
+        items.className = "pl-group-items";
+        block.appendChild(items);
+
         for (const entry of group.items) {
             const row = await buildSelectorRow(entry.key, entry.payload);
             if (gen !== _selectorRenderGen) return; // NEW
-            plSelectorList.appendChild(row);
+            row.draggable = canDrag;
+            items.appendChild(row);
         }
+
+        if (gen !== _selectorRenderGen) return;
+        plSelectorList.appendChild(block);
     }
 
     window.refreshCustomIcons?.();
 }
 
+// ─── Перетаскивание плиток и групп ─────────────────────────────────────────
+
+let _dragTile = null;
+let _dragGroup = null;
+
+/**
+ * Перетаскивание в списке плейлистов: плитки меняют порядок и могут
+ * переезжать между группами, заголовки переставляют группы целиком.
+ * Порядок сохраняется один раз по окончании перетаскивания.
+ */
+function initSelectorDnd() {
+    plSelectorList.addEventListener("dragstart", (e) => {
+        const label = e.target.closest(".pl-group-label--draggable");
+        const tile = e.target.closest(".pl-tile");
+
+        if (label) {
+            _dragGroup = label.closest(".pl-group");
+            e.dataTransfer.effectAllowed = "move";
+            e.dataTransfer.setData("text/plain", _dragGroup.dataset.group);
+            requestAnimationFrame(() => _dragGroup.classList.add("is-dragging"));
+            return;
+        }
+        if (tile && tile.draggable) {
+            _dragTile = tile;
+            e.dataTransfer.effectAllowed = "move";
+            e.dataTransfer.setData("text/plain", tile.dataset.playlist || "");
+            requestAnimationFrame(() => tile.classList.add("is-dragging"));
+        }
+    });
+
+    plSelectorList.addEventListener("dragover", (e) => {
+        if (_dragGroup) {
+            e.preventDefault();
+            const over = e.target.closest(".pl-group");
+            if (!over || over === _dragGroup) return;
+            // «Без группы» всегда замыкает список — за него не переставляем
+            if (!over.dataset.group) return;
+            const rect = over.getBoundingClientRect();
+            const after = e.clientY > rect.top + rect.height / 2;
+            plSelectorList.insertBefore(_dragGroup, after ? over.nextSibling : over);
+            return;
+        }
+
+        if (!_dragTile) return;
+        e.preventDefault();
+
+        const overTile = e.target.closest(".pl-tile");
+        if (overTile && overTile !== _dragTile) {
+            const rect = overTile.getBoundingClientRect();
+            const after = e.clientX > rect.left + rect.width / 2;
+            overTile.parentElement.insertBefore(
+                _dragTile,
+                after ? overTile.nextSibling : overTile
+            );
+            return;
+        }
+
+        // Мимо плиток: заголовок группы принимает в начало, пустое место — в конец
+        const overBlock = e.target.closest(".pl-group");
+        const items = overBlock?.querySelector(".pl-group-items");
+        if (!items || items.contains(_dragTile)) return;
+
+        if (e.target.closest(".pl-group-label")) items.prepend(_dragTile);
+        else items.appendChild(_dragTile);
+    });
+
+    plSelectorList.addEventListener("drop", (e) => {
+        if (_dragTile || _dragGroup) e.preventDefault();
+    });
+
+    plSelectorList.addEventListener("dragend", () => {
+        if (_dragGroup) {
+            _dragGroup.classList.remove("is-dragging");
+            _dragGroup = null;
+            commitGroupOrder();
+            return;
+        }
+        if (!_dragTile) return;
+        _dragTile.classList.remove("is-dragging");
+        _dragTile = null;
+        commitPlaylistOrder();
+    });
+}
+
+/** Считывает порядок групп из DOM и сохраняет его. */
+function commitGroupOrder() {
+    const groups = [...plSelectorList.querySelectorAll(".pl-group")]
+        .map((b) => b.dataset.group)
+        .filter(Boolean);
+    _onSetGroupOrder?.("playlists", groups);
+}
+
+/**
+ * Считывает порядок плиток из DOM. Плитка могла переехать в другую группу —
+ * сначала переназначаем группу, и только потом сохраняем общий порядок,
+ * иначе обновление данных стёрло бы перестановку.
+ */
+async function commitPlaylistOrder() {
+    const moves = [];
+    const names = [];
+
+    for (const block of plSelectorList.querySelectorAll(".pl-group")) {
+        const group = block.dataset.group || "";
+        for (const tile of block.querySelectorAll(".pl-tile")) {
+            const name = tile.dataset.playlist;
+            if (!name) continue;
+            names.push(name);
+            if ((tile.dataset.group || "") !== group) moves.push({ name, group });
+        }
+    }
+
+    for (const move of moves) {
+        if (move.name === VIRTUAL_PLAYLIST) continue; // виртуальный, группу не хранит
+        await _onSetPlaylistGroup?.(move.name, move.group || null, { silent: true });
+    }
+
+    await _onReorderPlaylists?.(names);
+}
+
 const PRIORITY_ORDER = ["Все", "bookmarks", "liked"];
 
+/**
+ * Порядок плейлистов: сначала те, кому его задали перетаскиванием (поле order),
+ * затем не расставленные — в том порядке, в каком лежат в файле, с привычным
+ * приоритетом у «Все» / bookmarks / liked.
+ */
 function sortPlaylistEntries(entries) {
-    return entries.sort(([aName], [bName]) => {
-        const aIdx = PRIORITY_ORDER.indexOf(aName);
-        const bIdx = PRIORITY_ORDER.indexOf(bName);
-        if (aIdx === -1 && bIdx === -1) return 0; // стабильная сортировка сохранит остальной порядок
-        if (aIdx === -1) return 1;
-        if (bIdx === -1) return -1;
-        return aIdx - bIdx;
-    });
+    return entries
+        .map((entry, index) => ({ entry, index }))
+        .sort((a, b) => {
+            const ao = a.entry[1]?.order;
+            const bo = b.entry[1]?.order;
+            const aHas = Number.isFinite(ao);
+            const bHas = Number.isFinite(bo);
+
+            if (aHas && bHas) return ao - bo;
+            if (aHas) return -1;
+            if (bHas) return 1;
+
+            const ai = PRIORITY_ORDER.indexOf(a.entry[0]);
+            const bi = PRIORITY_ORDER.indexOf(b.entry[0]);
+            if (ai !== -1 || bi !== -1) {
+                if (ai === -1) return 1;
+                if (bi === -1) return -1;
+                return ai - bi;
+            }
+            return a.index - b.index; // сохраняем исходный порядок
+        })
+        .map((x) => x.entry);
 }
 
 async function buildSelectorRow(name, data) {
@@ -2054,6 +2259,8 @@ async function buildSelectorRow(name, data) {
 
     const tile = document.createElement("div");
     tile.className = "pl-tile pl-tile--banner" + (isActive ? " pl-tile--active" : "");
+    tile.dataset.playlist = name;
+    tile.dataset.group = playlistGroupOf(name, data) || "";
 
     const thumb = await buildListBanner(name, data, {
         className: "pl-tile-thumb",
@@ -2312,7 +2519,8 @@ function renderTagFilterRows(query) {
     }
 
     const groups = groupEntries(
-        filtered.map((t) => ({ key: t.tag, group: tagGroupOf(t.tag), payload: t }))
+        filtered.map((t) => ({ key: t.tag, group: tagGroupOf(t.tag), payload: t })),
+        "tags"
     );
 
     for (const group of groups) {

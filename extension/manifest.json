@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "CoubPlayer Downloader",
+  "version": "0.8.0",
+  "description": "Загружает кубы с coub.com в локальный CoubPlayer: кнопка на плеере и массовая догрузка лайков и закладок.",
+
+  "permissions": ["cookies", "storage"],
+
+  "host_permissions": [
+    "https://coub.com/*",
+    "http://localhost/*"
+  ],
+
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["https://coub.com/*"],
+      "js": ["src/content.js"],
+      "css": ["src/content.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://coub.com/*"],
+      "js": ["src/page-probe.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    }
+  ],
+
+  "action": {
+    "default_popup": "src/popup.html",
+    "default_title": "CoubPlayer"
+  }
+}

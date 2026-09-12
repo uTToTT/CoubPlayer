@@ -109,9 +109,16 @@ export function sortByOrder(playlistObj, direction = "asc") {
 
     return Object.entries(playlistObj.videos)
         .map(([key, meta]) => toItem(key, meta))
-        .sort((a, b) =>
-            direction === "asc" ? a.order - b.order : b.order - a.order
-        );
+        .sort((a, b) => {
+            // Запись без order сравнивать нельзя: a.order - b.order даст NaN,
+            // и сортировка развалится молча, не пожаловавшись. Такие записи
+            // отправляем в конец — в обе стороны сортировки
+            const aHas = Number.isFinite(a.order);
+            const bHas = Number.isFinite(b.order);
+            if (!aHas || !bHas) return aHas ? -1 : bHas ? 1 : 0;
+
+            return direction === "asc" ? a.order - b.order : b.order - a.order;
+        });
 }
 
 /**
