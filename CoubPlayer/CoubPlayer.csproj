@@ -1,11 +1,24 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net5.0-windows7.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationIcon>player_icon.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <!--
+    В Release не публикуем отладочные символы: один только libSkiaSharp.pdb
+    весит 84 МБ — почти половина портативной сборки — и в готовом приложении
+    бесполезен. Свойства вроде AllowedReferenceRelatedFileExtensions сюда не
+    достают: этот pdb приходит из пакета как нативный runtime-ресурс.
+    На отладку в Debug это не влияет.
+  -->
+  <Target Name="DropSymbolsFromRelease" AfterTargets="ComputeResolvedFilesToPublishList" Condition="'$(Configuration)' == 'Release'">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Extension)' == '.pdb'" />
+    </ItemGroup>
+  </Target>
 
   <ItemGroup>
     <Content Include="player_icon.ico" />
