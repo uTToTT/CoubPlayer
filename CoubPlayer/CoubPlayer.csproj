@@ -11,6 +11,17 @@
     <Content Include="player_icon.ico" />
   </ItemGroup>
 
+  <!--
+    wwwroot/Data — библиотека пользователя: скачанные ролики, плейлисты, теги.
+    Лежит внутри wwwroot, потому что раздаётся плеером как статика, но частью
+    приложения не является: при публикации это утягивало бы сотни мегабайт
+    чужих видео. Приложение создаёт эту папку само при первом запуске.
+  -->
+  <ItemGroup>
+    <Content Remove="wwwroot\Data\**" />
+    <None Remove="wwwroot\Data\**" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="SkiaSharp" Version="3.119.2" />

@@ -47,9 +47,17 @@ export async function ping() {
     return data;
 }
 
-/** @returns {Promise<Set<string>>} id уже скачанных роликов */
-export async function getLibrary() {
-    const { ids } = await request("/api/extension/library");
+/**
+ * Что уже есть и присылать заново не нужно.
+ *
+ * @param {string} [playlist] — сверяться с содержимым этого плейлиста.
+ *        Для догрузки ленты нужен именно он: общая библиотека скрыла бы
+ *        ролик, скачанный когда-то в другой плейлист, и сюда он бы не попал.
+ * @returns {Promise<Set<string>>}
+ */
+export async function getLibrary(playlist) {
+    const query = playlist ? `?playlist=${encodeURIComponent(playlist)}` : "";
+    const { ids } = await request(`/api/extension/library${query}`);
     return new Set(ids || []);
 }
 

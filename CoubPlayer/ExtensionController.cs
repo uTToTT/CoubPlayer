@@ -44,13 +44,32 @@ namespace CoubPlayer
         }
 
         /// <summary>
-        /// Id всех скачанных роликов. Расширение вычитает их из того, что нашло
-        /// в ленте, и присылает только недостающие.
+        /// Что расширение вычитает из найденного в ленте, чтобы прислать только
+        /// недостающее.
+        ///
+        /// С параметром playlist — id роликов именно в нём, и это то, что нужно
+        /// при догрузке ленты: сверяться со всей библиотекой нельзя, иначе куб,
+        /// скачанный когда-то в другой плейлист, в этот уже никогда не попадёт.
+        /// Без параметра — вся библиотека.
+        ///
+        /// Ролик может лежать копией ("id#2"), поэтому отдаём базовые id.
         /// </summary>
         [HttpGet("library")]
-        public IActionResult Library()
+        public IActionResult Library([FromQuery] string? playlist)
         {
-            return Ok(new { ids = ReadLibraryIds() });
+            if (string.IsNullOrEmpty(playlist))
+                return Ok(new { ids = ReadLibraryIds() });
+
+            var data = ReadPlaylists();
+            if (!data.TryGetValue(playlist, out var pl))
+                return Ok(new { ids = new List<string>() });
+
+            var ids = pl.videos?.Keys
+                .Select(PlaylistKeys.BaseCoubId)
+                .Distinct()
+                .ToList() ?? new List<string>();
+
+            return Ok(new { ids });
         }
 
         /// <summary>

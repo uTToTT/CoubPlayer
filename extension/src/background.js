@@ -125,7 +125,9 @@ async function sync({ category, mode = "new", limit = -1 }) {
 
     try {
         await local.ensurePlaylist(category);
-        const library = await local.getLibrary();
+        // Сверяемся с самим плейлистом, а не со всей библиотекой: ролик мог
+        // быть скачан в другой плейлист, но здесь его всё равно не хватает
+        const library = await local.getLibrary(category);
 
         const { permalinks, stopped } = await collectPermalinks(category, {
             limit,
