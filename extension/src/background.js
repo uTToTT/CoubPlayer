@@ -13,6 +13,7 @@ import {
     resetTransport,
 } from "./coub-api.js";
 import * as local from "./local-api.js";
+import { downloadInBrowser } from "./transfer.js";
 
 // ─── Состояние текущей долгой операции ──────────────────────────────────────
 // Попап может быть закрыт в любой момент, поэтому ход выполнения держим здесь,
@@ -49,8 +50,11 @@ async function downloadOne({ permalink, playlist }) {
 
     const target = playlist || (await resolveDefaultPlaylist());
 
-    const [result] = await local.download(target, [id]);
-    if (result && !result.success) throw new Error(result.error || "Сервер не смог скачать куб");
+    const result = (await local.isBrowserTransfer())
+        ? await downloadInBrowser(target, id)
+        : (await local.download(target, [id]))[0];
+
+    if (result && !result.success) throw new Error(result.error || "Не удалось скачать куб");
 
     // Выбор запоминаем: в следующий раз он будет первым кандидатом
     if (playlist) await chrome.storage.local.set({ defaultPlaylist: playlist });
@@ -159,17 +163,34 @@ async function sync({ category, mode = "new", limit = -1 }) {
         let done = 0;
         let failed = 0;
 
-        for (let i = 0; i < missing.length; i += CHUNK) {
+        // Качая браузером, идём по одному: пачка здесь всё равно разложилась
+        // бы в последовательные загрузки, а так прогресс двигается на каждой
+        const viaBrowser = await local.isBrowserTransfer();
+        const step = viaBrowser ? 1 : CHUNK;
+
+        for (let i = 0; i < missing.length; i += step) {
             if (_stop.requested) return finishJob({ stoppedByUser: true });
 
-            const chunk = missing.slice(i, i + CHUNK);
+            const chunk = missing.slice(i, i + step);
             let results;
             try {
-                results = await local.download(category, chunk, _stop.controller.signal);
+                // Порядок всей ленты идёт с каждой пачкой: по нему сервер
+                // ставит ролик на своё место среди уже лежащих в плейлисте
+                results = viaBrowser
+                    ? [await downloadInBrowser(category, chunk[0], {
+                        order: permalinks,
+                        signal: _stop.controller.signal,
+                    })]
+                    : await local.download(category, chunk, {
+                        order: permalinks,
+                        signal: _stop.controller.signal,
+                    });
             } catch (err) {
                 // Прервали вручную: сервер текущую пачку всё равно докачает,
                 // просто её итог до нас уже не дойдёт
-                if (err instanceof local.AbortedError) return finishJob({ stoppedByUser: true });
+                if (err instanceof local.AbortedError || err?.name === "AbortError") {
+                    return finishJob({ stoppedByUser: true });
+                }
                 throw err;
             }
 

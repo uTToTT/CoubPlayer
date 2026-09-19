@@ -16,6 +16,9 @@ import {
     rollSeed,
 } from "./randomizer.js";
 import { revealSimple, revealChars } from "./text-reveal.js";
+import { initRestore } from "./restore.js";
+import { initMetadata } from "./metadata.js";
+import { initAbout } from "./about.js";
 import {
     initSortingPanel,
     setPlaylistTriggerLabel,
@@ -790,6 +793,9 @@ async function init() {
 
     initGoToStartButton(() => player.goToIndex(1));
 
+    // Версия плеера и резервные копии библиотеки — в шапке окна плейлистов
+    initAbout();
+
     // Просмотр текущего плейлиста плиткой
     initGridView({
         getItems: () => player.playlist,
@@ -1026,6 +1032,19 @@ async function init() {
 
     await sanitizeBrokenPlaylists();
 
+    // Возврат пропавших файлов. Плейлисты не трогает, поэтому по окончании
+    // достаточно перечитать данные и пересобрать текущий список
+    initRestore({
+        onFinished: async () => {
+            await refreshData();
+            if (state.selectedPlaylist) await applySorting();
+        },
+    });
+
+    // Сбор сведений о роликах. Ни файлов, ни плейлистов не касается — меняет
+    // только то, чего в интерфейсе пока не видно, поэтому перечитывать нечего
+    initMetadata();
+
     // Загрузка видео по ссылке (одной или нескольким)
     downloadCoubsBtn.addEventListener("click", async (e) => {
         e.stopPropagation();
@@ -1082,17 +1101,20 @@ async function init() {
         syncFavorites("bookmarks", syncBookmarksBtn);
     });
 
-    // Клик по фону = пауза (игнорируем панели и контролы)
-    document.body.addEventListener("click", (e) => {
-        // Если открыта панель (редактор/селектор плейлистов) — не трогаем паузу.
-        // Закрытие панели по клику мимо неё обрабатывает document-listener в ui.js.
-        if (isAnyPanelOpen() || isGridMode()) return;
+    // Клик по самому плееру = пауза.
+    //
+    // Считаем по белому списку, а не по чёрному. Крестик закрывает окно
+    // раньше, чем клик всплывает сюда, и isAnyPanelOpen() к этому моменту
+    // уже отвечает «закрыто» — пауза срабатывала на самом закрытии. Перечислять
+    // же все окна и меню, куда нажимать нельзя, пришлось бы заново при каждом
+    // новом окне, и однажды о нём бы забыли.
+    const PLAYER_SURFACE = "#videoFlipStage, #bgVideo, #pauseOverlay, video";
 
-        const ignore = [
-            ".button", ".fullscreen-btn", ".bottom-controls",
-            "#videoIndexWrapper", ".top-controls", "#seekBarWrapper",
-        ];
-        if (!ignore.some((sel) => e.target.closest(sel))) player.togglePause();
+    document.body.addEventListener("click", (e) => {
+        if (isAnyPanelOpen() || isGridMode()) return;
+        if (e.target !== document.body && !e.target.closest(PLAYER_SURFACE)) return;
+
+        player.togglePause();
     });
 
     // Переход по номеру

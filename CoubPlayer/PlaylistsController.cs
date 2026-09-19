@@ -1,10 +1,10 @@
-﻿using CoubPlayer.Meta;
 using CoubPlayer.Requests;
 using CoubPlayer.Services;
+using CoubPlayer.Storage;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using SkiaSharp;
-using System.Linq;
 
 namespace CoubPlayer
 {
@@ -12,49 +12,40 @@ namespace CoubPlayer
     [Route("api/playlists")]
     public class PlaylistsController : ControllerBase
     {
-        private readonly string _path = Path.Combine(
-            Directory.GetCurrentDirectory(), "wwwroot", "Data", "playlists.json");
-
-        private readonly string _coubListPath = Path.Combine(
-            Directory.GetCurrentDirectory(), "wwwroot", "Data", "coub_list.json");
-
         private readonly string _iconsPath = Path.Combine(
             Directory.GetCurrentDirectory(), "wwwroot", "Data", "icons");
 
-        private static readonly object _lock = new();
-        private static readonly object _coubListLock = new();
-
         private readonly CoubDownloadService _downloadService;
         private readonly CoubTimelineService _timelineService;
-        private readonly CoubListService _coubListService;
+        private readonly PlaylistRepository _playlists;
+        private readonly CoubRepository _coubs;
 
         private static readonly string[] SyncCategories = { "liked", "bookmarks" };
 
-        public PlaylistsController(CoubDownloadService downloadService, CoubTimelineService timelineService, CoubListService coubListService)
+        public PlaylistsController(
+            CoubDownloadService downloadService,
+            CoubTimelineService timelineService,
+            PlaylistRepository playlists,
+            CoubRepository coubs)
         {
             _downloadService = downloadService;
             _timelineService = timelineService;
-            _coubListService = coubListService;
+            _playlists = playlists;
+            _coubs = coubs;
         }
+
+        /// <summary>Переводит исход операции в ответ HTTP.</summary>
+        private IActionResult Respond(PlaylistOutcome outcome, object? body = null) => outcome switch
+        {
+            PlaylistOutcome.Ok => body == null ? Ok() : Ok(body),
+            PlaylistOutcome.NotFound => NotFound(),
+            PlaylistOutcome.ItemNotFound => NotFound("Video not in playlist"),
+            PlaylistOutcome.CoubNotFound => NotFound("Coub not in library"),
+            PlaylistOutcome.Conflict => BadRequest("Playlist exists"),
+            _ => StatusCode(500),
+        };
 
         #region Icons
-
-        private void EnsurePlaylistsFileExists()
-        {
-            if (System.IO.File.Exists(_path)) return;
-
-            var dir = Path.GetDirectoryName(_path)!;
-            Directory.CreateDirectory(dir);
-
-            var emptyJson = JsonConvert.SerializeObject(new Dictionary<string, Playlist>(), Formatting.Indented);
-            var tempPath = _path + ".tmp";
-            System.IO.File.WriteAllText(tempPath, emptyJson);
-
-            if (System.IO.File.Exists(_path))
-                System.IO.File.Replace(tempPath, _path, null);
-            else
-                System.IO.File.Move(tempPath, _path);
-        }
 
         [HttpPost("{playlist}/icon")]
         public IActionResult SetIcon([FromRoute] string playlist, IFormFile file)
@@ -62,13 +53,8 @@ namespace CoubPlayer
             if (file == null || file.Length == 0)
                 return BadRequest("No file");
 
-            lock (_lock)
-            {
-                var json = System.IO.File.ReadAllText(_path);
-                var data = JsonConvert.DeserializeObject<Dictionary<string, Playlist>>(json)!;
-                if (!data.ContainsKey(playlist))
-                    return NotFound();
-            }
+            if (!_playlists.Exists(playlist))
+                return NotFound();
 
             Directory.CreateDirectory(_iconsPath);
 
@@ -95,6 +81,27 @@ namespace CoubPlayer
             cropped.Encode(output, SKEncodedImageFormat.Webp, 85);
 
             return Ok(new { url = $"/Data/icons/{SanitizeFileName(playlist)}.webp" });
+        }
+
+        /// <summary>
+        /// У каких плейлистов есть старый значок (Data/icons/&lt;имя&gt;.webp).
+        ///
+        /// Нужен, чтобы клиент не выяснял это подбором. Раньше он на каждый
+        /// плейлист заводил Image и ждал — загрузится или отвалится 404;
+        /// на сотне плейлистов это сотня запросов, и список ждал каждый.
+        /// </summary>
+        [HttpGet("icons")]
+        public IActionResult Icons()
+        {
+            if (!Directory.Exists(_iconsPath)) return Ok(new { names = Array.Empty<string>() });
+
+            var names = Directory
+                .EnumerateFiles(_iconsPath, "*.webp")
+                .Select(Path.GetFileNameWithoutExtension)
+                .Where(n => !string.IsNullOrEmpty(n))
+                .ToList();
+
+            return Ok(new { names });
         }
 
         [HttpDelete("{playlist}/icon")]
@@ -128,12 +135,6 @@ namespace CoubPlayer
             if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
         }
 
-        private void DeleteAllBannerFiles(Playlist pl)
-        {
-            DeleteBannerFile(pl.banner?.image);
-            DeleteBannerFile(pl.banner?.video);
-        }
-
         /// <summary>
         /// Своя картинка для баннера. Клиент присылает уже обрезанный под 16:9
         /// кадр (позиционирование и масштаб он же и делает), тут остаётся
@@ -159,23 +160,17 @@ namespace CoubPlayer
             using (var output = System.IO.File.OpenWrite(Path.Combine(_bannersPath, fileName)))
                 resized.Encode(output, SKEncodedImageFormat.Webp, 88);
 
-            var result = ExecuteLocked(data =>
-            {
-                if (!data.ContainsKey(playlist)) return NotFound();
-
-                var pl = data[playlist];
-                pl.banner ??= new PlaylistBanner();
-                DeleteBannerFile(pl.banner.image);
-                pl.banner.image = fileName;
-
-                return Ok(new { url = $"/Data/banners/{fileName}" });
-            });
+            var outcome = _playlists.SetBanner(playlist, fileName, null, out var replaced);
 
             // Плейлиста не оказалось — не оставляем осиротевший файл
-            if (result is not (OkResult or OkObjectResult))
+            if (outcome != PlaylistOutcome.Ok)
+            {
                 DeleteBannerFile(fileName);
+                return Respond(outcome);
+            }
 
-            return result;
+            DeleteBannerFile(replaced);
+            return Ok(new { url = $"/Data/banners/{fileName}" });
         }
 
         /// <summary>Свой анимированный баннер. Файл сохраняется как есть.</summary>
@@ -195,22 +190,16 @@ namespace CoubPlayer
             await using (var output = System.IO.File.Create(Path.Combine(_bannersPath, fileName)))
                 await file.CopyToAsync(output);
 
-            var result = ExecuteLocked(data =>
+            var outcome = _playlists.SetBanner(playlist, null, fileName, out var replaced);
+
+            if (outcome != PlaylistOutcome.Ok)
             {
-                if (!data.ContainsKey(playlist)) return NotFound();
-
-                var pl = data[playlist];
-                pl.banner ??= new PlaylistBanner();
-                DeleteBannerFile(pl.banner.video);
-                pl.banner.video = fileName;
-
-                return Ok(new { url = $"/Data/banners/{fileName}" });
-            });
-
-            if (result is not (OkResult or OkObjectResult))
                 DeleteBannerFile(fileName);
+                return Respond(outcome);
+            }
 
-            return result;
+            DeleteBannerFile(replaced);
+            return Ok(new { url = $"/Data/banners/{fileName}" });
         }
 
         /// <summary>
@@ -220,204 +209,83 @@ namespace CoubPlayer
         [HttpDelete("{playlist}/banner")]
         public IActionResult DeleteBanner([FromRoute] string playlist, [FromQuery] string kind = "all")
         {
-            return ExecuteLocked(data =>
-            {
-                if (!data.ContainsKey(playlist)) return NotFound();
+            var (outcome, orphaned) = _playlists.ClearBanner(playlist, kind);
+            if (outcome != PlaylistOutcome.Ok) return Respond(outcome);
 
-                var pl = data[playlist];
-                if (pl.banner == null) return Ok();
-
-                if (kind is "image" or "all")
-                {
-                    DeleteBannerFile(pl.banner.image);
-                    pl.banner.image = null;
-                }
-                if (kind is "video" or "all")
-                {
-                    DeleteBannerFile(pl.banner.video);
-                    pl.banner.video = null;
-                }
-
-                if (pl.banner.IsEmpty) pl.banner = null;
-                return Ok();
-            });
+            foreach (var fileName in orphaned) DeleteBannerFile(fileName);
+            return Ok();
         }
 
         #endregion
 
-        private IActionResult ExecuteLocked(Func<Dictionary<string, Playlist>, IActionResult> action)
-        {
-            lock (_lock)
-            {
-                EnsurePlaylistsFileExists();
-
-                var json = System.IO.File.ReadAllText(_path);
-                var data = JsonConvert.DeserializeObject<Dictionary<string, Playlist>>(json)!;
-
-                var result = action(data);
-
-                // Сохраняем только если операция успешна
-                if (result is OkResult or OkObjectResult)
-                {
-                    var newJson = JsonConvert.SerializeObject(data, Formatting.Indented);
-                    var tempPath = _path + ".tmp";
-                    System.IO.File.WriteAllText(tempPath, newJson);
-                    System.IO.File.Replace(tempPath, _path, null);
-                }
-
-                return result;
-            }
-        }
-
+        /// <summary>
+        /// Все плейлисты. Сериализуем Newtonsoft'ом, а не общим для MVC
+        /// System.Text.Json: на Playlist и VideoMeta висят его атрибуты
+        /// NullValueHandling.Ignore, и без них в ответе появились бы пустые
+        /// поля, которых клиент там никогда не видел.
+        /// </summary>
         [HttpGet]
         public IActionResult Get()
         {
-            lock (_lock)
-            {
-                EnsurePlaylistsFileExists(); // NEW
-                var json = System.IO.File.ReadAllText(_path);
-                return Content(json, "application/json");
-            }
+            var json = JsonConvert.SerializeObject(_playlists.ReadAll(), Formatting.Indented);
+            return Content(json, "application/json");
         }
 
         [HttpPost]
         public IActionResult Create([FromBody] CreatePlaylistRequest req)
         {
-            return ExecuteLocked(data =>
-            {
-                if (data.ContainsKey(req.Name))
-                    return BadRequest("Playlist exists");
+            if (string.IsNullOrWhiteSpace(req?.Name))
+                return BadRequest("Playlist name is required");
 
-                data[req.Name] = new Playlist
-                {
-                    title = req.Name,
-                    videos = new Dictionary<string, VideoMeta>()
-                };
-
-                return Ok();
-            });
+            return Respond(_playlists.Create(req.Name));
         }
 
         [HttpPost("{playlist}/delete")]
         public IActionResult Delete([FromRoute] string playlist)
         {
-            return ExecuteLocked(data =>
-            {
-                if (!data.ContainsKey(playlist))
-                    return NotFound();
+            var (outcome, bannerImage, bannerVideo) = _playlists.Delete(playlist);
+            if (outcome != PlaylistOutcome.Ok) return Respond(outcome);
 
-                var iconPath = Path.Combine(_iconsPath, $"{SanitizeFileName(playlist)}.webp");
-                if (System.IO.File.Exists(iconPath))
-                    System.IO.File.Delete(iconPath);
+            var iconPath = Path.Combine(_iconsPath, $"{SanitizeFileName(playlist)}.webp");
+            if (System.IO.File.Exists(iconPath))
+                System.IO.File.Delete(iconPath);
 
-                DeleteAllBannerFiles(data[playlist]);
+            DeleteBannerFile(bannerImage);
+            DeleteBannerFile(bannerVideo);
 
-                data.Remove(playlist);
-                return Ok();
-            });
+            return Ok();
         }
 
         [HttpPost("{playlist}/rename")]
         public IActionResult Rename([FromRoute] string playlist, [FromBody] RenamePlaylistRequest req)
         {
-            return ExecuteLocked(data =>
-            {
-                if (!data.ContainsKey(playlist))
-                    return NotFound();
+            if (string.IsNullOrWhiteSpace(req?.NewName))
+                return BadRequest("New name is required");
 
-                if (data.ContainsKey(req.NewName))
-                    return BadRequest("Playlist exists");
+            var outcome = _playlists.Rename(playlist, req.NewName);
+            if (outcome != PlaylistOutcome.Ok) return Respond(outcome);
 
-                var pl = data[playlist];
-                pl.title = req.NewName;
+            // Значок ключуется именем плейлиста — переносим за ним
+            var oldIcon = Path.Combine(_iconsPath, $"{SanitizeFileName(playlist)}.webp");
+            var newIcon = Path.Combine(_iconsPath, $"{SanitizeFileName(req.NewName)}.webp");
+            if (System.IO.File.Exists(oldIcon))
+                System.IO.File.Move(oldIcon, newIcon, overwrite: true);
 
-                var oldIcon = Path.Combine(_iconsPath, $"{SanitizeFileName(playlist)}.webp");
-                var newIcon = Path.Combine(_iconsPath, $"{SanitizeFileName(req.NewName)}.webp");
-                if (System.IO.File.Exists(oldIcon))
-                    System.IO.File.Move(oldIcon, newIcon, overwrite: true);
-
-                data.Remove(playlist);
-                data[req.NewName] = pl;
-
-                return Ok();
-            });
+            return Ok();
         }
 
         [HttpPost("{playlist}/add")]
-        public IActionResult AddVideo([FromRoute] string playlist, [FromBody] AddVideoRequest req)
-        {
-            return ExecuteLocked(data =>
-            {
-                if (!data.ContainsKey(playlist))
-                    return NotFound();
-
-                var pl = data[playlist];
-
-                foreach (var video in pl.videos.Values)
-                    video.order += 1;
-
-                pl.videos[req.id] = new VideoMeta
-                {
-                    title = req.title,
-                    order = 0
-                };
-
-                return Ok();
-            });
-        }
+        public IActionResult AddVideo([FromRoute] string playlist, [FromBody] AddVideoRequest req) =>
+            Respond(_playlists.AddVideo(playlist, req.id, req.title));
 
         [HttpPost("{playlist}/remove")]
-        public IActionResult RemoveVideo([FromRoute] string playlist, [FromBody] RemoveVideoRequest req)
-        {
-            return ExecuteLocked(data =>
-            {
-                if (!data.ContainsKey(playlist))
-                    return NotFound();
-
-                var pl = data[playlist];
-
-                // Может прийти как точный ключ записи, так и id куба — во втором
-                // случае ролик лежит в плейлисте копией ("id#2"), и убрать нужно
-                // первую попавшуюся его запись. Искать ключ на клиенте нельзя:
-                // его копия плейлистов могла устареть.
-                var key = pl.videos.ContainsKey(req.Id)
-                    ? req.Id
-                    : pl.videos.Keys.FirstOrDefault(k => BaseCoubId(k) == req.Id);
-
-                if (key == null)
-                    return NotFound();
-
-                var removedOrder = pl.videos[key].order;
-                pl.videos.Remove(key);
-
-                foreach (var video in pl.videos.Values)
-                {
-                    if (video.order > removedOrder)
-                        video.order -= 1;
-                }
-
-                return Ok();
-            });
-        }
-
-        /// <summary>
-        /// Ключ записи в плейлисте — это либо id куба, либо "id#N" для копии.
-        /// Определение живёт в <see cref="PlaylistKeys"/>: им пользуется и
-        /// ExtensionController, а расходиться этим двум местам нельзя.
-        /// </summary>
-        private static string BaseCoubId(string key) => PlaylistKeys.BaseCoubId(key);
-
-        private static string NextInstanceKey(Playlist pl, string baseId)
-        {
-            var n = 2;
-            while (pl.videos.ContainsKey($"{baseId}#{n}")) n++;
-            return $"{baseId}#{n}";
-        }
+        public IActionResult RemoveVideo([FromRoute] string playlist, [FromBody] RemoveVideoRequest req) =>
+            Respond(_playlists.RemoveVideo(playlist, req.Id));
 
         /// <summary>
         /// Добавляет в плейлист ещё одну запись того же ролика, сразу за исходной.
         /// Файлы не копируются — новая запись просто ссылается на тот же куб,
-        /// но имеет собственные order и постобработку.
+        /// но имеет собственные позицию и постобработку.
         /// </summary>
         [HttpPost("{playlist}/duplicate")]
         public IActionResult Duplicate([FromRoute] string playlist, [FromBody] DuplicateVideoRequest req)
@@ -425,31 +293,8 @@ namespace CoubPlayer
             if (string.IsNullOrWhiteSpace(req?.Id))
                 return BadRequest("No id provided");
 
-            return ExecuteLocked(data =>
-            {
-                if (!data.ContainsKey(playlist))
-                    return NotFound();
-
-                var pl = data[playlist];
-                if (!pl.videos.TryGetValue(req.Id, out var source))
-                    return NotFound("Video not in playlist");
-
-                var newKey = NextInstanceKey(pl, BaseCoubId(req.Id));
-
-                foreach (var video in pl.videos.Values)
-                    if (video.order > source.order) video.order += 1;
-
-                pl.videos[newKey] = new VideoMeta
-                {
-                    title = source.title,
-                    order = source.order + 1,
-                    fx = source.fx == null ? null : new Dictionary<string, double>(source.fx),
-                    bgFx = source.bgFx == null ? null : new Dictionary<string, double>(source.bgFx),
-                    bgSeparate = source.bgSeparate,
-                };
-
-                return Ok(new { key = newKey });
-            });
+            var (outcome, key) = _playlists.Duplicate(playlist, req.Id);
+            return Respond(outcome, key == null ? null : new { key });
         }
 
         /// <summary>
@@ -462,31 +307,13 @@ namespace CoubPlayer
             if (string.IsNullOrWhiteSpace(req?.Id))
                 return BadRequest("No id provided");
 
-            return ExecuteLocked(data =>
-            {
-                if (!data.ContainsKey(playlist))
-                    return NotFound();
-
-                var pl = data[playlist];
-                if (!pl.videos.TryGetValue(req.Id, out var meta))
-                    return NotFound("Video not in playlist");
-
-                meta.fx = req.Fx is { Count: > 0 } ? req.Fx : null;
-                meta.bgSeparate = req.BgSeparate ? true : null;
-                // bgFx имеет смысл только при отдельной настройке фона —
-                // иначе не храним, чтобы файл не пух пустыми объектами
-                meta.bgFx = req.BgSeparate && req.BgFx is { Count: > 0 } ? req.BgFx : null;
-                return Ok();
-            });
+            return Respond(_playlists.SetFx(playlist, req.Id, req.Fx, req.BgFx, req.BgSeparate));
         }
 
         /// <summary>
         /// Переставляет ролики в плейлисте (drag and drop в режиме плитки).
         /// Ids может быть подмножеством плейлиста — в сетке могут быть включены
         /// поиск или фильтр по тегам, и тогда пользователь видит и таскает не всё.
-        /// Поэтому переставляем не «сквозной нумерацией», а по занятым позициям:
-        /// берём order'ы именно этих роликов, сортируем и раздаём в новом порядке.
-        /// Ролики, которых нет в списке, остаются на своих местах.
         /// </summary>
         [HttpPost("{playlist}/reorder")]
         public IActionResult Reorder([FromRoute] string playlist, [FromBody] ReorderPlaylistRequest req)
@@ -494,26 +321,10 @@ namespace CoubPlayer
             if (req?.Ids == null || req.Ids.Count == 0)
                 return BadRequest("No ids provided");
 
-            return ExecuteLocked(data =>
-            {
-                if (!data.ContainsKey(playlist))
-                    return NotFound();
+            var outcome = _playlists.Reorder(playlist, req.Ids, out var error);
 
-                var pl = data[playlist];
-
-                var unknown = req.Ids.Where(id => !pl.videos.ContainsKey(id)).ToList();
-                if (unknown.Count > 0)
-                    return BadRequest($"Not in playlist: {string.Join(", ", unknown)}");
-
-                if (req.Ids.Distinct().Count() != req.Ids.Count)
-                    return BadRequest("Duplicate ids");
-
-                var slots = req.Ids.Select(id => pl.videos[id].order).OrderBy(o => o).ToList();
-                for (var i = 0; i < req.Ids.Count; i++)
-                    pl.videos[req.Ids[i]].order = slots[i];
-
-                return Ok();
-            });
+            if (outcome == PlaylistOutcome.ItemNotFound) return BadRequest(error);
+            return Respond(outcome);
         }
 
         /// <summary>
@@ -526,99 +337,18 @@ namespace CoubPlayer
             if (req?.Names == null || req.Names.Count == 0)
                 return BadRequest("No names provided");
 
-            return ExecuteLocked(data =>
-            {
-                for (var i = 0; i < req.Names.Count; i++)
-                {
-                    if (data.TryGetValue(req.Names[i], out var pl)) pl.order = i;
-                }
-                return Ok();
-            });
+            _playlists.SetOrder(req.Names);
+            return Ok();
         }
 
         /// <summary>Собирает плейлист в группу (пустое имя — убрать из группы).</summary>
         [HttpPost("{playlist}/group")]
-        public IActionResult SetGroup([FromRoute] string playlist, [FromBody] SetGroupRequest req)
-        {
-            return ExecuteLocked(data =>
-            {
-                if (!data.ContainsKey(playlist))
-                    return NotFound();
-
-                var group = req?.Group?.Trim();
-                data[playlist].group = string.IsNullOrEmpty(group) ? null : group;
-                return Ok();
-            });
-        }
+        public IActionResult SetGroup([FromRoute] string playlist, [FromBody] SetGroupRequest req) =>
+            Respond(_playlists.SetGroup(playlist, req?.Group?.Trim()));
 
         [HttpPost("{playlist}/viewed")]
-        public IActionResult MarkViewed([FromRoute] string playlist, [FromBody] ViewVideoRequest req)
-        {
-            return ExecuteLocked(data =>
-            {
-                if (!data.ContainsKey(playlist))
-                    return NotFound();
-
-                var pl = data[playlist];
-
-                if (!pl.videos.ContainsKey(req.id))
-                    return NotFound();
-
-                pl.videos[req.id].lastViewed = DateTime.UtcNow;
-
-                return Ok();
-            });
-        }
-
-        /// <summary>
-        /// Добавляет или обновляет запись ролика в coub_list.json — именно оттуда
-        /// loader.js строит coubMap ({id, video, audio}), по которому плеер
-        /// резолвит реальные src для video/audio. Без этого шага скачанные файлы
-        /// физически лежат на диске, но плеер их не найдёт.
-        /// </summary>
-        private void UpsertCoubListEntry(CoubDownloadResult result)
-        {
-            if (string.IsNullOrEmpty(result.Video)) return;
-
-            lock (_coubListLock)
-            {
-                List<CoubListEntry> list;
-                if (System.IO.File.Exists(_coubListPath))
-                {
-                    var json = System.IO.File.ReadAllText(_coubListPath);
-                    list = JsonConvert.DeserializeObject<List<CoubListEntry>>(json) ?? new List<CoubListEntry>();
-                }
-                else
-                {
-                    list = new List<CoubListEntry>();
-                }
-
-                var existing = list.FirstOrDefault(c => c.id == result.Id);
-                if (existing != null)
-                {
-                    existing.video = result.Video;
-                    existing.audio = result.Audio ?? existing.audio;
-                }
-                else
-                {
-                    list.Add(new CoubListEntry
-                    {
-                        id = result.Id,
-                        video = result.Video,
-                        audio = result.Audio ?? ""
-                    });
-                }
-
-                var newJson = JsonConvert.SerializeObject(list, Formatting.Indented);
-                var tempPath = _coubListPath + ".tmp";
-                System.IO.File.WriteAllText(tempPath, newJson);
-
-                if (System.IO.File.Exists(_coubListPath))
-                    System.IO.File.Replace(tempPath, _coubListPath, null);
-                else
-                    System.IO.File.Move(tempPath, _coubListPath);
-            }
-        }
+        public IActionResult MarkViewed([FromRoute] string playlist, [FromBody] ViewVideoRequest req) =>
+            Respond(_playlists.MarkViewed(playlist, req.id));
 
         /// <summary>
         /// Скачивает один или несколько coub-роликов по ссылкам и добавляет их
@@ -635,15 +365,10 @@ namespace CoubPlayer
 
             // Проверяем существование плейлиста один раз до скачивания —
             // чтобы не тратить время на загрузку видео впустую
-            lock (_lock)
-            {
-                var json = System.IO.File.ReadAllText(_path);
-                var data = JsonConvert.DeserializeObject<Dictionary<string, Playlist>>(json)!;
-                if (!data.ContainsKey(playlist))
-                    return NotFound("Playlist not found");
-            }
+            if (!_playlists.Exists(playlist))
+                return NotFound("Playlist not found");
 
-            var results = await DownloadUrlsIntoPlaylistAsync(playlist, req.Urls);
+            var results = await DownloadUrlsIntoPlaylistAsync(playlist, req.Urls, req.Order);
             return Ok(results);
         }
 
@@ -652,9 +377,6 @@ namespace CoubPlayer
         /// (через приватный timeline API Coub, требует access token) и добавляет
         /// их в одноимённый плейлист ("liked" или "bookmarks" — как их узнаёт и
         /// main.js в pickDefaultPlaylist). Плейлист создаётся, если его ещё нет.
-        /// Limit ограничивает, сколько НОВЕЙШИХ роликов ленты забрать за этот запуск
-        /// (а не сколько реально новых будет добавлено — уже скачанные просто
-        /// пропускаются, так же как при повторном вызове /download с теми же ссылками).
         /// </summary>
         [HttpPost("sync")]
         public async Task<IActionResult> SyncFavorites([FromBody] SyncRequest req)
@@ -666,26 +388,12 @@ namespace CoubPlayer
                 return BadRequest("Token is required");
 
             int limit;
-            if (req.Limit == -1)
-                limit = -1;
-            else if (req.Limit <= 0)
-                limit = 25;
-            else
-                limit = req.Limit;
+            if (req.Limit == -1) limit = -1;
+            else if (req.Limit <= 0) limit = 25;
+            else limit = req.Limit;
 
             // Плейлист для категории создаём, если его ещё нет
-            ExecuteLocked(data =>
-            {
-                if (!data.ContainsKey(req.Category))
-                {
-                    data[req.Category] = new Playlist
-                    {
-                        title = req.Category,
-                        videos = new Dictionary<string, VideoMeta>()
-                    };
-                }
-                return Ok();
-            });
+            _playlists.Create(req.Category);
 
             List<string> permalinks;
             try
@@ -707,11 +415,11 @@ namespace CoubPlayer
 
         /// <summary>
         /// Общая логика для /download и /sync: последовательно скачивает ролики
-        /// (с паузой и джиттером между ними — см. комментарий внутри), регистрирует
-        /// каждый в coub_list.json и добавляет в указанный плейлист.
+        /// (с паузой и джиттером между ними), регистрирует каждый в библиотеке
+        /// и добавляет в указанный плейлист.
         /// </summary>
         private async Task<List<CoubDownloadResult>> DownloadUrlsIntoPlaylistAsync(
-    string playlist, List<string> urls)
+            string playlist, List<string> urls, List<string>? order = null)
         {
             var results = new List<CoubDownloadResult>();
             var jitter = new Random();
@@ -719,11 +427,11 @@ namespace CoubPlayer
             var index = 0;
             var needsDelay = false;
 
-            // Куда класть следующий добавленный ролик. Все новые идут в начало
-            // плейлиста, но внутри пачки сохраняют свой порядок: лента приходит
-            // от новых к старым, и если каждый вставлять в нулевую позицию,
-            // пачка переворачивается — самый свежий ролик оказывается последним.
-            var insertAt = 0;
+            // Порядок, которому следует плейлист. Без него таким порядком
+            // считается сама пачка — тогда она целиком ложится в начало,
+            // сохранив свою последовательность.
+            var feed = order != null && order.Count > 0 ? order : urls;
+            var feedIndex = BuildFeedIndex(feed);
 
             ConsoleLog.Section($"ЗАГРУЗКА: {playlist} ({total} роликов)");
 
@@ -752,36 +460,8 @@ namespace CoubPlayer
                 else
                     ConsoleLog.Success($"  {counter} {result.Id} \"{result.Title}\"");
 
-                UpsertCoubListEntry(result);
-
-                var position = insertAt;
-                var inserted = false;
-
-                ExecuteLocked(data =>
-                {
-                    if (!data.ContainsKey(playlist)) return NotFound();
-
-                    var pl = data[playlist];
-
-                    if (pl.videos.ContainsKey(result.Id))
-                        return Ok();
-
-                    // Раздвигаем только то, что лежит на этой позиции и ниже:
-                    // уже вставленные из этой же пачки остаются выше нового
-                    foreach (var video in pl.videos.Values)
-                        if (video.order >= position) video.order += 1;
-
-                    pl.videos[result.Id] = new VideoMeta
-                    {
-                        title = result.Title ?? result.Id,
-                        order = position
-                    };
-
-                    inserted = true;
-                    return Ok();
-                });
-
-                if (inserted) insertAt++;
+                _coubs.Upsert(result);
+                _playlists.AddAtFeedPosition(playlist, result.Id, result.Title, feed, feedIndex);
             }
 
             ConsoleLog.Divider();
@@ -789,6 +469,108 @@ namespace CoubPlayer
             ConsoleLog.Divider();
 
             return results;
+        }
+
+        private static Dictionary<string, int> BuildFeedIndex(List<string> feed)
+        {
+            var feedIndex = new Dictionary<string, int>();
+            for (var i = 0; i < feed.Count; i++) feedIndex.TryAdd(feed[i], i);
+            return feedIndex;
+        }
+
+        // Ролик целиком, с запасом на самые тяжёлые: один coub — это единицы
+        // мегабайт, но верхнюю границу лучше знать, чем угадывать
+        private const long MaxUploadBytes = 128L * 1024 * 1024;
+
+        /// <summary>
+        /// Принимает файлы ролика, скачанные расширением в браузере.
+        ///
+        /// Нужно там, где до coub.com не достаёт сам сервер: провайдер
+        /// блокирует сайт, а VPN есть только в браузере. Встроенный VPN
+        /// браузера — это прокси для его собственного трафика, и запросы
+        /// плеера, отдельного процесса, через него не идут.
+        ///
+        /// Дальше всё как при обычной загрузке: запись в библиотеку и место
+        /// в плейлисте по порядку ленты.
+        /// </summary>
+        [HttpPost("{playlist}/upload")]
+        [RequestSizeLimit(MaxUploadBytes)]
+        [RequestFormLimits(MultipartBodyLengthLimit = MaxUploadBytes)]
+        public async Task<IActionResult> UploadCoub(
+            [FromRoute] string playlist, [FromForm] UploadCoubRequest req)
+        {
+            if (!CoubDownloadService.IsSafeId(req.Id))
+                return BadRequest("Некорректный id ролика");
+
+            if (req.Video == null || req.Video.Length == 0)
+                return BadRequest("Пустой видео-файл");
+
+            if (!_playlists.Exists(playlist))
+                return NotFound("Playlist not found");
+
+            CoubDownloadResult result;
+            await using (var video = req.Video.OpenReadStream())
+            await using (var audio = req.Audio is { Length: > 0 } a ? a.OpenReadStream() : null)
+            {
+                try
+                {
+                    result = await _downloadService.SaveUploadAsync(
+                        req.Id!, req.Title, video, audio, req.AudioExt ?? "mp3");
+                }
+                catch (IOException ex)
+                {
+                    ConsoleLog.Error($"  [{req.Id}] не удалось записать файлы: {ex.Message}");
+                    return StatusCode(500, $"Не удалось записать файлы: {ex.Message}");
+                }
+            }
+
+            ConsoleLog.Success($"  [{result.Id}] принято от расширения \"{result.Title}\"");
+
+            _coubs.Upsert(result);
+            SaveUploadedMetadata(req.Id!, req.Meta);
+
+            var feed = ParseOrder(req.Order) ?? new List<string> { result.Id };
+            _playlists.AddAtFeedPosition(playlist, result.Id, result.Title, feed, BuildFeedIndex(feed));
+
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Сохраняет сведения о ролике, приехавшие вместе с файлами. Неудача
+        /// здесь ничего не отменяет: файлы уже на месте, а теги доберёт
+        /// отдельный проход.
+        /// </summary>
+        private void SaveUploadedMetadata(string id, string? rawMeta)
+        {
+            if (string.IsNullOrWhiteSpace(rawMeta)) return;
+
+            try
+            {
+                var meta = CoubDownloadService.ParseMetadata(id, JObject.Parse(rawMeta));
+                _coubs.SaveMetadata(meta);
+            }
+            catch (JsonException ex)
+            {
+                ConsoleLog.Muted($"  [{id}] сведения не разобрались: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Порядок ленты приходит формой, а значит строкой. Разобрать не вышло —
+        /// не повод отказывать в загрузке: ролик просто ляжет в начало плейлиста.
+        /// </summary>
+        private static List<string>? ParseOrder(string? order)
+        {
+            if (string.IsNullOrWhiteSpace(order)) return null;
+            try
+            {
+                var parsed = JsonConvert.DeserializeObject<List<string>>(order);
+                return parsed is { Count: > 0 } ? parsed : null;
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
         }
     }
 }

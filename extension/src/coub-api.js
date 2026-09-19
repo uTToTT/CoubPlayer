@@ -405,6 +405,45 @@ export async function collectPermalinks(
     return { permalinks, via, stopped };
 }
 
+// ─── Метаданные одного ролика ───────────────────────────────────────────────
+
+/** Тот же адрес, по которому ходит сервер, когда качает сам. */
+const COUB_ENDPOINT = "https://coub.com/api/v2/coubs";
+
+/** Ролика больше нет у источника — повторять попытки бесполезно. */
+export class GoneError extends Error {
+    constructor() {
+        super("Ролик удалён с coub.com");
+        this.name = "GoneError";
+    }
+}
+
+/**
+ * Метаданные ролика — ссылки на потоки и заголовок.
+ *
+ * Нужны, только когда файлы тянет браузер: обычно этот запрос делает сервер
+ * сам. Отдаём текстом как есть — разбирать и выбирать качество будет он же,
+ * чтобы правила выбора не разъехались между двумя реализациями.
+ *
+ * @param {string} id
+ * @returns {Promise<string>} ответ coub.com как есть
+ */
+export async function fetchCoubMeta(id) {
+    const res = await apiFetch(`${COUB_ENDPOINT}/${encodeURIComponent(id)}`);
+
+    if (res.status === 404 || res.status === 410) throw new GoneError();
+
+    // Нулевой статус — запрос не доехал вовсе: так выглядит блокировка,
+    // а не отказ сайта (см. ответ content script'а на COUB_FETCH)
+    if (res.status === 0) {
+        throw new Error("coub.com не отвечает — проверьте, включён ли VPN в браузере");
+    }
+
+    if (res.status !== 200) throw new Error(`coub.com ответил ${res.status}`);
+
+    return res.body;
+}
+
 /**
  * Permalink куба из адреса страницы или ссылки.
  * Годится и для https://coub.com/view/abc123, и для голого abc123.

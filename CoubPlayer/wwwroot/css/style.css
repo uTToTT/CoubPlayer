@@ -1091,6 +1091,124 @@ body {
   min-width: 0;
 }
 
+/* Версия плеера в шапке: должна быть находима, но не спорить с заголовком */
+.app-version-wrap {
+  flex: none;
+  align-self: center;
+  position: relative;
+}
+
+.app-version {
+  padding: 3px 7px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.28);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+
+.app-version:hover,
+.app-version-wrap.open .app-version {
+  color: rgba(255, 255, 255, 0.72);
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Меню раскрывается вниз-влево: справа от версии только крестик */
+.app-version-menu {
+  position: absolute;
+  top: calc(100% + 7px);
+  right: 0;
+  z-index: 60;
+  width: 264px;
+  padding: 11px 12px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background: rgba(20, 20, 24, 0.97);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.5);
+  text-align: left;
+  cursor: default;
+}
+
+.app-version-menu.hidden {
+  display: none;
+}
+
+.avm-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  line-height: 1.9;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.avm-row b {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.avm-sep {
+  height: 1px;
+  margin: 8px 0;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.avm-note {
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.32);
+}
+
+.avm-actions {
+  display: flex;
+  gap: 7px;
+  margin-top: 11px;
+}
+
+.avm-btn {
+  flex: 1;
+  padding: 7px 10px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease;
+}
+
+.avm-btn:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.avm-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.avm-btn--ghost {
+  flex: none;
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.avm-btn--ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.07);
+  color: #fff;
+}
+
 .pl-editor-title {
   font-size: 13px;
   font-weight: 600;
@@ -1828,6 +1946,57 @@ body {
   flex-direction: column;
   gap: 2px;
   padding: 18px;
+}
+
+/* ─── Сворачивание групп ──────────────────────────────────────────────── */
+
+.pl-group-label--collapsible {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  user-select: none;
+  transition: color var(--dur-fast, 140ms) var(--ease-out, ease);
+}
+
+.pl-group-label--collapsible:hover {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+/* Стрелка смотрит вниз у раскрытой группы и вбок у свёрнутой —
+   привычное направление «содержимое там» */
+.pl-group-chevron {
+  width: 0;
+  height: 0;
+  flex: none;
+  border-left: 4.5px solid currentColor;
+  border-top: 3.5px solid transparent;
+  border-bottom: 3.5px solid transparent;
+  transform: rotate(90deg);
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.pl-group.is-collapsed .pl-group-chevron {
+  transform: rotate(0deg);
+}
+
+.pl-group.is-collapsed .pl-group-items {
+  display: none;
+}
+
+/* В окне редактирования группа — колонка строк, а не сетка плиток.
+   Селектор из двух классов намеренно: правило .pl-group-items с сеткой
+   объявлено ниже и при равной точности перебило бы это. */
+.pl-group-items.pl-group-items--rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pl-group-chevron {
+    transition: none;
+  }
 }
 
 .pl-group-items {

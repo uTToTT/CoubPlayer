@@ -8,10 +8,11 @@
   position: fixed;
   /* высоту верхней панели измеряет ui.js — она меняется, когда та переносится
      на вторую строку в узком окне */
-  top: calc(var(--top-bar-h, 54px) + 20px);
-  bottom: 76px;
-  left: 16px;
-  right: 16px;
+  top: calc(var(--top-bar-h, 54px) + 28px);
+  /* Нижняя панель в плитке скрыта, поэтому место под неё не резервируем */
+  bottom: 30px;
+  left: 30px;
+  right: 30px;
   z-index: 3;
   display: none;
   flex-direction: column;
@@ -54,6 +55,40 @@ body.view-grid #sortTypeGroup button[data-type="madness"]:not(.active) {
 
 /* ─── Шапка сетки ─────────────────────────────────────────── */
 
+/* Нижняя панель — про воспроизведение: перезапуск, ссылка на ролик, перемотка,
+   файлы. В плитке ничего из этого не к месту: ролик там не играет, а место
+   занимает целую полосу. Громкость превью остаётся на стрелках ↑/↓. */
+/* Переход между роликами в плитке смысла не имеет: ролик там не играет,
+   и переключать нечего — прячем, чтобы не занимал место и не сбивал с толку */
+body.view-grid #transitionSwitch {
+  display: none;
+}
+
+/* Ползунок громкости в строке сетки: он сюда переезжает из нижней панели */
+.grid-view-volume {
+  display: flex;
+  align-items: center;
+  flex: none;
+}
+
+.grid-view-volume:empty {
+  display: none;
+}
+
+.grid-view-volume #volumeSlider {
+  width: 84px;
+}
+
+body.view-grid .bottom-controls,
+body.view-grid #seekBarWrapper {
+  opacity: 0;
+  transform: translateY(12px);
+  pointer-events: none;
+  transition:
+    opacity var(--dur-base, 230ms) var(--ease-out, ease),
+    transform var(--dur-base, 230ms) var(--ease-out, ease);
+}
+
 .grid-view-toolbar {
   display: flex;
   align-items: center;
@@ -92,8 +127,22 @@ body.view-grid #sortTypeGroup button[data-type="madness"]:not(.active) {
   /* .pl-editor-list — flex-колонка; для сетки переопределяем */
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(var(--coub-tile-min, 220px), 1fr));
-  gap: 14px;
-  padding: 18px 20px;
+  /* Воздуха больше прежнего: при зазоре в 14px плитки почти смыкались,
+     и сетка читалась сплошной тёмной массой вместо набора карточек */
+  gap: 20px;
+  /* Поля с запасом на вырастающую плитку: она прибавляет около 15% своего
+     размера в каждую сторону, и без запаса крайние ряды подрезались краем
+     панели — она обрезает всё, что за него вышло.
+
+     Запас считается от размера плитки, а не задан числом: при L плитка
+     втрое крупнее, чем при S, и постоянная величина либо не спасала бы
+     крупные, либо съедала пол-экрана на мелких. Доля взята с запасом —
+     колонка растягивается по свободному месту и бывает шире заданного
+     минимума. */
+  padding:
+    calc(var(--coub-tile-min, 220px) * 0.26)
+    calc(var(--coub-tile-min, 220px) * 0.24)
+    calc(var(--coub-tile-min, 220px) * 0.28);
   align-content: start;
 }
 
@@ -119,29 +168,55 @@ body.view-grid #sortTypeGroup button[data-type="madness"]:not(.active) {
   display: flex;
   flex-direction: column;
   cursor: pointer;
-  border-radius: 12px;
-  border: 1px solid transparent;
+  border-radius: 14px;
+  /* Тень в покое — то, чего не хватало больше всего: без неё плитки лежали
+     в одной плоскости с фоном и выглядели дырами, а не карточками */
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.5),
+    0 6px 18px rgba(0, 0, 0, 0.35);
   transition:
-    border-color 0.16s ease,
-    transform 0.16s ease;
+    transform 340ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 260ms ease,
+    filter 260ms ease,
+    box-shadow 340ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* Плитка под курсором заметно вырастает, а соседи гаснут: внимание должно
+   быть на одном ролике, а не на всей стене сразу. Ради этого плитка и
+   поднимается над соседями по z-index — иначе её края уходили бы под них. */
 .coub-tile:hover {
-  border-color: rgba(255, 255, 255, 0.14);
-  transform: translateY(-2px);
+  /* 1.3, а не 1.36: остаётся в просимом диапазоне 30–40%, но выходит за край
+     на шестую часть меньше — а подрезается именно вышедшее */
+  transform: scale(1.3);
+  box-shadow:
+    0 4px 10px rgba(0, 0, 0, 0.6),
+    0 30px 60px rgba(0, 0, 0, 0.7);
+  z-index: 6;
 }
 
-.coub-tile--active {
-  border-color: rgba(244, 63, 94, 0.5);
+/* Гасим соседей, только когда курсор на самой плитке.
+   Раньше условием было наведение на сетку целиком — и в промежутке между
+   плитками гасли разом все: наведённой-то нет ни одной. */
+.coub-grid:has(.coub-tile:hover) .coub-tile:not(:hover) {
+  opacity: 0.16;
+  filter: saturate(0.55);
+}
+
+.coub-tile:active {
+  transform: scale(1.24);
+  transition-duration: 90ms;
 }
 
 .coub-tile-media {
   position: relative;
   width: 100%;
   aspect-ratio: 1 / 1;
-  border-radius: 12px;
+  border-radius: 14px;
   overflow: hidden;
   background: #170a12;
+  /* Волосяная рамка внутри, а не снаружи: не сдвигает раскладку и очерчивает
+     кадр, даже когда он почти чёрный */
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
 }
 
 .coub-tile-media video {
@@ -150,11 +225,53 @@ body.view-grid #sortTypeGroup button[data-type="madness"]:not(.active) {
   object-fit: cover;
   display: block;
   opacity: 0;
-  transition: opacity 0.25s ease;
+  transform: scale(1.001); /* убирает дрожание края при масштабировании */
+  transition:
+    opacity 320ms ease,
+    transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .coub-tile-media video.is-ready {
   opacity: 1;
+}
+
+/* Кадр чуть наезжает под курсором — движение внутри рамки, а не самой рамки */
+.coub-tile:hover .coub-tile-media video {
+  transform: scale(1.07);
+}
+
+/* Пока кадр не пришёл, вместо мёртвого прямоугольника — бегущий отблеск */
+.coub-tile-media::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0) 30%,
+    rgba(255, 255, 255, 0.05) 50%,
+    rgba(255, 255, 255, 0) 70%
+  );
+  background-size: 220% 100%;
+  animation: coub-tile-shimmer 1.6s linear infinite;
+  opacity: 1;
+  transition: opacity 320ms ease;
+  pointer-events: none;
+}
+
+.coub-tile-media:has(video.is-ready)::before {
+  opacity: 0;
+  animation: none;
+}
+
+@keyframes coub-tile-shimmer {
+  from { background-position: 120% 0; }
+  to { background-position: -120% 0; }
+}
+
+.coub-tile--active {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.5),
+    0 10px 30px rgba(244, 63, 94, 0.28);
 }
 
 .coub-tile--active .coub-tile-media {
@@ -164,19 +281,30 @@ body.view-grid #sortTypeGroup button[data-type="madness"]:not(.active) {
 /* Номер — правый верхний угол; у текущего ролика его место занимает «Сейчас» */
 .coub-tile-index {
   position: absolute;
-  right: 6px;
-  top: 6px;
-  padding: 2px 7px;
+  right: 9px;
+  top: 9px;
+  padding: 3px 8px;
   border-radius: 999px;
-  background: rgba(6, 3, 5, 0.72);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  color: rgba(255, 255, 255, 0.75);
+  background: rgba(6, 3, 5, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px) saturate(140%);
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
+  color: rgba(255, 255, 255, 0.6);
   font-family: "JetBrains Mono", monospace;
   font-size: 10px;
   line-height: 1.4;
   pointer-events: none;
   z-index: 2;
+  /* В покое номер не нужен — он для ориентира, а не для разглядывания */
+  opacity: 0.55;
+  transition:
+    opacity 240ms ease,
+    color 240ms ease;
+}
+
+.coub-tile:hover .coub-tile-index {
+  opacity: 1;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .coub-tile--active .coub-tile-index {
@@ -205,32 +333,81 @@ body.view-grid #sortTypeGroup button[data-type="madness"]:not(.active) {
   display: block;
 }
 
-/* Подпись поверх кадра на затемнённом нижнем крае */
+/* Подпись поверх кадра на затемнённом нижнем крае.
+   В покое приглушена и подложка мягче: раньше плотная серая полоса спорила
+   с самим кадром, а разглядывают всё-таки кадр. Под курсором и подложка,
+   и текст набирают силу — тогда подпись и нужна. */
 .coub-tile-title {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
   z-index: 2;
-  padding: 20px 9px 8px;
+  padding: 30px 12px 11px;
   font-size: 11.5px;
-  line-height: 1.32;
-  color: #fff;
-  text-shadow:
-    0 1px 4px rgba(0, 0, 0, 0.9),
-    0 0 2px rgba(0, 0, 0, 0.7);
+  font-weight: 500;
+  line-height: 1.35;
+  letter-spacing: 0.005em;
+  color: rgba(255, 255, 255, 0.86);
+  text-shadow: 0 1px 5px rgba(0, 0, 0, 0.85);
   background: linear-gradient(
     to top,
-    rgba(6, 3, 5, 0.92) 0%,
-    rgba(6, 3, 5, 0.7) 42%,
+    rgba(6, 3, 5, 0.86) 0%,
+    rgba(6, 3, 5, 0.52) 45%,
     rgba(6, 3, 5, 0) 100%
   );
-  border-radius: 0 0 12px 12px;
+  border-radius: 0 0 14px 14px;
   pointer-events: none;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  transition:
+    color 240ms ease,
+    background 280ms ease;
+}
+
+/* Подложку не сдвигаем: она прибита к нижнему краю кадра, и любой сдвиг
+   оголял бы полоску под ней. Меняется только плотность и цвет текста. */
+.coub-tile:hover .coub-tile-title {
+  color: #fff;
+  background: linear-gradient(
+    to top,
+    rgba(6, 3, 5, 0.95) 0%,
+    rgba(6, 3, 5, 0.68) 52%,
+    rgba(6, 3, 5, 0) 100%
+  );
+}
+
+/* ─── Появление сетки ─────────────────────────────────────── */
+/* Плитки не возникают разом, а проявляются волной: класс снимается с них
+   по очереди из grid.js, и плитка переходит в обычное состояние.
+
+   Сделано переходом, а не CSS-анимацией с fill-mode: та держит начальный
+   кадр, пока не начнёт проигрываться, и там, где анимации почему-либо
+   не идут, плитки остались бы невидимыми навсегда. Переход в худшем случае
+   просто не покажет движения — плитка всё равно окажется на месте. */
+
+.coub-tile--enter {
+  opacity: 0;
+  transform: translateY(16px) scale(0.96);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .coub-tile,
+  .coub-tile:hover,
+  .coub-tile:active,
+  .coub-tile--enter,
+  .coub-tile:hover .coub-tile-media video,
+  .coub-tile:hover .coub-tile-title {
+    transform: none;
+    transition: none;
+    opacity: 1;
+  }
+
+  .coub-tile-media::before {
+    animation: none;
+  }
 }
 
 /* ─── Перетаскивание ──────────────────────────────────────── */
@@ -279,8 +456,30 @@ body.view-grid #sortTypeGroup button[data-type="madness"]:not(.active) {
   transition:
     opacity 0.14s ease,
     background 0.14s ease,
-    border-color 0.14s ease;
-  z-index: 3;
+    border-color 0.14s ease,
+    transform 0.16s cubic-bezier(0.34, 1.4, 0.64, 1);
+  z-index: 4;
+}
+
+/* Область нажатия заметно больше самого кружка.
+   Промах здесь стоит дорого: клик мимо уводит к ролику и закрывает сетку,
+   а вернуться и найти то же место — отдельная морока. Невидимая накладка
+   ловит и те нажатия, что легли рядом. */
+.coub-tile-check::before {
+  content: "";
+  position: absolute;
+  inset: -12px;
+  border-radius: 50%;
+}
+
+.coub-tile-check:hover {
+  transform: scale(1.18);
+  border-color: #fff;
+  background: rgba(6, 3, 5, 0.85);
+}
+
+.coub-tile-check:active {
+  transform: scale(1.02);
 }
 
 .coub-tile-check::after {
@@ -493,9 +692,23 @@ body.view-grid #sortTypeGroup button[data-type="madness"]:not(.active) {
 
 @media (max-width: 640px) {
   .coub-grid {
-    gap: 10px;
-    padding: 12px;
+    gap: 12px;
+    /* Полей меньше, чем на широком окне: место дороже. Поэтому ниже урезан
+       и сам рост — иначе плитка выходила бы за край панели, а она обрезает
+       всё вышедшее */
+    padding: 26px 22px 30px;
   }
+
+  /* На узком окне плитка и так почти во всю ширину, увеличивать её некуда:
+     соседи гаснут по-прежнему, а укрупнение остаётся лёгким */
+  .coub-tile:hover {
+    transform: scale(1.05);
+  }
+
+  .coub-tile:active {
+    transform: scale(1.02);
+  }
+
   .grid-size-group {
     display: none;
   }

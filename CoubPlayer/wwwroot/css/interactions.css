@@ -1,0 +1,206 @@
+/* interactions.css
+   Отклик интерфейса: наведение, нажатие, фокус.
+
+   Отдельным файлом, а не вкраплениями по остальным: это сквозной слой поверх
+   готовой вёрстки, его удобно смотреть целиком и так же целиком отключить,
+   если что-то пойдёт не так.
+
+   Правило, которому здесь всё подчинено: у каждого элемента, на который можно
+   нажать, должно быть три разных состояния — покой, под курсором и в момент
+   нажатия. Без третьего интерфейс кажется неживым: нажатие ничем не отвечает,
+   и остаётся гадать, засчиталось ли оно. */
+
+/* ─── Переключатель из двух режимов ──────────────────────────────────────── */
+
+.seg-switch {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  padding: 3px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  line-height: 1;
+}
+
+/* Выбранное показывает подсветка самой надписи.
+   Отдельный едущий бегунок выглядел бы живее, но у него ширина упорно
+   сходилась в ноль, а разбирательство не стоило вида: подсветка на месте
+   даёт то же самое — видно оба режима и какой из них включён. */
+.seg-thumb {
+  display: none;
+}
+
+.seg-option {
+  position: relative;
+  z-index: 1;
+  padding: 5px 13px;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  transition:
+    color var(--dur-fast, 140ms) var(--ease-out, ease),
+    transform var(--dur-fast, 140ms) var(--ease-out, ease);
+}
+
+.seg-option:hover:not(.is-active) {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.seg-option.is-active {
+  background: var(--accent, #f43f5e);
+  color: #fff;
+  box-shadow: 0 2px 12px rgba(244, 63, 94, 0.4);
+}
+
+.seg-option:active {
+  transform: scale(0.94);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .seg-switch.is-ready .seg-thumb {
+    transition: none;
+  }
+}
+
+/* ─── Отметка «ролик в плейлисте» ─────────────────────────────────────────── */
+/* Раньше эта кнопка оживала только после того, как её нажали: ни наведения,
+   ни отклика на само нажатие. По ней чаще всего и кликают, так что молчала
+   самая ходовая кнопка в окне. */
+
+.pl-row:hover .pl-row-check,
+.pl-tile:hover .pl-row-check {
+  border-color: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Под курсором именно по ней — заметнее, чем от наведения на строку целиком */
+.pl-row-check:hover {
+  border-color: rgba(255, 255, 255, 0.7);
+  transform: scale(1.12);
+}
+
+.pl-row:active .pl-row-check,
+.pl-tile:active .pl-row-check {
+  transform: scale(0.9);
+}
+
+/* Уже отмеченный отзывается тоже — иначе снятие отметки ощущается глухим */
+.pl-row--checked:hover .pl-row-check,
+.pl-tile--active:hover .pl-row-check {
+  box-shadow: 0 0 16px rgba(244, 63, 94, 0.65);
+  transform: scale(1.16);
+}
+
+.pl-row--checked:active .pl-row-check,
+.pl-tile--active:active .pl-row-check {
+  transform: scale(0.94);
+}
+
+/* Подсказка «сюда можно нажать»: галочка проступает ещё до нажатия */
+.pl-row:hover .pl-row-check::after,
+.pl-tile:hover .pl-row-check::after {
+  opacity: 0.3;
+}
+
+.pl-row--checked:hover .pl-row-check::after,
+.pl-tile--active:hover .pl-row-check::after {
+  opacity: 1;
+}
+
+/* ─── Нажатие там, где его не было ───────────────────────────────────────── */
+/* Перечислены поимённо, а не через универсальный button: у части кнопок своя
+   анимация нажатия, и общее правило её бы перебивало. */
+
+.pl-new-btn:active,
+.dl-dropdown-item:active,
+.ctl-dropdown-item:active,
+.pl-row-action-btn:active,
+.pl-tab-icon:active,
+.avm-btn:active,
+.restore-stop:active,
+.restore-report:active,
+.pl-editor-close:active,
+.pl-search-clear:active {
+  transform: scale(0.96);
+}
+
+.pl-new-btn,
+.dl-dropdown-item,
+.ctl-dropdown-item,
+.avm-btn,
+.pl-editor-close,
+.pl-search-clear {
+  transition:
+    background var(--dur-fast, 140ms) var(--ease-out, ease),
+    border-color var(--dur-fast, 140ms) var(--ease-out, ease),
+    color var(--dur-fast, 140ms) var(--ease-out, ease),
+    transform var(--dur-fast, 140ms) var(--ease-out, ease);
+}
+
+/* Крестик — самая частая кнопка в окнах, а отзывался он слабее прочих */
+.pl-editor-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+/* ─── Фокус с клавиатуры ─────────────────────────────────────────────────── */
+/* :focus-visible, а не :focus — рамка нужна тем, кто пришёл с клавиатуры,
+   и только мешала бы после обычного клика мышью. */
+
+.seg-option:focus-visible,
+.pl-new-btn:focus-visible,
+.control-btn:focus-visible,
+.dl-dropdown-item:focus-visible,
+.ctl-dropdown-item:focus-visible,
+.avm-btn:focus-visible,
+.app-version:focus-visible,
+.pl-editor-close:focus-visible,
+.pl-row:focus-visible,
+.pl-tile:focus-visible {
+  outline: 2px solid var(--accent, #f43f5e);
+  outline-offset: 2px;
+}
+
+/* ─── Строки и плитки плейлистов ─────────────────────────────────────────── */
+/* Небольшой подъём под курсором и возврат при нажатии: движение мелкое,
+   но именно оно отличает «нажал» от «ткнул в картинку». */
+
+.pl-tile {
+  transition:
+    transform var(--dur-fast, 140ms) var(--ease-out, ease),
+    box-shadow var(--dur-base, 230ms) var(--ease-out, ease);
+}
+
+.pl-tile:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.42);
+}
+
+.pl-tile:active {
+  transform: translateY(0) scale(0.985);
+}
+
+.pl-row {
+  transition: transform var(--dur-fast, 140ms) var(--ease-out, ease);
+}
+
+.pl-row:active {
+  transform: scale(0.994);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pl-tile,
+  .pl-tile:hover,
+  .pl-tile:active,
+  .pl-row,
+  .pl-row:active {
+    transform: none;
+    transition: none;
+  }
+}

@@ -8,12 +8,16 @@ import {
     cropBannerImage,
     initBannerCropper,
     forgetLegacyIcon,
+    primeLegacyIcons,
+    primeThumbs,
+    releaseBanners,
 } from "./banner.js";
 import {
     setPlaylistBanner,
     setPlaylistBannerVideo,
     deletePlaylistBanner,
     deletePlaylistIcon,
+    getSuggestions,
 } from "./api.js";
 import { encodePlaylistShare, decodePlaylistShare } from "./share.js";
 import { revealSimple, revealChars } from "./text-reveal.js";
@@ -495,54 +499,44 @@ export function setMadnessCurrent(text) {
 
 // ─── Transition Mode Toggle (Fade / Flip) ──────────────────────────────────
 
-const transitionModeGroup = document.getElementById("transitionModeGroup");
-const transitionDropdown = document.getElementById("transitionDropdown");
-const transitionTriggerBtn = document.getElementById("transitionTriggerBtn");
-const transitionTriggerLabel = document.getElementById("transitionTriggerLabel");
-const transitionMenu = document.getElementById("transitionMenu");
+const transitionSwitch = document.getElementById("transitionSwitch");
 
+/**
+ * Переключатель режима перехода. Видны оба состояния сразу, нужное выбирается
+ * одним нажатием — списком это было бы два: открыть и выбрать.
+ *
+ * Выбранное показывает подсветка самой надписи — никакой разметки под
+ * позицию, поэтому третий режим не потребует ни строчки кода.
+ */
 export function initTransitionModeToggle(onChange, initialMode = "crossfade") {
-    const syncLabel = () => {
-        const active = transitionModeGroup.querySelector("button.active");
-        transitionTriggerLabel.textContent = active?.textContent.trim() || "Fade";
+    if (!transitionSwitch) return;
+
+    const options = [...transitionSwitch.querySelectorAll(".seg-option")];
+    if (!options.length) return;
+
+    const apply = (mode, notify) => {
+        const index = options.findIndex((b) => b.dataset.mode === mode);
+        if (index < 0) return;
+
+        options.forEach((button, i) => {
+            const active = i === index;
+            button.classList.toggle("is-active", active);
+            button.setAttribute("aria-pressed", String(active));
+        });
+        if (notify) onChange(mode);
     };
 
-    const activeBtn = transitionModeGroup.querySelector(`[data-mode="${initialMode}"]`);
-    if (activeBtn) {
-        [...transitionModeGroup.children].forEach((b) => b.classList.remove("active"));
-        activeBtn.classList.add("active");
-    }
-    syncLabel();
+    // Сохранённый режим мог остаться от версии, где режимов было больше
+    apply(options.some((b) => b.dataset.mode === initialMode) ? initialMode : "crossfade", false);
 
-    transitionModeGroup.addEventListener("click", (e) => {
-        const btn = e.target.closest("button");
-        if (!btn) return;
-        [...transitionModeGroup.children].forEach((b) => b.classList.remove("active"));
-        btn.classList.add("active");
-        syncLabel();
-        closeTransitionMenu();
-        onChange(btn.dataset.mode);
-    });
+    transitionSwitch.addEventListener("click", (e) => {
+        const button = e.target.closest(".seg-option");
+        if (!button || button.classList.contains("is-active")) return;
 
-    transitionTriggerBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        const willOpen = transitionMenu.classList.contains("hidden");
-        transitionMenu.classList.toggle("hidden", !willOpen);
-        transitionDropdown.classList.toggle("open", willOpen);
-        transitionTriggerBtn.blur();
+        apply(button.dataset.mode, true);
+        button.blur();
     });
-
-    document.addEventListener("click", (e) => {
-        if (!transitionDropdown.contains(e.target)) closeTransitionMenu();
-    });
-    document.addEventListener("keydown", (e) => {
-        if (e.key === "Escape") closeTransitionMenu();
-    });
-}
-
-function closeTransitionMenu() {
-    transitionMenu.classList.add("hidden");
-    transitionDropdown.classList.remove("open");
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -838,8 +832,55 @@ export function toggleVideoEditor(video, playlists, tab = "playlists") {
 
 let _editorRenderGen = 0;
 
+/**
+ * Подсказка «похоже на» для текущего ролика.
+ *
+ * Держим на один ролик: список перерисовывается на каждую букву в поиске,
+ * и спрашивать сервер каждый раз незачем — ответ от набора текста не меняется.
+ *
+ * Вместе с результатом храним и сам незавершённый запрос. Без этого вторая
+ * отрисовка, начавшаяся пока идёт первая, видела бы заполненный videoId,
+ * считала бы подсказки готовыми и рисовала список пустым — а первая к тому
+ * моменту уже отменилась бы по номеру поколения.
+ */
+let _suggested = { videoId: null, names: [], loading: null };
+
+function primeSuggestions() {
+    const videoId = _currentVideoId;
+    if (_suggested.videoId === videoId) return _suggested.loading ?? Promise.resolve();
+
+    _suggested = { videoId, names: [], loading: null };
+    if (!videoId) return Promise.resolve();
+
+    _suggested.loading = (async () => {
+        try {
+            const { playlists } = await getSuggestions(videoId);
+
+            // Пока ждали ответа, могли переключить ролик — подсказка уже чужая
+            if (_suggested.videoId !== videoId) return;
+
+            // Плейлист мог быть удалён между запросом и отрисовкой
+            _suggested.names = (playlists || [])
+                .map((p) => p.name)
+                .filter((name) => _playlists[name]);
+        } catch {
+            // Подсказка — удобство, а не обязанность: без неё список обычный
+        } finally {
+            if (_suggested.videoId === videoId) _suggested.loading = null;
+        }
+    })();
+
+    return _suggested.loading;
+}
+
 async function renderEditorRows(query) {
     const gen = ++_editorRenderGen;
+
+    // Значки, кадры и подсказки — по одному запросу на всех, дальше без сети
+    await Promise.all([primeLegacyIcons(), primeThumbs(), primeSuggestions()]);
+    if (gen !== _editorRenderGen) return;
+
+    releaseBanners(editorList);
     editorList.innerHTML = "";
     const q = query.toLowerCase();
     let entries = Object.entries(_playlists).filter(
@@ -855,6 +896,19 @@ async function renderEditorRows(query) {
         return;
     }
 
+    // «Похоже на» — то же самое ярлыком поверх списка, что и «Недавние»:
+    // плейлист остаётся на своём месте, сюда вынесена ещё одна его строка.
+    // При поиске не показываем — там пользователь уже знает, что ищет.
+    if (!q && _suggested.names.length) {
+        if (gen !== _editorRenderGen) return;
+
+        const { block, items } = buildGroupBlock("Похоже на", "__suggested", { rows: true });
+        for (const name of _suggested.names) {
+            items.appendChild(buildEditorRow(name, _playlists[name]));
+        }
+        editorList.appendChild(block);
+    }
+
     // «Недавние» — не отдельная группа, а ярлык поверх обычного списка:
     // плейлист остаётся и в своей группе, просто сюда вынесена ещё одна его
     // строка. Иначе привычное место плейлиста уезжало бы, стоило его тронуть.
@@ -863,12 +917,12 @@ async function renderEditorRows(query) {
 
         if (recentNames.length) {
             if (gen !== _editorRenderGen) return;
-            editorList.appendChild(buildGroupLabel("Недавние"));
+
+            const { block, items } = buildGroupBlock("Недавние", "__recent", { rows: true });
             for (const name of recentNames) {
-                const row = await buildEditorRow(name, _playlists[name]);
-                if (gen !== _editorRenderGen) return;
-                editorList.appendChild(row);
+                items.appendChild(buildEditorRow(name, _playlists[name]));
             }
+            editorList.appendChild(block);
         }
     }
 
@@ -890,21 +944,19 @@ async function renderEditorRows(query) {
     if (needsPlainLabel) editorList.appendChild(buildGroupLabel("Все плейлисты"));
 
     for (const group of groups) {
-        if (group.name) {
-            if (gen !== _editorRenderGen) return;
-            editorList.appendChild(buildGroupLabel(group.name));
-        }
+        if (gen !== _editorRenderGen) return;
+
+        const { block, items } = buildGroupBlock(group.name, groupKeyOf(group), { rows: true });
         for (const entry of group.items) {
-            const row = await buildEditorRow(entry.key, entry.payload);
-            if (gen !== _editorRenderGen) return;
-            editorList.appendChild(row);
+            items.appendChild(buildEditorRow(entry.key, entry.payload));
         }
+        editorList.appendChild(block);
     }
 
     window.refreshCustomIcons?.();
 }
 
-async function buildEditorRow(name, data) {
+function buildEditorRow(name, data) {
     // ролик может лежать в плейлисте копией ("id#2"), поэтому ищем по id куба
     const isChecked = !!findKeyForCoub(data.videos, _currentVideoId);
     const isReadonly = READONLY_PLAYLISTS.includes(name);
@@ -919,7 +971,7 @@ async function buildEditorRow(name, data) {
     // группе. По этому имени обе строки и находятся, чтобы обновлять их вместе
     row.dataset.playlist = name;
 
-    const icon = await buildListBanner(name, data, {
+    const icon = buildListBanner(name, data, {
         className: "pl-row-icon",
         hoverTarget: row,
     });
@@ -1227,11 +1279,102 @@ function groupEntries(entries, kind = "playlists") {
     }));
 }
 
-function buildGroupLabel(text) {
+// ─── Свёрнутые группы ──────────────────────────────────────────────────────
+// Состояние общее для обоих списков и переживает перезапуск: свернув группу,
+// пользователь убрал её с глаз, и показывать её снова при каждом открытии
+// окна значило бы не услышать его.
+
+const COLLAPSED_KEY = "coub_player_collapsed_groups";
+
+const _collapsedGroups = new Set(readCollapsedGroups());
+
+function readCollapsedGroups() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(COLLAPSED_KEY));
+        return Array.isArray(saved) ? saved : [];
+    } catch {
+        return [];
+    }
+}
+
+function saveCollapsedGroups() {
+    try {
+        localStorage.setItem(COLLAPSED_KEY, JSON.stringify([..._collapsedGroups]));
+    } catch {
+        // Переполненное или закрытое хранилище — не повод ломать список
+    }
+}
+
+/** Ключ группы. Пустое имя — «без группы», у неё тоже должно быть своё место. */
+function groupKeyOf(group) {
+    return group.key || "__ungrouped";
+}
+
+function isGroupCollapsed(key) {
+    return _collapsedGroups.has(key);
+}
+
+function toggleGroup(key, block) {
+    const collapsed = !_collapsedGroups.has(key);
+    if (collapsed) _collapsedGroups.add(key);
+    else _collapsedGroups.delete(key);
+
+    saveCollapsedGroups();
+    block.classList.toggle("is-collapsed", collapsed);
+}
+
+/**
+ * Подпись группы. С ключом становится сворачивающей: к названию добавляется
+ * стрелка, а нажатие прячет содержимое.
+ */
+function buildGroupLabel(text, key = null) {
     const label = document.createElement("div");
     label.className = "pl-group-label";
-    label.textContent = text;
+
+    if (key === null) {
+        label.textContent = text;
+        return label;
+    }
+
+    label.classList.add("pl-group-label--collapsible");
+    label.title = "Свернуть или развернуть группу";
+
+    const chevron = document.createElement("span");
+    chevron.className = "pl-group-chevron";
+    chevron.setAttribute("aria-hidden", "true");
+
+    const name = document.createElement("span");
+    name.className = "pl-group-name";
+    name.textContent = text;
+
+    label.append(chevron, name);
     return label;
+}
+
+/**
+ * Собирает блок группы: подпись со стрелкой и контейнер под содержимое.
+ * Один и тот же для обоих списков — различаются они только тем, что внутри.
+ */
+function buildGroupBlock(name, key, { rows = false } = {}) {
+    const block = document.createElement("div");
+    block.className = "pl-group";
+    block.dataset.group = key;
+
+    const items = document.createElement("div");
+    items.className = rows ? "pl-group-items pl-group-items--rows" : "pl-group-items";
+
+    if (name) {
+        const label = buildGroupLabel(name, key);
+        label.addEventListener("click", (e) => {
+            e.stopPropagation();
+            toggleGroup(key, block);
+        });
+        block.appendChild(label);
+        if (isGroupCollapsed(key)) block.classList.add("is-collapsed");
+    }
+
+    block.appendChild(items);
+    return { block, items, label: block.querySelector(".pl-group-label") };
 }
 
 /** Меню «собрать в группу» для плейлиста или тега. */
@@ -1372,7 +1515,7 @@ async function resetBanner(name, kind) {
         if (kind === "image") {
             // старая иконка плейлиста тоже считается «своей картинкой»
             await deletePlaylistIcon(name).catch(() => { });
-            forgetLegacyIcon(name);
+            forgetLegacyIcon();
         }
         await afterBannerChange();
     } catch (err) {
@@ -1387,8 +1530,8 @@ async function resetBanner(name, kind) {
  * занят основным действием (выбрать плейлист / добавить в него ролик).
  * Меню баннера открывается отдельной кнопкой (см. buildBannerButton).
  */
-async function buildListBanner(name, data, { className, hoverTarget }) {
-    const banner = await buildBannerEl(name, data, { coubMap: _getCoubMap() });
+function buildListBanner(name, data, { className, hoverTarget }) {
+    const banner = buildBannerEl(name, data, { coubMap: _getCoubMap() });
     banner.classList.add(className);
     bindBannerHover(hoverTarget, banner);
     return banner;
@@ -2039,6 +2182,12 @@ let _selectorRenderGen = 0; // NEW
 
 async function renderSelectorRows(query) {
     const gen = ++_selectorRenderGen; // NEW
+
+    // Значки и готовые кадры — по одному запросу на всех, дальше без сети
+    await Promise.all([primeLegacyIcons(), primeThumbs()]);
+    if (gen !== _selectorRenderGen) return;
+
+    releaseBanners(plSelectorList);
     plSelectorList.innerHTML = "";
     const q = query.toLowerCase();
     let entries = Object.entries(_selectorPlaylists).filter(
@@ -2069,27 +2218,20 @@ async function renderSelectorRows(query) {
     const canDrag = !query;
 
     for (const group of groups) {
-        const block = document.createElement("div");
-        block.className = "pl-group";
+        const { block, items, label } = buildGroupBlock(group.name, groupKeyOf(group));
+
+        // Перетаскивание групп опирается на исходное имя, включая пустое
+        // у «без группы» — поэтому здесь оно, а не ключ сворачивания
         block.dataset.group = group.key;
 
-        if (group.name) {
-            const label = buildGroupLabel(group.name);
-            if (canDrag && group.key) {
-                label.draggable = true;
-                label.classList.add("pl-group-label--draggable");
-                label.title = "Перетащите, чтобы переставить группу";
-            }
-            block.appendChild(label);
+        if (label && canDrag && group.key) {
+            label.draggable = true;
+            label.classList.add("pl-group-label--draggable");
+            label.title = "Перетащите, чтобы переставить · нажмите, чтобы свернуть";
         }
 
-        const items = document.createElement("div");
-        items.className = "pl-group-items";
-        block.appendChild(items);
-
         for (const entry of group.items) {
-            const row = await buildSelectorRow(entry.key, entry.payload);
-            if (gen !== _selectorRenderGen) return; // NEW
+            const row = buildSelectorRow(entry.key, entry.payload);
             row.draggable = canDrag;
             items.appendChild(row);
         }
@@ -2252,7 +2394,7 @@ function sortPlaylistEntries(entries) {
         .map((x) => x.entry);
 }
 
-async function buildSelectorRow(name, data) {
+function buildSelectorRow(name, data) {
     const count = Object.keys(data.videos || {}).length;
     const isActive = name === _selectorSelected;
     const isRO = READONLY_SELECTOR.includes(name);
@@ -2262,7 +2404,7 @@ async function buildSelectorRow(name, data) {
     tile.dataset.playlist = name;
     tile.dataset.group = playlistGroupOf(name, data) || "";
 
-    const thumb = await buildListBanner(name, data, {
+    const thumb = buildListBanner(name, data, {
         className: "pl-tile-thumb",
         hoverTarget: tile,
     });
@@ -2379,7 +2521,7 @@ export async function sanitizeBrokenPlaylists() {
 
         try {
             await _onRenamePlaylist(oldName, finalName);
-            forgetLegacyIcon(oldName);
+            forgetLegacyIcon();
             if (_selectorSelected === oldName) {
                 _selectorSelected = finalName;
                 setPlaylistTriggerLabel(finalName);
@@ -2440,7 +2582,7 @@ function startInlineRename(tile, oldName, nameEl, countEl) {
 
         try {
             await _onRenamePlaylist(oldName, newName);
-            forgetLegacyIcon(oldName);
+            forgetLegacyIcon();
 
             if (_selectorSelected === oldName) {
                 _selectorSelected = newName;

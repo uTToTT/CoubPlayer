@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using CoubPlayer.Services;
+using CoubPlayer.Storage;
 namespace CoubPlayer
 {
     public class Program
@@ -40,7 +41,18 @@ namespace CoubPlayer
             builder.Services.AddHttpClient();
             builder.Services.AddSingleton<CoubDownloadService>();
             builder.Services.AddSingleton<CoubTimelineService>();
-            builder.Services.AddSingleton<CoubListService>();
+            builder.Services.AddSingleton<RestoreService>();
+            builder.Services.AddSingleton<MetadataService>();
+
+            // Хранилище: база и репозитории поверх неё. Контроллеры работают
+            // только через них и о том, где лежит файл базы, не знают
+            builder.Services.AddSingleton<CoubDb>();
+            builder.Services.AddSingleton<BackupService>();
+            builder.Services.AddSingleton<PlaylistRepository>();
+            builder.Services.AddSingleton<CoubRepository>();
+            builder.Services.AddSingleton<FxPresetRepository>();
+            builder.Services.AddSingleton<GroupOrderRepository>();
+            builder.Services.AddSingleton<SuggestionRepository>();
             builder.Services.AddHttpClient("Coub")
     .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
     {
@@ -64,12 +76,48 @@ namespace CoubPlayer
             // Переносит старые ролики (скачанные консольным CoubDownloader в wwwroot/Coubs)
             // в новую раскладку wwwroot/Data/Coubs и переписывает пути в coub_list.json.
             // Идемпотентно — безопасно вызывать при каждом старте.
+            //
+            // Обязательно до DataMigrations: работает по JSON-файлам, а те после
+            // перехода на базу уезжают в архив. Для уже перешедшего плеера это
+            // просто «файла нет — делать нечего».
             CoubLibraryMigrator.MigrateOldPaths();
 
-            // До UseStaticFiles — иначе расширение не сможет прочитать
-            // Data/coub_list.json, по которому оно сверяет библиотеку
+            // Схема базы, одноразовый перенос из JSON и миграции между версиями
+            // плеера. Падение здесь намеренно останавливает запуск: работать
+            // с данными, про которые известно, что они неверны, нельзя
+            DataMigrations.Run(
+                app.Services.GetRequiredService<CoubDb>(),
+                Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "Data"));
+
+            // Копия — до того, как в данных что-то поменяется за этот сеанс.
+            // Ролики перекачиваются за вечер, раскладка не перекачивается ничем
+            app.Services.GetRequiredService<BackupService>().EnsureRecent();
+
+            // До UseStaticFiles: статика тоже отдаётся расширению — файлы
+            // роликов и баннеров, — а без политики CORS браузер их не отдаст
             app.UseCors(ExtensionCorsPolicy);
-            app.UseStaticFiles();
+
+            // Разметка и скрипты — всегда с перепроверкой у сервера.
+            //
+            // Без этого браузер держит их в кэше и после обновления плеера
+            // продолжает крутить старый код: интерфейс от одной версии,
+            // API от другой. Проверка стоит одного запроса к локальному
+            // диску, а путаницу устраняет полностью.
+            //
+            // Файлов роликов, кадров и баннеров это не касается: они тяжёлые
+            // и под своим именем не меняются — пусть кэшируются как прежде.
+            app.UseStaticFiles(new StaticFileOptions
+            {
+                OnPrepareResponse = context =>
+                {
+                    var path = context.File.Name;
+                    var isCode = path.EndsWith(".js", StringComparison.OrdinalIgnoreCase)
+                              || path.EndsWith(".css", StringComparison.OrdinalIgnoreCase)
+                              || path.EndsWith(".html", StringComparison.OrdinalIgnoreCase);
+
+                    if (isCode) context.Context.Response.Headers.CacheControl = "no-cache";
+                },
+            });
             app.MapControllers();
 
             var url = "http://localhost:5000/index.html";

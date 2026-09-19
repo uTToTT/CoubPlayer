@@ -1,13 +1,15 @@
 {
   "manifest_version": 3,
   "name": "CoubPlayer Downloader",
-  "version": "0.8.1",
+  "version": "0.9.0",
   "description": "Загружает кубы с coub.com в локальный CoubPlayer: кнопка на плеере и массовая догрузка лайков и закладок.",
 
   "permissions": ["cookies", "storage"],
 
   "host_permissions": [
     "https://coub.com/*",
+    "https://*.coub.com/*",
+    "https://*.akamaihd.net/*",
     "http://localhost/*"
   ],
 

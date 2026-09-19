@@ -304,6 +304,34 @@ export function isGridMode() {
     return _viewMode === "grid";
 }
 
+/**
+ * Переставляет ползунок громкости между нижней панелью и строкой сетки.
+ *
+ * Именно переставляет, а не заводит второй: два ползунка пришлось бы
+ * синхронизировать, и они бы однажды разошлись. Обработчики висят на самом
+ * элементе и переезд переживают.
+ *
+ * Исходное место запоминаем соседом, а не родителем: в панели ползунок не
+ * первый, и возвращать его надо туда же, откуда взяли.
+ */
+let _volumeHome = null;
+
+function moveVolumeControl(toGrid) {
+    const slider = document.getElementById("volumeSlider");
+    const slot = document.getElementById("gridVolumeSlot");
+    if (!slider || !slot) return;
+
+    if (!_volumeHome) {
+        _volumeHome = { parent: slider.parentNode, before: slider.nextSibling };
+    }
+
+    if (toGrid) {
+        if (slider.parentNode !== slot) slot.appendChild(slider);
+    } else if (slider.parentNode === slot) {
+        _volumeHome.parent.insertBefore(slider, _volumeHome.before);
+    }
+}
+
 export function setViewMode(mode, { silent = false } = {}) {
     const next = mode === "grid" ? "grid" : "list";
     const changed = next !== _viewMode;
@@ -313,6 +341,8 @@ export function setViewMode(mode, { silent = false } = {}) {
     [...viewModeGroup.children].forEach((b) =>
         b.classList.toggle("active", b.dataset.view === _viewMode)
     );
+
+    moveVolumeControl(isGridMode());
 
     if (isGridMode()) {
         // Режим «плитка» полностью выключает плеер: звучать и крутиться
@@ -418,11 +448,29 @@ function renderNextChunk() {
 
     const slice = _filtered.slice(_renderedCount, _renderedCount + CHUNK);
     const frag = document.createDocumentFragment();
+    const fresh = [];
+
     for (let i = 0; i < slice.length; i++) {
-        frag.appendChild(buildTile(slice[i], _renderedCount + i));
+        const tile = buildTile(slice[i], _renderedCount + i);
+        tile.classList.add("coub-tile--enter");
+        fresh.push(tile);
+        frag.appendChild(tile);
     }
 
     list.insertBefore(frag, sentinel);
+
+    // Волна появления: класс снимается с плиток по очереди, дальше их
+    // доводит переход в CSS. Через setTimeout, а не requestAnimationFrame —
+    // кадры идут не всегда (свёрнутое окно, фоновая вкладка), а плитка
+    // обязана стать видимой в любом случае.
+    //
+    // Задержка растёт только у первых полутора десятков: дальше они всё
+    // равно за краем экрана, а ждать своей очереди пришлось бы секунды.
+    for (let i = 0; i < fresh.length; i++) {
+        const tile = fresh[i];
+        setTimeout(() => tile.classList.remove("coub-tile--enter"), Math.min(i, 14) * 30);
+    }
+
     _renderedCount += slice.length;
 
     if (_renderedCount >= _filtered.length) sentinelObserver.unobserve(sentinel);

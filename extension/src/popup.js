@@ -4,7 +4,7 @@
 // закрывается в любой момент.
 
 import { MSG } from "./messages.js";
-import { getBaseUrl, setBaseUrl } from "./local-api.js";
+import { getBaseUrl, setBaseUrl, isBrowserTransfer, setBrowserTransfer } from "./local-api.js";
 
 // Куки, ради которых вся затея: по ним coub.com узнаёт пользователя
 const KEY_COOKIES = ["remember_token", "_coub_session", "auth_token"];
@@ -12,6 +12,7 @@ const KEY_COOKIES = ["remember_token", "_coub_session", "auth_token"];
 const el = {
     serverStatus: document.getElementById("serverStatus"),
     serverUrl: document.getElementById("serverUrl"),
+    browserTransfer: document.getElementById("browserTransfer"),
     mode: document.getElementsByName("mode"),
     syncButtons: [...document.querySelectorAll("[data-category]")],
     progress: document.getElementById("progress"),
@@ -366,6 +367,10 @@ el.runProbe.addEventListener("click", runProbe);
 el.readRequests.addEventListener("click", readRequests);
 el.copyRequests.addEventListener("click", copyRequests);
 
+el.browserTransfer.addEventListener("change", () => {
+    setBrowserTransfer(el.browserTransfer.checked);
+});
+
 el.cardButtons.addEventListener("change", () => {
     // content script слушает storage и сам добавит или снимет кнопки
     chrome.storage.local.set({ cardButtons: el.cardButtons.checked });
@@ -382,6 +387,7 @@ chrome.runtime.onMessage.addListener((message) => {
     el.cardButtons.checked = cardButtons !== false;
 
     el.serverUrl.value = await getBaseUrl();
+    el.browserTransfer.checked = await isBrowserTransfer();
     await checkServer();
     // Загрузка могла начаться при прошлом открытии попапа и идти до сих пор
     renderJob(await send(MSG.JOB).catch(() => null));

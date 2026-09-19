@@ -239,6 +239,12 @@ input[type="text"]:focus {
   margin: 0;
 }
 
+/* Переключатель под полем адреса: отделяем его от поля и от пояснения */
+.switch--spaced {
+  margin-top: 12px;
+  margin-bottom: 5px;
+}
+
 .muted {
   color: var(--muted);
   font-size: 11px;

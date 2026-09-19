@@ -1,0 +1,151 @@
+/* restore.css
+   Панель долгой фоновой задачи. Задача идёт часами, поэтому панель
+   не перекрывает плеер и её можно свернуть — работа при этом продолжается.
+
+   Пользуются ею двое: возврат пропавших файлов (restore.js) и сбор сведений
+   о роликах (metadata.js). Обе — обход coub.com с прогрессом и остановкой,
+   и разводить им отдельные стили значило бы держать два одинаковых набора.
+   Одновременно они не запускаются: сервер это запрещает, иначе частота
+   запросов к сайту удвоилась бы. */
+
+.restore-panel {
+  position: fixed;
+  left: 20px;
+  bottom: 20px;
+  /* Ниже модальных окон (оверлеи идут с 50): панель сообщает о фоновой
+     задаче и не должна закрывать кнопки того, что открыто поверх неё */
+  z-index: 45;
+  width: 288px;
+  padding: 13px 14px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  background: rgba(18, 18, 22, 0.92);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.45);
+  color: #f0f0f0;
+  font-size: 12.5px;
+  animation: restore-in var(--dur-base, 230ms) var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+@keyframes restore-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--slide-md, 26px));
+  }
+}
+
+.restore-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 9px;
+}
+
+.restore-title {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.42);
+}
+
+.restore-hide {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.16s var(--ease-out, ease), color 0.16s var(--ease-out, ease);
+}
+
+.restore-hide:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.restore-counts {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 7px;
+}
+
+.restore-progress {
+  font-variant-numeric: tabular-nums;
+}
+
+.restore-eta {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 11.5px;
+}
+
+.restore-track {
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+
+.restore-bar {
+  height: 100%;
+  width: 0;
+  border-radius: 2px;
+  background: var(--accent, #f43f5e);
+  transition: width var(--dur-base, 230ms) var(--ease-out, ease);
+}
+
+.is-done .restore-bar {
+  background: #4ade80;
+}
+
+.restore-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 9px;
+  min-height: 22px;
+}
+
+/* Имя текущего ролика бывает длинным — режем, а не распираем панель */
+.restore-note {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.38);
+  font-size: 11.5px;
+}
+
+.restore-stop,
+.restore-report {
+  flex: none;
+  padding: 4px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.75);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: background 0.16s var(--ease-out, ease), border-color 0.16s var(--ease-out, ease);
+}
+
+.restore-stop:hover:not(:disabled),
+.restore-report:hover {
+  background: rgba(244, 63, 94, 0.9);
+  border-color: rgba(244, 63, 94, 0.9);
+  color: #fff;
+}
+
+.restore-stop:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

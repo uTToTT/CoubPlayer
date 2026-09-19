@@ -1,7 +1,11 @@
 // local-api.js
-// Общение с локальным CoubPlayer. Расширение ничего не скачивает само —
-// оно только приносит ссылки, а качает, дедуплицирует и раскладывает
-// по плейлистам сервер (PlaylistsController.DownloadAndAdd).
+// Общение с локальным CoubPlayer. Обычно расширение не скачивает ничего само —
+// оно приносит ссылки, а качает, дедуплицирует и раскладывает по плейлистам
+// сервер (PlaylistsController.DownloadAndAdd).
+//
+// Исключение — режим «через браузер»: когда провайдер блокирует coub.com,
+// а VPN есть только в браузере, файлы тянет расширение и приносит сюда
+// готовыми (plan + upload, см. transfer.js).
 
 const DEFAULT_BASE = "http://localhost:5000";
 
@@ -12,6 +16,22 @@ export async function getBaseUrl() {
 
 export async function setBaseUrl(url) {
     await chrome.storage.local.set({ serverUrl: url.replace(/\/+$/, "") });
+}
+
+// ─── Кто тянет файлы ────────────────────────────────────────────────────────
+// По умолчанию сервер: так быстрее и не расходует трафик браузера. Режим
+// переключается вручную в попапе — угадать за пользователя нельзя, а
+// проверять доступность coub.com перед каждой загрузкой значило бы ждать
+// таймаут там, где всё и так работает.
+
+/** @returns {Promise<boolean>} тянуть ли файлы браузером вместо сервера */
+export async function isBrowserTransfer() {
+    const { transferMode } = await chrome.storage.local.get("transferMode");
+    return transferMode === "browser";
+}
+
+export async function setBrowserTransfer(enabled) {
+    await chrome.storage.local.set({ transferMode: enabled ? "browser" : "server" });
 }
 
 /** Ошибка прерванного запроса — вызывающий отличает её от настоящего сбоя. */
@@ -82,15 +102,74 @@ export async function getPlaylists(coubId) {
  *
  * @param {string} playlist
  * @param {string[]} permalinks
- * @param {AbortSignal} [signal] — прерывает ожидание ответа; сервер при этом
- *        текущую пачку всё равно докачает, но она и так уже в работе
+ * @param {object} [options]
+ * @param {string[]} [options.order] — порядок, которому должен следовать
+ *        плейлист: вся собранная лента, от новых к старым. По нему сервер
+ *        ставит каждый ролик на своё место, а не просто в начало.
+ * @param {AbortSignal} [options.signal] — прерывает ожидание ответа; сервер
+ *        при этом текущую пачку всё равно докачает, но она и так уже в работе
  * @returns {Promise<Array<{id: string, success: boolean, error?: string, alreadyExisted?: boolean}>>}
  */
-export async function download(playlist, permalinks, signal) {
+export async function download(playlist, permalinks, { order, signal } = {}) {
     return request(`/api/playlists/${encodeURIComponent(playlist)}/download`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ urls: permalinks }),
+        body: JSON.stringify({ urls: permalinks, order }),
+        signal,
+    });
+}
+
+// ─── Загрузка силами браузера ───────────────────────────────────────────────
+
+/**
+ * Спрашивает сервер, что качать для ролика.
+ *
+ * Зовётся дважды. Без meta — дешёвый вопрос «файлы уже есть?»: ответ «да»
+ * экономит поход в сеть, ради которого всё и затевалось. Получив needsMeta,
+ * вызывающий приносит ответ coub.com и спрашивает снова.
+ *
+ * @param {string} id
+ * @param {string|null} [meta] ответ coub.com как есть
+ * @returns {Promise<{id: string, title: string|null, alreadyExists: boolean,
+ *                    needsMeta: boolean, gone: boolean,
+ *                    video: string|null, audio: string|null, audioExt: string}>}
+ */
+export async function plan(id, meta = null) {
+    return request("/api/extension/plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, meta }),
+    });
+}
+
+/**
+ * Приносит серверу скачанные браузером файлы.
+ *
+ * @param {string} playlist
+ * @param {{id: string, title?: string, audioExt?: string, order?: string[], meta?: string}} coub
+ *        meta — ответ coub.com как есть: мы его всё равно запрашивали ради
+ *        ссылок на потоки, и без него ролик осел бы в библиотеке без тегов
+ * @param {Blob} video
+ * @param {Blob|null} audio — у части роликов звука нет вовсе
+ * @param {AbortSignal} [signal]
+ * @returns {Promise<{id: string, title?: string, success: boolean, error?: string}>}
+ */
+export async function upload(playlist, coub, video, audio, signal) {
+    const ext = coub.audioExt || "mp3";
+
+    const form = new FormData();
+    form.append("id", coub.id);
+    if (coub.title) form.append("title", coub.title);
+    form.append("audioExt", ext);
+    if (coub.meta) form.append("meta", coub.meta);
+    if (coub.order?.length) form.append("order", JSON.stringify(coub.order));
+    form.append("video", video, "video.mp4");
+    if (audio) form.append("audio", audio, `audio.${ext}`);
+
+    return request(`/api/playlists/${encodeURIComponent(playlist)}/upload`, {
+        method: "POST",
+        // Content-Type не ставим: его выставит сама FormData, вместе с boundary
+        body: form,
         signal,
     });
 }

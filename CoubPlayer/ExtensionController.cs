@@ -1,6 +1,9 @@
-using CoubPlayer.Meta;
+using CoubPlayer.Requests;
+using CoubPlayer.Services;
+using CoubPlayer.Storage;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace CoubPlayer
 {
@@ -8,25 +11,38 @@ namespace CoubPlayer
     /// Точка входа для браузерного расширения.
     ///
     /// Расширение живёт на coub.com и умеет то, чего не может сервер, — ходить
-    /// в приватный API от имени залогиненного пользователя. Скачиванием
-    /// по-прежнему занимается сервер: расширение лишь присылает ссылки
+    /// в приватный API от имени залогиненного пользователя. Обычно скачиванием
+    /// занимается сервер: расширение лишь присылает ссылки
     /// в /api/playlists/{playlist}/download.
     ///
-    /// Здесь только то, что расширению нужно знать перед этим: жив ли сервер,
+    /// Но сервер не всегда достаёт до coub.com — провайдер может его
+    /// блокировать, а VPN быть только в браузере. Тогда файлы тянет
+    /// расширение, и ему нужен план: что именно качать (Plan) и куда
+    /// принести (/api/playlists/{playlist}/upload).
+    ///
+    /// Здесь же и то, что расширению нужно знать заранее: жив ли сервер,
     /// куда складывать и что уже скачано.
     /// </summary>
     [ApiController]
     [Route("api/extension")]
     public class ExtensionController : ControllerBase
     {
-        private readonly string _playlistsPath = Path.Combine(
-            Directory.GetCurrentDirectory(), "wwwroot", "Data", "playlists.json");
+        private readonly CoubDownloadService _downloads;
+        private readonly PlaylistRepository _playlists;
+        private readonly CoubRepository _coubs;
+        private readonly GroupOrderRepository _groups;
 
-        private readonly string _coubListPath = Path.Combine(
-            Directory.GetCurrentDirectory(), "wwwroot", "Data", "coub_list.json");
-
-        private readonly string _groupOrderPath = Path.Combine(
-            Directory.GetCurrentDirectory(), "wwwroot", "Data", "group_order.json");
+        public ExtensionController(
+            CoubDownloadService downloads,
+            PlaylistRepository playlists,
+            CoubRepository coubs,
+            GroupOrderRepository groups)
+        {
+            _downloads = downloads;
+            _playlists = playlists;
+            _coubs = coubs;
+            _groups = groups;
+        }
 
         /// <summary>
         /// Рукопожатие: расширение зовёт его, чтобы отличить запущенный
@@ -39,8 +55,39 @@ namespace CoubPlayer
             {
                 app = "CoubPlayer",
                 api = 1,
-                playlists = ReadPlaylistNames(),
+                version = AppVersion.Current,
+                playlists = _playlists.ReadNames(),
             });
+        }
+
+        /// <summary>
+        /// Что качать для одного ролика, когда качает не сервер, а расширение.
+        ///
+        /// Зовётся дважды. Сперва без метаданных — это дешёвый вопрос «файлы
+        /// уже на диске?», и ответ «да» экономит трафик VPN, ради которого всё
+        /// и затевалось. Получив needsMeta, расширение идёт на coub.com
+        /// и присылает ответ сюда: какие потоки из него брать, решает сервер.
+        /// </summary>
+        [HttpPost("plan")]
+        public IActionResult Plan([FromBody] CoubPlanRequest req)
+        {
+            if (!CoubDownloadService.IsSafeId(req?.Id))
+                return BadRequest("Некорректный id ролика");
+
+            JObject? meta = null;
+            if (!string.IsNullOrWhiteSpace(req!.Meta))
+            {
+                try
+                {
+                    meta = JObject.Parse(req.Meta);
+                }
+                catch (JsonException)
+                {
+                    return BadRequest("Метаданные не разобрались как JSON");
+                }
+            }
+
+            return Ok(_downloads.Plan(req.Id!, meta));
         }
 
         /// <summary>
@@ -51,25 +98,16 @@ namespace CoubPlayer
         /// при догрузке ленты: сверяться со всей библиотекой нельзя, иначе куб,
         /// скачанный когда-то в другой плейлист, в этот уже никогда не попадёт.
         /// Без параметра — вся библиотека.
-        ///
-        /// Ролик может лежать копией ("id#2"), поэтому отдаём базовые id.
         /// </summary>
         [HttpGet("library")]
         public IActionResult Library([FromQuery] string? playlist)
         {
-            if (string.IsNullOrEmpty(playlist))
-                return Ok(new { ids = ReadLibraryIds() });
-
-            var data = ReadPlaylists();
-            if (!data.TryGetValue(playlist, out var pl))
-                return Ok(new { ids = new List<string>() });
-
-            var ids = pl.videos?.Keys
-                .Select(PlaylistKeys.BaseCoubId)
-                .Distinct()
-                .ToList() ?? new List<string>();
-
-            return Ok(new { ids });
+            return Ok(new
+            {
+                ids = string.IsNullOrEmpty(playlist)
+                    ? _coubs.ReadIds()
+                    : _playlists.ReadCoubIds(playlist),
+            });
         }
 
         /// <summary>
@@ -78,7 +116,7 @@ namespace CoubPlayer
         ///
         /// С параметром coub у каждого проставляется признак, лежит ли этот
         /// ролик уже в нём — чтобы в меню было видно, куда его добавлять смысла
-        /// нет. Ролик может лежать копией ("id#2"), поэтому сверяем по базовому id.
+        /// нет. Ролик может лежать копией, поэтому сверяем по id, а не по ключу.
         ///
         /// Рядом отдаётся порядок групп: раскладывает по ним уже расширение,
         /// но собирать это двумя запросами незачем.
@@ -86,28 +124,24 @@ namespace CoubPlayer
         [HttpGet("playlists")]
         public IActionResult Playlists([FromQuery] string? coub)
         {
-            var data = ReadPlaylists();
-
-            var playlists = data
-                .Select((pair, index) => new
-                {
-                    name = pair.Key,
-                    count = pair.Value.videos?.Count ?? 0,
-                    order = pair.Value.order,
-                    group = pair.Value.group,
-                    hasCoub = !string.IsNullOrEmpty(coub) &&
-                              (pair.Value.videos?.Keys.Any(k => PlaylistKeys.BaseCoubId(k) == coub) ?? false),
-                    index,
-                })
+            var playlists = _playlists.ReadSummaries(coub)
+                .Select((p, index) => new { p.Name, p.Count, p.Order, p.Group, p.HasCoub, index })
                 // Тот же порядок, что в плеере (sortPlaylistEntries в ui.js):
                 // сперва расставленные перетаскиванием, затем привычные
-                // bookmarks/liked, остальные — как лежат в файле
-                .OrderBy(x => x.order ?? int.MaxValue)
-                .ThenBy(x => x.order.HasValue ? 0 : PriorityRank(x.name))
+                // bookmarks/liked, остальные — как лежат в базе
+                .OrderBy(x => x.Order ?? int.MaxValue)
+                .ThenBy(x => x.Order.HasValue ? 0 : PriorityRank(x.Name))
                 .ThenBy(x => x.index)
-                .Select(x => new { x.name, x.count, x.order, x.group, x.hasCoub });
+                .Select(x => new
+                {
+                    name = x.Name,
+                    count = x.Count,
+                    order = x.Order,
+                    group = x.Group,
+                    hasCoub = x.HasCoub,
+                });
 
-            return Ok(new { playlists, groupOrder = ReadGroupOrder() });
+            return Ok(new { playlists, groupOrder = _groups.ReadPlaylistGroups() });
         }
 
         /// <summary>
@@ -120,52 +154,5 @@ namespace CoubPlayer
             "liked" => 1,
             _ => 2,
         };
-
-        /// <summary>Порядок групп плейлистов, заданный перетаскиванием в плеере.</summary>
-        private List<string> ReadGroupOrder()
-        {
-            if (!System.IO.File.Exists(_groupOrderPath)) return new();
-            try
-            {
-                var json = System.IO.File.ReadAllText(_groupOrderPath);
-                var data = JsonConvert.DeserializeObject<Dictionary<string, List<string>>>(json);
-                return data != null && data.TryGetValue("playlists", out var order) ? order : new();
-            }
-            catch (JsonException)
-            {
-                return new();
-            }
-        }
-
-        private List<string> ReadPlaylistNames() => ReadPlaylists().Keys.ToList();
-
-        private Dictionary<string, Playlist> ReadPlaylists()
-        {
-            if (!System.IO.File.Exists(_playlistsPath)) return new();
-            try
-            {
-                var json = System.IO.File.ReadAllText(_playlistsPath);
-                return JsonConvert.DeserializeObject<Dictionary<string, Playlist>>(json) ?? new();
-            }
-            catch (JsonException)
-            {
-                return new();
-            }
-        }
-
-        private List<string> ReadLibraryIds()
-        {
-            if (!System.IO.File.Exists(_coubListPath)) return new();
-            try
-            {
-                var json = System.IO.File.ReadAllText(_coubListPath);
-                var list = JsonConvert.DeserializeObject<List<CoubListEntry>>(json);
-                return list?.Select(x => x.id).Where(x => !string.IsNullOrEmpty(x)).ToList() ?? new();
-            }
-            catch (JsonException)
-            {
-                return new();
-            }
-        }
     }
 }

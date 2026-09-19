@@ -1,7 +1,60 @@
-﻿using Newtonsoft.Json.Linq;
+﻿using System.Text.RegularExpressions;
+using Newtonsoft.Json.Linq;
 
 namespace CoubPlayer.Services
 {
+    /// <summary>
+    /// Что нужно скачать для одного ролика.
+    ///
+    /// Нужен там, где файлы тянет не сервер, а расширение в браузере. Правила
+    /// выбора качества при этом остаются здесь, в единственном экземпляре:
+    /// расширение только исполняет ответ, а не решает само.
+    /// </summary>
+    public class CoubDownloadPlan
+    {
+        public string Id { get; set; } = "";
+        public string? Title { get; set; }
+
+        /// <summary>Файлы уже на диске — качать нечего, ролик надо только добавить в плейлист.</summary>
+        public bool AlreadyExists { get; set; }
+
+        /// <summary>Нужны метаданные: без них выбирать потоки не из чего.</summary>
+        public bool NeedsMeta { get; set; }
+
+        /// <summary>В метаданных нет видео-потока — ролика у источника больше нет.</summary>
+        public bool Gone { get; set; }
+
+        public string? Video { get; set; }
+        public string? Audio { get; set; }
+        public string AudioExt { get; set; } = "mp3";
+    }
+
+    /// <summary>
+    /// Сведения о ролике от Coub — то, чего нет в самих файлах.
+    ///
+    /// Нужны ради подсказки «куда положить и что повесить»: угадывать её
+    /// можно только по тегам и каналу, а их знает лишь сайт.
+    /// </summary>
+    public class CoubMetadata
+    {
+        public string Id { get; set; } = "";
+        public string? Title { get; set; }
+        public long? ChannelId { get; set; }
+        public string? ChannelTitle { get; set; }
+        public double? Duration { get; set; }
+        public int? Width { get; set; }
+        public int? Height { get; set; }
+        public bool? Nsfw { get; set; }
+
+        /// <summary>Теги самого Coub. К тегам пользователя отношения не имеют.</summary>
+        public List<string> Tags { get; set; } = new();
+
+        /// <summary>Ролика больше нет у источника — спрашивать о нём незачем.</summary>
+        public bool Gone { get; set; }
+
+        public string? Error { get; set; }
+    }
+
     public class CoubDownloadResult
     {
         public string Id { get; set; } = "";
@@ -18,6 +71,17 @@ namespace CoubPlayer.Services
         // true, если файлы уже лежали на диске — скачивание пропущено,
         // но ролик всё равно нужно добавить в плейлист (и в coub_list.json, если его там нет)
         public bool AlreadyExisted { get; set; }
+
+        // true, если ролика больше нет у источника: удалён, скрыт или заблокирован.
+        // Отличается от обычной неудачи тем, что повторять попытки бесполезно —
+        // ни сейчас, ни завтра. Разбирать текст ошибки для этого не надо.
+        public bool Gone { get; set; }
+
+        // Сведения о ролике, если при загрузке пришлось спрашивать о нём Coub.
+        // Тот же ответ API, из которого берутся ссылки на потоки: раз он уже
+        // в руках, выбрасывать его — значит потом идти за ним второй раз.
+        // null на быстром пути «файлы уже на диске»: там запроса не было.
+        public CoubMetadata? Metadata { get; set; }
     }
 
     /// <summary>
@@ -62,6 +126,129 @@ namespace CoubPlayer.Services
                 return s;
 
             return null;
+        }
+
+        /// <summary>
+        /// Годится ли id как имя папки. Проверка обязательна для всего, что
+        /// приходит снаружи: id идёт прямо в путь, и «..» в нём увело бы запись
+        /// за пределы библиотеки.
+        /// </summary>
+        public static bool IsSafeId(string? id) =>
+            !string.IsNullOrEmpty(id) && Regex.IsMatch(id, "^[A-Za-z0-9_-]{1,64}$");
+
+        // ─── Загрузка чужими руками ────────────────────────────────────────────
+        // Когда до coub.com не достаёт сам сервер (блокировка провайдера, VPN
+        // только в браузере), файлы приносит расширение. Сервер в этой паре
+        // решает, что качать, и раскладывает принесённое по местам.
+
+        /// <summary>
+        /// Что нужно скачать для ролика. Без <paramref name="meta"/> отвечает
+        /// только на дешёвый вопрос «а есть ли уже файлы» — чтобы не тратить
+        /// трафик VPN на метаданные того, что и так лежит на диске.
+        /// </summary>
+        public CoubDownloadPlan Plan(string id, JObject? meta)
+        {
+            var plan = new CoubDownloadPlan { Id = id };
+
+            // Пустой файл — след оборванной загрузки, а не скачанный ролик
+            var video = new FileInfo(Path.Combine(_dataDir, id, "video.mp4"));
+            if (video.Exists && video.Length > 0)
+            {
+                plan.AlreadyExists = true;
+                return plan;
+            }
+
+            if (meta == null)
+            {
+                plan.NeedsMeta = true;
+                return plan;
+            }
+
+            plan.Title = meta["title"]?.ToString() ?? id;
+
+            var videoUrl = PickBestVideo(meta);
+            if (videoUrl == null)
+            {
+                plan.Gone = true;
+                return plan;
+            }
+
+            var (audioUrl, audioExt) = PickBestAudio(meta);
+            plan.Video = videoUrl;
+            plan.Audio = audioUrl;
+            plan.AudioExt = audioExt;
+            return plan;
+        }
+
+        /// <summary>
+        /// Кладёт на диск файлы, скачанные не сервером, а расширением.
+        /// Результат намеренно той же формы, что у <see cref="DownloadAsync"/>:
+        /// дальше по пути — coub_list.json и плейлист — разницы быть не должно.
+        /// </summary>
+        public async Task<CoubDownloadResult> SaveUploadAsync(
+            string id, string? title, Stream video, Stream? audio, string audioExt)
+        {
+            if (!IsSafeId(id)) throw new ArgumentException("Некорректный id", nameof(id));
+
+            // Расширение присылает расширение файла строкой — в путь она попасть
+            // не должна ничем, кроме двух известных значений
+            var ext = audioExt == "m4a" ? "m4a" : "mp3";
+
+            var folder = Path.Combine(_dataDir, id);
+            var videoPath = Path.Combine(folder, "video.mp4");
+            var audioPath = audio == null ? null : Path.Combine(folder, $"audio.{ext}");
+
+            Directory.CreateDirectory(folder);
+
+            try
+            {
+                // Пишем рядом и переносим только когда всё целиком дошло:
+                // оборванная заливка иначе оставила бы обрезанный video.mp4,
+                // неотличимый от нормально скачанного ролика
+                await WriteToFileAsync(video, videoPath + ".part");
+                if (audio != null) await WriteToFileAsync(audio, audioPath + ".part");
+
+                File.Move(videoPath + ".part", videoPath, overwrite: true);
+                if (audioPath != null) File.Move(audioPath + ".part", audioPath, overwrite: true);
+            }
+            catch
+            {
+                CleanupPartials(folder);
+                throw;
+            }
+
+            return new CoubDownloadResult
+            {
+                Id = id,
+                Title = string.IsNullOrWhiteSpace(title) ? id : title,
+                Success = true,
+                Video = $"/Data/Coubs/{id}/video.mp4",
+                Audio = audioPath == null ? null : $"/Data/Coubs/{id}/audio.{ext}",
+            };
+        }
+
+        private static async Task WriteToFileAsync(Stream source, string destPath)
+        {
+            await using var fs = new FileStream(
+                destPath, FileMode.Create, FileAccess.Write, FileShare.None);
+            await source.CopyToAsync(fs);
+        }
+
+        /// <summary>
+        /// Убирает недописанные куски. Папку целиком не трогаем: в ней может
+        /// лежать раньше скачанное аудио, а удалять чужое по дороге незачем.
+        /// </summary>
+        private static void CleanupPartials(string folder)
+        {
+            try
+            {
+                foreach (var file in Directory.EnumerateFiles(folder, "*.part"))
+                    File.Delete(file);
+
+                if (!Directory.EnumerateFileSystemEntries(folder).Any())
+                    Directory.Delete(folder);
+            }
+            catch (IOException) { /* не критично: следующая попытка перезапишет */ }
         }
 
         public async Task<CoubDownloadResult> DownloadAsync(string urlOrId)
@@ -128,7 +315,8 @@ namespace CoubPlayer.Services
                         Success = true,
                         AlreadyExisted = true,
                         Video = $"/Data/Coubs/{id}/video.mp4",
-                        Audio = existingAudio
+                        Audio = existingAudio,
+                        Metadata = ParseMetadata(id, data),
                     };
                 }
 
@@ -140,6 +328,7 @@ namespace CoubPlayer.Services
                         Id = id,
                         Title = title,
                         Success = false,
+                        Gone = true,
                         Error = "Видео-поток недоступен (coub мог быть удалён)"
                     };
                 }
@@ -164,7 +353,8 @@ namespace CoubPlayer.Services
                     Title = title,
                     Success = true,
                     Video = $"/Data/Coubs/{id}/video.mp4",
-                    Audio = audioRel
+                    Audio = audioRel,
+                    Metadata = ParseMetadata(id, data),
                 };
             }
             catch (Exception ex)
@@ -177,8 +367,90 @@ namespace CoubPlayer.Services
                 }
                 catch { /* не критично */ }
 
-                return new CoubDownloadResult { Id = id, Success = false, Error = ex.Message };
+                // 404 и 410 от API означают, что ролика у источника больше нет:
+                // возвращаться к нему незачем, в отличие от таймаута или 403
+                var gone = ex is HttpRequestException http &&
+                           http.StatusCode is System.Net.HttpStatusCode.NotFound
+                                           or System.Net.HttpStatusCode.Gone;
+
+                return new CoubDownloadResult
+                {
+                    Id = id,
+                    Success = false,
+                    Gone = gone,
+                    Error = gone ? "Ролик удалён с coub.com" : ex.Message,
+                };
             }
+        }
+
+        // ─── Метаданные ────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Спрашивает у Coub всё, что знает о ролике. Ошибку не бросает:
+        /// один недоступный ролик не должен обрывать обход библиотеки.
+        /// </summary>
+        public async Task<CoubMetadata> FetchMetadataAsync(string id)
+        {
+            var client = _httpClientFactory.CreateClient("Coub");
+
+            try
+            {
+                var json = await GetStringAsync(
+                    client, $"https://coub.com/api/v2/coubs/{id}", CoubUserAgents.GetRandomAgent());
+                return ParseMetadata(id, JObject.Parse(json));
+            }
+            catch (Exception ex)
+            {
+                var gone = ex is HttpRequestException http &&
+                           http.StatusCode is System.Net.HttpStatusCode.NotFound
+                                           or System.Net.HttpStatusCode.Gone;
+
+                return new CoubMetadata { Id = id, Gone = gone, Error = ex.Message };
+            }
+        }
+
+        internal static CoubMetadata ParseMetadata(string id, JObject data)
+        {
+            var meta = new CoubMetadata
+            {
+                Id = id,
+                Title = Trimmed(data["title"]?.ToString()),
+                ChannelId = data["channel_id"]?.Value<long?>() ?? data.SelectToken("channel.id")?.Value<long?>(),
+                ChannelTitle = Trimmed(data.SelectToken("channel.title")?.ToString()),
+                Duration = data["duration"]?.Value<double?>(),
+
+                // not_safe_for_work у обычных роликов приходит пустым — тем,
+                // что Coub реально заполняет, оказался age_restricted.
+                // Берём первый непустой, чтобы не зависеть от того, какой
+                // из них сайт решит использовать дальше
+                Nsfw = data["not_safe_for_work"]?.Value<bool?>()
+                    ?? data["age_restricted"]?.Value<bool?>()
+                    ?? data["age_restricted_by_admin"]?.Value<bool?>(),
+            };
+
+            // dimensions: { "big": [1280, 720], "med": [640, 360] } — берём
+            // большее, оно же соответствует скачиваемому потоку
+            var big = data.SelectToken("dimensions.big") as JArray
+                   ?? data.SelectToken("dimensions.med") as JArray;
+            if (big is { Count: >= 2 })
+            {
+                meta.Width = big[0].Value<int?>();
+                meta.Height = big[1].Value<int?>();
+            }
+
+            foreach (var tag in data["tags"] as JArray ?? new JArray())
+            {
+                var title = Trimmed(tag["title"]?.ToString());
+                if (title != null) meta.Tags.Add(title);
+            }
+
+            return meta;
+        }
+
+        private static string? Trimmed(string? value)
+        {
+            var trimmed = value?.Trim();
+            return string.IsNullOrEmpty(trimmed) ? null : trimmed;
         }
 
         // ─── Выбор потоков (порт stream_lists() из coub_v2.py) ────────────────

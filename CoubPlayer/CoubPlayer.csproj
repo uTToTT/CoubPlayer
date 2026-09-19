@@ -1,10 +1,22 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
-    <TargetFramework>net5.0-windows7.0</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationIcon>player_icon.ico</ApplicationIcon>
+
+    <!--
+      Версия плеера. Единственное место, где она задаётся: в коде её читает
+      AppVersion из атрибута сборки, а не держит своей константой — иначе
+      два источника правды разъехались бы на первом же выпуске.
+
+      Растёт по смыслу изменений: третья цифра — исправления, вторая —
+      новые возможности, первая — то, после чего данные прошлых версий
+      нужно переносить. Версия сохраняется в базе, и при следующем запуске
+      DataMigrations видит, с какой версии данные пришли.
+    -->
+    <Version>1.1.1</Version>
   </PropertyGroup>
 
   <!--
@@ -36,6 +48,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="SkiaSharp" Version="3.119.2" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="10.1.7" />

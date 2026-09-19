@@ -11,6 +11,9 @@
     <link rel="stylesheet" href="css/coub-grid.css" />
     <link rel="stylesheet" href="css/madness.css" />
     <link rel="stylesheet" href="css/banner.css" />
+    <link rel="stylesheet" href="css/restore.css" />
+    <!-- Последним: слой отклика идёт поверх готовой вёрстки -->
+    <link rel="stylesheet" href="css/interactions.css" />
 
     <link rel="icon" type="image/png" href="Data/icons/player_icon.png" />
     <style>
@@ -609,42 +612,35 @@
             </div>
           </div>
         </div>
-        <!-- Переход между роликами — тем же списком, что и сортировка -->
-        <div class="sort-dropdown" id="transitionDropdown">
+        <!--
+          Переход между роликами. Режима всего два, поэтому это переключатель,
+          а не список: оба состояния видны сразу, и нужный выбирается одним
+          нажатием — не «открыть меню, потом выбрать».
+        -->
+        <div
+          class="seg-switch"
+          id="transitionSwitch"
+          role="group"
+          aria-label="Переход между видео"
+          title="Переход между видео"
+        >
+          <span class="seg-thumb" aria-hidden="true"></span>
           <button
-            class="sort-trigger"
-            id="transitionTriggerBtn"
+            class="seg-option is-active"
             type="button"
-            title="Переход между видео"
+            data-mode="crossfade"
+            aria-pressed="true"
           >
-            <svg
-              class="sort-trigger-icon"
-              viewBox="0 0 20 20"
-              aria-hidden="true"
-            >
-              <rect x="2.6" y="5" width="9" height="10" rx="1.8" />
-              <path d="M14 6.4h3.4v7.2H14" />
-            </svg>
-            <span id="transitionTriggerLabel">Fade</span>
-            <svg class="pl-trigger-chevron" viewBox="0 0 12 12" fill="none">
-              <path
-                d="M2 4l4 4 4-4"
-                stroke="currentColor"
-                stroke-width="1.5"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
+            Fade
           </button>
-
-          <div class="sort-menu hidden" id="transitionMenu">
-            <div class="sort-group sort-menu-list" id="transitionModeGroup">
-              <button data-mode="crossfade" class="active" type="button">
-                Fade
-              </button>
-              <button data-mode="flip" type="button">Flip</button>
-            </div>
-          </div>
+          <button
+            class="seg-option"
+            type="button"
+            data-mode="flip"
+            aria-pressed="false"
+          >
+            Flip
+          </button>
         </div>
       </div>
     </div>
@@ -672,6 +668,46 @@
           <div class="tag-filter-mode" id="tagFilterModeGroup" hidden>
             <button data-mode="any" class="active">Любой из</button>
             <button data-mode="all">Все сразу</button>
+          </div>
+          <!--
+            Версия плеера. По нажатию — то, что относится к библиотеке целиком,
+            а не к отдельному ролику: состояние хранилища и резервные копии.
+          -->
+          <div class="app-version-wrap" id="appVersionWrap">
+            <button
+              class="app-version"
+              id="appVersion"
+              type="button"
+              title="Версия и резервные копии"
+            ></button>
+
+            <div class="app-version-menu hidden" id="appVersionMenu">
+              <div class="avm-row">
+                <span>Версия плеера</span><b id="avmApp">—</b>
+              </div>
+              <div class="avm-row">
+                <span>Схема базы</span><b id="avmSchema">—</b>
+              </div>
+
+              <div class="avm-sep"></div>
+
+              <div class="avm-row">
+                <span>Последняя копия</span><b id="avmLatest">—</b>
+              </div>
+              <p class="avm-note" id="avmNote">
+                Копия хранит плейлисты, порядок, теги и эффекты. Ролики в неё
+                не входят — они перекачиваются, раскладка нет.
+              </p>
+
+              <div class="avm-actions">
+                <button id="avmBackupBtn" class="avm-btn" type="button">
+                  Сохранить копию
+                </button>
+                <button id="avmOpenBtn" class="avm-btn avm-btn--ghost" type="button">
+                  Папка
+                </button>
+              </div>
+            </div>
           </div>
           <button class="pl-editor-close" id="sortingClose">✕</button>
         </div>
@@ -792,6 +828,28 @@
                 Bookmarks
               </button>
               <button
+                id="restoreMissingBtn"
+                class="dl-dropdown-item"
+                title="Скачать заново файлы роликов, которые есть в плейлистах, но пропали с диска"
+              >
+                <svg class="ico ico-sm" viewBox="0 0 20 20" aria-hidden="true">
+                  <path d="M15.6 10a5.6 5.6 0 1 1-1.9-4.2" />
+                  <path d="M15.8 3.6v3.2h-3.2" />
+                </svg>
+                Вернуть пропавшие
+              </button>
+              <button
+                id="fetchMetadataBtn"
+                class="dl-dropdown-item"
+                title="Спросить у coub.com канал, длительность и теги для роликов библиотеки"
+              >
+                <svg class="ico ico-sm" viewBox="0 0 20 20" aria-hidden="true">
+                  <path d="M10 3.4a6.6 6.6 0 1 1-6.6 6.6" />
+                  <path d="M10 6.6v3.8l2.6 1.6" />
+                </svg>
+                Собрать сведения
+              </button>
+              <button
                 id="importPlaylistBtn"
                 class="dl-dropdown-item"
                 title="Загрузить сторонний плейлист"
@@ -851,6 +909,14 @@
           />
           <button class="pl-search-clear hidden" id="gridSearchClear">✕</button>
         </div>
+
+        <!--
+          Сюда переезжает ползунок громкости, пока открыта плитка: нижняя
+          панель в этом режиме скрыта, а превью под курсором звучат, и
+          управлять их громкостью больше неоткуда. Ползунок тот же самый,
+          просто переставленный, — двух источников громкости быть не должно.
+        -->
+        <div class="grid-view-volume" id="gridVolumeSlot"></div>
 
         <div
           class="sort-group grid-size-group"

@@ -1,59 +1,106 @@
-﻿using CoubPlayer.Meta;
+using CoubPlayer.Meta;
 using CoubPlayer.Requests;
 using CoubPlayer.Services;
+using CoubPlayer.Storage;
 using Microsoft.AspNetCore.Mvc;
-using Newtonsoft.Json;
 using System.Diagnostics;
 
 [ApiController]
 [Route("api/coubs")]
 public class CoubsController : ControllerBase
 {
-    private readonly CoubListService _coubListService;
-    public CoubsController(CoubListService coubListService) => _coubListService = coubListService;
+    private readonly CoubRepository _coubs;
+    private readonly SuggestionRepository _suggestions;
+
+    public CoubsController(CoubRepository coubs, SuggestionRepository suggestions)
+    {
+        _coubs = coubs;
+        _suggestions = suggestions;
+    }
+
+    /// <summary>
+    /// Куда этот ролик скорее всего просится и какие свои теги ему подойдут.
+    /// Считается по тегам, которые Coub повесил сам, — см. SuggestionRepository.
+    /// Пусто — сведений о ролике ещё нет либо не на что опереться.
+    /// </summary>
+    [HttpGet("{id}/suggest")]
+    public IActionResult Suggest(string id)
+    {
+        var (playlists, tags) = _suggestions.Suggest(id);
+        return Ok(new { playlists, tags });
+    }
+
+    /// <summary>
+    /// Вся библиотека: по ней плеер находит файлы ролика. Раньше клиент читал
+    /// этот список прямо из Data/coub_list.json — теперь файла нет, данные
+    /// живут в базе, и отдаются они отсюда.
+    /// </summary>
+    [HttpGet("list")]
+    public IActionResult List() => Ok(_coubs.ReadAll());
+
+    #region Thumbs
+
+    // Кадр-превью ролика. Берётся не с сервера: декодировать mp4 ему нечем,
+    // ffmpeg в зависимостях нет. Кадр снимает браузер, когда всё равно грузит
+    // видео для баннера, и присылает сюда — со второго раза список плейлистов
+    // обходится картинками по 10 КБ вместо десятков мегабайт видео.
+    private static readonly string ThumbsPath = Path.Combine(
+        Directory.GetCurrentDirectory(), "wwwroot", "Data", "thumbs");
+
+    private const long MaxThumbBytes = 512 * 1024;
+
+    /// <summary>Для каких роликов кадр уже снят.</summary>
+    [HttpGet("thumbs")]
+    public IActionResult Thumbs()
+    {
+        if (!Directory.Exists(ThumbsPath)) return Ok(new { ids = Array.Empty<string>() });
+
+        var ids = Directory
+            .EnumerateFiles(ThumbsPath, "*.webp")
+            .Select(Path.GetFileNameWithoutExtension)
+            .Where(n => !string.IsNullOrEmpty(n))
+            .ToList();
+
+        return Ok(new { ids });
+    }
+
+    /// <summary>
+    /// Принимает снятый браузером кадр. Уже имеющийся не перезаписываем:
+    /// кадр один и тот же, а гонять его повторно незачем.
+    /// </summary>
+    [HttpPost("{id}/thumb")]
+    [RequestSizeLimit(MaxThumbBytes)]
+    public async Task<IActionResult> SaveThumb([FromRoute] string id, IFormFile file)
+    {
+        if (!CoubDownloadService.IsSafeId(id))
+            return BadRequest("Некорректный id ролика");
+
+        if (file == null || file.Length == 0 || file.Length > MaxThumbBytes)
+            return BadRequest("Пустой или слишком большой кадр");
+
+        Directory.CreateDirectory(ThumbsPath);
+        var path = Path.Combine(ThumbsPath, $"{id}.webp");
+
+        if (System.IO.File.Exists(path)) return Ok(new { url = ThumbUrl(id) });
+
+        // Через временный файл: оборванная заливка иначе оставила бы
+        // обрезанную картинку, которую потом никто не перезапишет
+        var temp = path + ".part";
+        await using (var output = System.IO.File.Create(temp))
+            await file.CopyToAsync(output);
+
+        System.IO.File.Move(temp, path, overwrite: true);
+        return Ok(new { url = ThumbUrl(id) });
+    }
+
+    private static string ThumbUrl(string id) => $"/Data/thumbs/{id}.webp";
+
+    #endregion
 
     #region Tag groups
 
-    // Теги — это просто строки в coub_list.json, вешать на них поле некуда,
-    // поэтому принадлежность к группе хранится отдельной картой «тег → группа».
-    private readonly string _tagGroupsPath = Path.Combine(
-        Directory.GetCurrentDirectory(), "wwwroot", "Data", "tag_groups.json");
-
-    private static readonly object _tagGroupsLock = new();
-
-    private Dictionary<string, string> ReadTagGroupsUnsafe()
-    {
-        if (!System.IO.File.Exists(_tagGroupsPath)) return new();
-        try
-        {
-            var json = System.IO.File.ReadAllText(_tagGroupsPath);
-            return JsonConvert.DeserializeObject<Dictionary<string, string>>(json) ?? new();
-        }
-        catch (JsonException)
-        {
-            return new();
-        }
-    }
-
-    private void WriteTagGroupsUnsafe(Dictionary<string, string> map)
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(_tagGroupsPath)!);
-
-        var json = JsonConvert.SerializeObject(map, Formatting.Indented);
-        var tempPath = _tagGroupsPath + ".tmp";
-        System.IO.File.WriteAllText(tempPath, json);
-
-        if (System.IO.File.Exists(_tagGroupsPath))
-            System.IO.File.Replace(tempPath, _tagGroupsPath, null);
-        else
-            System.IO.File.Move(tempPath, _tagGroupsPath);
-    }
-
     [HttpGet("tag-groups")]
-    public IActionResult GetTagGroups()
-    {
-        lock (_tagGroupsLock) return Ok(ReadTagGroupsUnsafe());
-    }
+    public IActionResult GetTagGroups() => Ok(_coubs.GetTagGroups());
 
     /// <summary>Собирает тег в группу (пустое имя — убрать из группы).</summary>
     [HttpPost("tag-groups")]
@@ -62,43 +109,44 @@ public class CoubsController : ControllerBase
         if (string.IsNullOrWhiteSpace(req?.Tag))
             return BadRequest("Tag is required");
 
-        lock (_tagGroupsLock)
-        {
-            var map = ReadTagGroupsUnsafe();
-            var group = req.Group?.Trim();
-
-            if (string.IsNullOrEmpty(group)) map.Remove(req.Tag);
-            else map[req.Tag] = group;
-
-            WriteTagGroupsUnsafe(map);
-            return Ok(map);
-        }
+        return Ok(_coubs.SetTagGroup(req.Tag, req.Group?.Trim()));
     }
 
     #endregion
 
     [HttpGet("tags")]
     public IActionResult GetAllTags() =>
-        Ok(_coubListService.GetAllTags().Select(x => new { tag = x.Tag, count = x.Count }));
+        Ok(_coubs.GetAllTags().Select(x => new { tag = x.Tag, count = x.Count }));
+
+    /// <summary>
+    /// Что известно о ролике: канал, длительность, размер кадра, теги сайта.
+    /// Заполняется дозагрузкой метаданных — см. MetadataService.
+    /// </summary>
+    [HttpGet("{id}/meta")]
+    public IActionResult Meta(string id)
+    {
+        var meta = _coubs.ReadMetadata(id);
+        return meta == null ? NotFound() : Ok(meta);
+    }
 
     [HttpGet("{id}/tags")]
     public IActionResult GetTags(string id)
     {
-        var tags = _coubListService.GetTags(id);
+        var tags = _coubs.GetTags(id);
         return tags == null ? NotFound() : Ok(tags);
     }
 
     [HttpPost("{id}/tags")]
     public IActionResult AddTag(string id, [FromBody] TagRequest req)
     {
-        var tags = _coubListService.AddTag(id, req.Tag);
+        var tags = _coubs.AddTag(id, req.Tag);
         return tags == null ? NotFound() : Ok(tags);
     }
 
     [HttpDelete("{id}/tags/{tag}")]
     public IActionResult RemoveTag(string id, string tag)
     {
-        var tags = _coubListService.RemoveTag(id, tag);
+        var tags = _coubs.RemoveTag(id, tag);
         return tags == null ? NotFound() : Ok(tags);
     }
 
@@ -108,7 +156,7 @@ public class CoubsController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(tags)) return Ok(new List<CoubListEntry>());
         var wanted = tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        return Ok(_coubListService.Search(wanted, mode));
+        return Ok(_coubs.Search(wanted, mode));
     }
 
     public class RenameTagRequest { public string NewName { get; set; } }
@@ -120,49 +168,22 @@ public class CoubsController : ControllerBase
         if (string.IsNullOrWhiteSpace(req?.NewName))
             return BadRequest("newName не указан");
 
-        var count = _coubListService.RenameTagGlobally(tag, req.NewName);
-        if (count == 0) return NotFound();
-
-        // Карта групп ключуется именем тега — переносим запись за ним
-        lock (_tagGroupsLock)
-        {
-            var map = ReadTagGroupsUnsafe();
-            if (map.Remove(tag, out var group))
-            {
-                map[req.NewName.Trim()] = group;
-                WriteTagGroupsUnsafe(map);
-            }
-        }
-
-        return Ok(new { renamed = count });
+        // Группа переезжает за тегом внутри самой операции: имя тега — её ключ
+        var count = _coubs.RenameTagGlobally(tag, req.NewName);
+        return count == 0 ? NotFound() : Ok(new { renamed = count });
     }
 
     // DELETE /api/coubs/tags/{tag}
     [HttpDelete("tags/{tag}")]
     public IActionResult DeleteTagGlobally(string tag)
     {
-        var count = _coubListService.DeleteTagGlobally(tag);
-        if (count == 0) return NotFound();
-
-        lock (_tagGroupsLock)
-        {
-            var map = ReadTagGroupsUnsafe();
-            if (map.Remove(tag)) WriteTagGroupsUnsafe(map);
-        }
-
-        return Ok(new { removed = count });
+        var count = _coubs.DeleteTagGlobally(tag);
+        return count == 0 ? NotFound() : Ok(new { removed = count });
     }
 
     // DELETE /api/coubs/tags
     [HttpDelete("tags")]
-    public IActionResult DeleteAllTags()
-    {
-        var count = _coubListService.DeleteAllTags();
-
-        lock (_tagGroupsLock) WriteTagGroupsUnsafe(new());
-
-        return Ok(new { removed = count });
-    }
+    public IActionResult DeleteAllTags() => Ok(new { removed = _coubs.DeleteAllTags() });
 
     /// <summary>
     /// Открывает папку с файлами ролика (video.mp4 / audio.*) в проводнике ОС,

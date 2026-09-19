@@ -85,6 +85,18 @@ export async function deletePlaylistBanner(playlist, kind = "all") {
     if (!res.ok) throw new Error(`Banner reset failed: ${await res.text()}`);
 }
 
+/**
+ * Имена плейлистов, у которых есть старый значок. Одним запросом вместо
+ * проверки каждого по отдельности — см. primeLegacyIcons в banner.js.
+ * @returns {Promise<string[]>}
+ */
+export async function getPlaylistIcons() {
+    const res = await fetch("/api/playlists/icons");
+    if (!res.ok) throw new Error("Failed to load playlist icons");
+    const { names } = await res.json();
+    return names || [];
+}
+
 export async function deletePlaylistIcon(playlist) {
     await fetch(`/api/playlists/${encodeURIComponent(playlist)}/icon`, {
         method: "DELETE",
@@ -245,6 +257,143 @@ export async function downloadCoubs(playlist, urls) {
  */
 export async function syncFavorites(category, token, limit) {
     const res = await post("/api/playlists/sync", { category, token, limit });
+    return res.json();
+}
+
+// ─── Восстановление пропавших файлов ──────────────────────────────────────
+// Ролики числятся в библиотеке и плейлистах, а файлов на диске нет.
+// Докачка возвращает только файлы: плейлисты и порядок не трогаются.
+
+/** @returns {Promise<{missing: number, ids: string[]|null}>} */
+export async function getMissingCoubs(withIds = false) {
+    const res = await fetch(`/api/restore/missing${withIds ? "?ids=true" : ""}`);
+    if (!res.ok) throw new Error("Не удалось проверить библиотеку");
+    return res.json();
+}
+
+/** @returns {Promise<object>} состояние задачи сразу после запуска */
+export async function startRestore() {
+    const res = await post("/api/restore/start", {});
+    return res.json();
+}
+
+export async function getRestoreStatus() {
+    const res = await fetch("/api/restore/status");
+    if (!res.ok) throw new Error("Не удалось получить состояние");
+    return res.json();
+}
+
+export async function stopRestore() {
+    const res = await post("/api/restore/stop", {});
+    return res.json();
+}
+
+// ─── Метаданные Coub ──────────────────────────────────────────────────────
+// Канал, длительность, размер кадра, nsfw и теги самого сайта. В файлах
+// ролика этого нет, а подсказка «куда положить» строится только на них.
+
+/** @returns {Promise<{pending: number}>} */
+export async function getMetadataPending() {
+    const res = await fetch("/api/metadata/pending");
+    if (!res.ok) throw new Error("Не удалось проверить библиотеку");
+    return res.json();
+}
+
+export async function startMetadata() {
+    const res = await post("/api/metadata/start", {});
+    return res.json();
+}
+
+export async function getMetadataStatus() {
+    const res = await fetch("/api/metadata/status");
+    if (!res.ok) throw new Error("Не удалось получить состояние");
+    return res.json();
+}
+
+export async function stopMetadata() {
+    const res = await post("/api/metadata/stop", {});
+    return res.json();
+}
+
+/**
+ * Итог последнего прохода: что удалено с coub.com насовсем, а что просто
+ * не далось. null — восстановление ещё не запускали.
+ * @returns {Promise<{finishedAt: string, total: number, restored: number,
+ *                    gone: string[], failed: Record<string,string>, stopped: boolean}|null>}
+ */
+export async function getRestoreReport() {
+    const res = await fetch("/api/restore/report");
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error("Не удалось получить отчёт");
+    return res.json();
+}
+
+// ─── Кадры-превью роликов ─────────────────────────────────────────────────
+// Сервер декодировать mp4 не умеет, поэтому кадр снимает браузер — когда всё
+// равно грузит видео для баннера — и присылает сюда. Со второго раза список
+// плейлистов обходится картинками вместо видео.
+
+/** @returns {Promise<string[]>} id роликов, для которых кадр уже есть */
+export async function getCoubThumbs() {
+    const res = await fetch("/api/coubs/thumbs");
+    if (!res.ok) throw new Error("Failed to load thumbs");
+    const { ids } = await res.json();
+    return ids || [];
+}
+
+/**
+ * @param {string} id
+ * @param {Blob} blob — webp-кадр
+ */
+export async function saveCoubThumb(id, blob) {
+    const form = new FormData();
+    form.append("file", blob, `${id}.webp`);
+
+    const res = await fetch(`/api/coubs/${encodeURIComponent(id)}/thumb`, {
+        method: "POST",
+        body: form,
+    });
+    if (!res.ok) throw new Error(`Thumb upload failed: ${await res.text()}`);
+    return res.json();
+}
+
+/**
+ * Версия плеера и состояние хранилища.
+ * @returns {Promise<{app: string, schema: number, data: string|null, importedAt: string|null}>}
+ */
+export async function getVersion() {
+    const res = await fetch("/api/version");
+    if (!res.ok) throw new Error("Failed to load version");
+    return res.json();
+}
+
+// ─── Резервные копии ──────────────────────────────────────────────────────
+
+/** @returns {Promise<{folder: string, items: Array<{name: string, createdAt: string, bytes: number, automatic: boolean}>}>} */
+export async function getBackups() {
+    const res = await fetch("/api/backups");
+    if (!res.ok) throw new Error("Не удалось получить список копий");
+    return res.json();
+}
+
+export async function createBackup() {
+    const res = await post("/api/backups", {});
+    return res.json();
+}
+
+export async function openBackupsFolder() {
+    await post("/api/backups/open-folder", {});
+}
+
+/**
+ * Куда этот ролик скорее всего просится и какие теги ему подойдут.
+ * Пусто — сведений о ролике ещё нет либо не на что опереться.
+ * @returns {Promise<{playlists: Array<{name: string, score: number, matched: string[]}>,
+ *                    tags: Array<{tag: string, score: number}>}>}
+ */
+export async function getSuggestions(id) {
+    const res = await fetch(`/api/coubs/${encodeURIComponent(id)}/suggest`);
+    if (!res.ok) throw new Error("Не удалось получить подсказки");
     return res.json();
 }
 

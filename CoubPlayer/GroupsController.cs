@@ -1,6 +1,6 @@
 using CoubPlayer.Requests;
+using CoubPlayer.Storage;
 using Microsoft.AspNetCore.Mvc;
-using Newtonsoft.Json;
 
 namespace CoubPlayer
 {
@@ -15,46 +15,14 @@ namespace CoubPlayer
     [Route("api/groups")]
     public class GroupsController : ControllerBase
     {
-        private readonly string _path = Path.Combine(
-            Directory.GetCurrentDirectory(), "wwwroot", "Data", "group_order.json");
-
-        private static readonly object _lock = new();
-
         private static readonly string[] Kinds = { "playlists", "tags" };
 
-        private Dictionary<string, List<string>> ReadUnsafe()
-        {
-            if (!System.IO.File.Exists(_path)) return new();
-            try
-            {
-                var json = System.IO.File.ReadAllText(_path);
-                return JsonConvert.DeserializeObject<Dictionary<string, List<string>>>(json) ?? new();
-            }
-            catch (JsonException)
-            {
-                return new();
-            }
-        }
+        private readonly GroupOrderRepository _groups;
 
-        private void WriteUnsafe(Dictionary<string, List<string>> data)
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-
-            var json = JsonConvert.SerializeObject(data, Formatting.Indented);
-            var tempPath = _path + ".tmp";
-            System.IO.File.WriteAllText(tempPath, json);
-
-            if (System.IO.File.Exists(_path))
-                System.IO.File.Replace(tempPath, _path, null);
-            else
-                System.IO.File.Move(tempPath, _path);
-        }
+        public GroupsController(GroupOrderRepository groups) => _groups = groups;
 
         [HttpGet("order")]
-        public IActionResult GetOrder()
-        {
-            lock (_lock) return Ok(ReadUnsafe());
-        }
+        public IActionResult GetOrder() => Ok(_groups.ReadAll());
 
         [HttpPost("order")]
         public IActionResult SetOrder([FromBody] SetGroupOrderRequest req)
@@ -62,13 +30,7 @@ namespace CoubPlayer
             if (req == null || !Kinds.Contains(req.Kind))
                 return BadRequest("Kind must be 'playlists' or 'tags'");
 
-            lock (_lock)
-            {
-                var data = ReadUnsafe();
-                data[req.Kind] = req.Groups ?? new List<string>();
-                WriteUnsafe(data);
-                return Ok(data);
-            }
+            return Ok(_groups.SetOrder(req.Kind, req.Groups ?? new List<string>()));
         }
     }
 }
