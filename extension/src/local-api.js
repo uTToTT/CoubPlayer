@@ -85,15 +85,64 @@ export async function getLibrary(playlist) {
  * Плейлисты для меню кнопки, в том же порядке, что в плеере. С id ролика
  * у каждого приходит признак hasCoub — лежит ли он там уже.
  *
+ * banner — путь к картинке плейлиста относительно сервера (своя картинка,
+ * старый значок или кадр первого ролика) либо null; собирает его сервер,
+ * он же знает, какие файлы на диске есть.
+ *
  * @param {string} [coubId]
  * @returns {Promise<{
- *   playlists: Array<{name: string, count: number, group: string|null, hasCoub: boolean}>,
+ *   playlists: Array<{name: string, count: number, group: string|null,
+ *                     hasCoub: boolean, banner: string|null}>,
  *   groupOrder: string[]
  * }>}
  */
 export async function getPlaylists(coubId) {
     const query = coubId ? `?coub=${encodeURIComponent(coubId)}` : "";
     return request(`/api/extension/playlists${query}`);
+}
+
+/**
+ * Ставит записи плейлиста в порядок ленты.
+ *
+ * Нужно из-за роликов, скачанных кнопкой на странице: ленты у сервера в тот
+ * момент нет, и такой ролик ложится в начало. Десяток таких — и порядок уже
+ * не тот, что на сайте.
+ *
+ * Сервер перед перестановкой делает копию сам.
+ *
+ * @param {string} playlist
+ * @param {string[]} feed лента как есть, от новых к старым
+ * @returns {Promise<{matched: number, extra: number}>}
+ */
+export async function alignToFeed(playlist, feed) {
+    return request(`/api/playlists/${encodeURIComponent(playlist)}/align`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ feed }),
+    });
+}
+
+/**
+ * Куда этот ролик просится: плейлисты, похожие на него по тегам, и теги,
+ * которые стоило бы повесить.
+ *
+ * Считается по тегам, а у нескачанного ролика их в базе нет — тогда сервер
+ * отвечает needsMeta, и спрашивать надо второй раз, приложив ответ coub.com.
+ *
+ * @param {string} id
+ * @param {string|null} [meta] ответ coub.com как есть
+ * @returns {Promise<{
+ *   playlists: Array<{name: string, score: number, matched: string[]}>,
+ *   tags: Array<{tag: string, score: number}>,
+ *   needsMeta: boolean
+ * }>}
+ */
+export async function suggest(id, meta = null) {
+    return request("/api/extension/suggest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, meta }),
+    });
 }
 
 /**

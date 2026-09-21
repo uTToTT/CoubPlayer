@@ -57,8 +57,37 @@ namespace CoubPlayer.Storage
         public (List<PlaylistSuggestion> playlists, List<TagSuggestion> tags) Suggest(string coubId)
         {
             using var connection = _db.Open();
+            return Suggest(connection, coubId, ReadCoubTagIds(connection, coubId));
+        }
 
-            var tagIds = ReadCoubTagIds(connection, coubId);
+        /// <summary>
+        /// То же самое, но для ролика, которого в библиотеке ещё нет: теги
+        /// приходят снаружи — их приносит расширение прямо со страницы coub.com.
+        ///
+        /// Незнакомые теги отбрасываются молча: тега, которого нет ни у одного
+        /// скачанного ролика, всё равно не с чем сравнивать. Если не осталось
+        /// ни одного — подсказок не будет, и это честный ответ, а не ошибка.
+        /// </summary>
+        public (List<PlaylistSuggestion> playlists, List<TagSuggestion> tags) SuggestByTags(
+            string coubId, IEnumerable<string> tagNames)
+        {
+            using var connection = _db.Open();
+            return Suggest(connection, coubId, ResolveTagIds(connection, tagNames));
+        }
+
+        /// <summary>
+        /// Есть ли у ролика коубовские теги — то единственное, на чём строятся
+        /// подсказки. Нет тегов — и считать нечего, сколько ни спрашивай.
+        /// </summary>
+        public bool HasTags(string coubId)
+        {
+            using var connection = _db.Open();
+            return ReadCoubTagIds(connection, coubId).Count > 0;
+        }
+
+        private static (List<PlaylistSuggestion> playlists, List<TagSuggestion> tags) Suggest(
+            SqliteConnection connection, string coubId, List<long> tagIds)
+        {
             if (tagIds.Count == 0) return (new(), new());
 
             var library = CountCoubsWithMetadata(connection);
@@ -236,6 +265,33 @@ GROUP BY mine.tag_id, theirs.tag_id;";
 
         // ─── Выборки ────────────────────────────────────────────────────────
 
+        /// <summary>
+        /// Имена тегов → их id. Регистр и пробелы приводятся так же, как при
+        /// сохранении (CoubRepository.Normalize), иначе «Anime» и «anime»
+        /// оказались бы разными тегами.
+        /// </summary>
+        private static List<long> ResolveTagIds(SqliteConnection cn, IEnumerable<string> tagNames)
+        {
+            var names = tagNames
+                .Select(t => t?.Trim().ToLowerInvariant() ?? "")
+                .Where(t => t.Length > 0)
+                .Distinct()
+                .ToList();
+
+            if (names.Count == 0) return new();
+
+            using var command = cn.CreateCommand();
+            command.CommandText =
+                $"SELECT id FROM tags WHERE name IN ({Placeholders(names)});";
+            for (var i = 0; i < names.Count; i++)
+                command.Parameters.AddWithValue($"$t{i}", names[i]);
+
+            var result = new List<long>();
+            using var reader = command.ExecuteReader();
+            while (reader.Read()) result.Add(reader.GetInt64(0));
+            return result;
+        }
+
         private static List<long> ReadCoubTagIds(SqliteConnection cn, string coubId)
         {
             using var command = cn.CreateCommand();
@@ -321,9 +377,12 @@ GROUP BY tag_id;";
             return result;
         }
 
-        /// <summary>«$t0, $t1, …» — список id тегов подставляется параметрами, не текстом.</summary>
-        private static string Placeholders(List<long> ids) =>
-            string.Join(", ", ids.Select((_, i) => $"$t{i}"));
+        /// <summary>
+        /// «$t0, $t1, …» — теги подставляются параметрами, а не текстом.
+        /// Годится и для id, и для имён: важно только их количество.
+        /// </summary>
+        private static string Placeholders<T>(List<T> items) =>
+            string.Join(", ", items.Select((_, i) => $"$t{i}"));
 
         private static void AddTagParameters(SqliteCommand command, List<long> ids)
         {

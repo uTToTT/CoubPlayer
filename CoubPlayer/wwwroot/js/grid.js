@@ -9,13 +9,15 @@
 // отсортированный и отфильтрованный по тегам), поэтому индексы плиток
 // совпадают с индексами player.playlist.
 //
-// Превью — те же самые video.mp4 + audio.mp3, что играет плеер (отдельных
-// превьюшек на сервере нет). Чтобы не тянуть сотни файлов разом:
-//   • src проставляется только когда плитка попала во вьюпорт (IntersectionObserver)
-//     и снимается, когда она из него ушла;
-//   • сами плитки рисуются порциями по CHUNK штук по мере скролла;
-//   • ролик проигрывается только под курсором, в остальное время стоит на
-//     первом кадре (#t=0.1).
+// В дереве живут только плитки рядом с видимой областью — см. «Окно
+// отрисовки» ниже. Плейлист может быть на восемь тысяч роликов, но узлов
+// от этого больше сотни-другой не становится.
+//
+// В покое плитка показывает снятый кадр — картинку в 10 КБ (см. thumbs.js).
+// Видео заводится только под курсором: один декодер вместо трёх десятков.
+// У роликов, для которых кадра ещё нет, всё как раньше — видео грузится,
+// когда плитка попала во вьюпорт, и заодно с него снимается кадр. Так
+// библиотека обрастает кадрами сама, по мере просмотра.
 //
 // Выделение: чекбокс в углу плитки, Ctrl+клик (переключить) и Shift+клик
 // (диапазон). Пока что-то выделено, обычный клик тоже переключает выделение,
@@ -27,15 +29,20 @@
 
 import { showToast, isMadnessPanelOpen } from "./ui.js";
 import { composeSettings } from "./randomizer.js";
+import { coubIdFromKey } from "./playlist.js";
+import { primeThumbs, thumbsReady, hasThumb, thumbUrl, captureThumb } from "./thumbs.js";
+import { filterByQuery } from "./search.js";
+import { getCoubChannels } from "./api.js";
 
 const TILE_MIN_PX = { s: 140, m: 220, l: 320 };
-const CHUNK = 60;
+
 const DRAG_SCROLL_ZONE = 70; // px от края списка, где начинается автоскролл
 
 const gridView = document.getElementById("gridView");
 const subtitle = document.getElementById("gridSubtitle");
 const search = document.getElementById("gridSearch");
 const searchClear = document.getElementById("gridSearchClear");
+const semanticBtn = document.getElementById("gridSemanticBtn");
 const list = document.getElementById("gridList");
 const sizeGroup = document.getElementById("gridSizeGroup");
 const viewModeGroup = document.getElementById("viewModeGroup");
@@ -82,7 +89,6 @@ let _onBgPreview = null;
 let _entries = [];
 let _filtered = [];
 let _entryById = new Map();
-let _renderedCount = 0;
 let _tileSize = "m";
 let _viewMode = "list";
 
@@ -137,6 +143,252 @@ function stopPreview() {
     _onPreviewActive?.(false);
 }
 
+/**
+ * Замер отзывчивости сетки: сколько плиток в дереве, сколько видеоэлементов
+ * и сколько кадров в секунду выходит, пока идёт прокрутка.
+ *
+ * Живёт в самом плеере, а не подсказкой «вставьте это в консоль»: браузер
+ * такую вставку справедливо не пускает, а набирать руками длинную строку —
+ * то ещё занятие. Здесь достаточно набрать coubStats().
+ *
+ * Ничего не меняет и ни на что не влияет — только считает.
+ */
+window.coubStats = function coubStats(seconds = 5) {
+    const started = performance.now();
+    let frames = 0;
+
+    const tick = () => {
+        frames++;
+        if (performance.now() - started < seconds * 1000) requestAnimationFrame(tick);
+        else report();
+    };
+
+    const report = () => {
+        const elapsed = (performance.now() - started) / 1000;
+        const stats = {
+            "роликов в списке": _filtered.length,
+            "плиток в дереве": list.querySelectorAll(".coub-tile").length,
+            "с готовым кадром": list.querySelectorAll(".coub-tile-still").length,
+            "подключено видео": list.querySelectorAll('video[data-loaded="1"]').length,
+            "кадров в секунду": Math.round(frames / elapsed),
+            "окно с позиции": _first,
+            "колонок в ряду": _cols,
+        };
+        console.table(stats);
+        return stats;
+    };
+
+    requestAnimationFrame(tick);
+    return `Считаю ${seconds} с — крутите колесом. Результат появится здесь же.`;
+};
+
+/**
+ * Затемнение соседей, пока курсор на плитке.
+ *
+ * Раньше условием был селектор :has() на самой сетке — и это оказалось
+ * дорого: браузер пересчитывает всё поддерево контейнера при каждом движении
+ * курсора между плитками, а их бывает несколько тысяч. Класс, поставленный
+ * из кода, такого пересчёта не вызывает.
+ *
+ * Раньше на длинных списках затемнение выключалось совсем: правило действует
+ * сразу на все плитки, а их было ровно столько же, сколько роликов. С окном
+ * отрисовки в дереве сотня-другая плиток при любой длине списка — отключать
+ * больше нечего.
+ */
+function setFocusing(on) {
+    list.classList.toggle("is-focusing", on);
+}
+
+// ─── Смысловой поиск ──────────────────────────────────────────────────────
+// Второй режим поля поиска: искать не по словам названия, а по тому, что
+// видно на кадре. «Небо и облака» находит небо, даже если ролик называется
+// «xd228» и тегов у него нет.
+//
+// Устроено иначе, чем обычный поиск, и в двух местах сразу:
+//
+//   • запрос считает модель в браузере, а сравнивает векторы сервер — это
+//     треть секунды на запрос, поэтому не на каждую букву, а по Enter
+//     или через паузу в наборе;
+//   • порядок выдачи задаёт сервер, по близости, и трогать его нельзя:
+//     в нём вся суть.
+//
+// Модель качается один раз и живёт в кэше браузера. Первый запрос за сеанс
+// поэтому долгий — об этом честно пишем в подписи, а не молчим.
+
+const SEMANTIC_DEBOUNCE_MS = 700;
+const SEMANTIC_LIMIT = 200;
+
+let _semantic = false;
+let _semanticBusy = false;
+let _semanticTimer = null;
+/** Номер запроса: ответы приходят не по порядку, старые надо отбрасывать. */
+let _semanticGen = 0;
+
+function setSemanticMode(on) {
+    _semantic = !!on;
+    semanticBtn?.classList.toggle("is-active", _semantic);
+    semanticBtn?.setAttribute("aria-pressed", String(_semantic));
+    search.placeholder = _semantic
+        ? "Что на кадре: «небо», «взрыв», «кот»…"
+        : "Название, автор или id…";
+
+    clearTimeout(_semanticTimer);
+    applyFilter(search.value.trim());
+}
+
+/**
+ * Ищет по смыслу и раскладывает сетку в порядке близости.
+ *
+ * Искать просим только среди того, что сейчас на экране: сетка показывает
+ * уже отобранное по тегам и плейлисту, и ролики вне этого набора в выдаче
+ * были бы просто непонятно откуда.
+ */
+async function runSemanticSearch(query) {
+    const gen = ++_semanticGen;
+    _semanticBusy = true;
+
+    try {
+        const { loadText, embedText, isTextReady } = await import("./semantic.js");
+
+        if (!isTextReady()) {
+            subtitle.textContent = "Загружаю модель — это только в первый раз…";
+            await loadText((p) => {
+                if (gen !== _semanticGen) return;
+                subtitle.textContent = `Загружаю модель: ${Math.round(p.progress)}%`;
+            });
+        }
+        if (gen !== _semanticGen) return;
+
+        const vector = await embedText(query);
+        if (gen !== _semanticGen) return;
+
+        const res = await fetch("/api/embeddings/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                vector: Array.from(vector),
+                limit: SEMANTIC_LIMIT,
+                ids: _entries.map((e) => coubIdFromKey(e.item.key)),
+            }),
+        });
+        if (!res.ok) throw new Error(`Поиск не удался: ${res.status}`);
+        if (gen !== _semanticGen) return;
+
+        const { results } = await res.json();
+        const rank = new Map(results.map((r, i) => [r.id, i]));
+
+        _filtered = _entries
+            .filter((e) => rank.has(coubIdFromKey(e.item.key)))
+            .sort((a, b) =>
+                rank.get(coubIdFromKey(a.item.key)) - rank.get(coubIdFromKey(b.item.key)));
+
+        renderFiltered();
+
+        // Не «найдено N из M»: смысловой поиск ничего не отсеивает, он
+        // расставляет по близости. Ролик без единого совпадения всё равно
+        // окажется в списке — просто последним. Писать про «найдено»
+        // значило бы обещать отбор, которого нет
+        const name = _getPlaylistName() || "—";
+        subtitle.textContent = _filtered.length
+            ? `${name} · по смыслу: «${query}», сверху ближайшие`
+            : `${name} · кадры ещё не разобраны — нечего сравнивать`;
+        subtitle.title = subtitle.textContent;
+    } catch (err) {
+        if (gen !== _semanticGen) return;
+        subtitle.textContent = String(err?.message || err);
+        console.warn("[Смысловой поиск]", err);
+    } finally {
+        if (gen === _semanticGen) _semanticBusy = false;
+    }
+}
+
+/**
+ * Показывает ролики, похожие на этот.
+ *
+ * Вектор кадра уже посчитан и лежит в базе, поэтому считать нечего и модель
+ * не нужна — в отличие от поиска фразой, который сперва должен перевести
+ * слова в числа. Отсюда и скорость: это обычный запрос к серверу.
+ *
+ * Ищем среди того же, что на экране: сетка показывает отобранное плейлистом
+ * и тегами, и выдавать в ответ ролики из других плейлистов было бы
+ * неожиданностью, а не помощью.
+ */
+async function showSimilar(coubId, title) {
+    const gen = ++_semanticGen;
+    subtitle.textContent = "Ищу похожие…";
+
+    try {
+        const res = await fetch("/api/embeddings/similar", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                id: coubId,
+                limit: SEMANTIC_LIMIT,
+                ids: _entries.map((e) => coubIdFromKey(e.item.key)),
+            }),
+        });
+        if (!res.ok) throw new Error(`Не удалось: ${res.status}`);
+        if (gen !== _semanticGen) return;
+
+        const { results, indexed } = await res.json();
+        const name = _getPlaylistName() || "—";
+
+        if (!indexed) {
+            subtitle.textContent = `${name} · кадр этого ролика ещё не разобран`;
+            return;
+        }
+
+        const rank = new Map(results.map((r, i) => [r.id, i]));
+        _filtered = _entries
+            .filter((e) => rank.has(coubIdFromKey(e.item.key)))
+            .sort((a, b) =>
+                rank.get(coubIdFromKey(a.item.key)) - rank.get(coubIdFromKey(b.item.key)));
+
+        renderFiltered();
+        subtitle.textContent = _filtered.length
+            ? `${name} · похоже на «${title}», сверху ближайшие`
+            : `${name} · похожих не нашлось`;
+        subtitle.title = subtitle.textContent;
+    } catch (err) {
+        if (gen !== _semanticGen) return;
+        subtitle.textContent = String(err?.message || err);
+    }
+}
+
+// ─── Авторы ───────────────────────────────────────────────────────────────
+// Канал ролика не приходит вместе с плейлистом — он лежит в сведениях,
+// которые плеер дозагружает отдельно. Забираем их один раз на весь сеанс:
+// список меняется только когда что-то скачали заново.
+//
+// Нужны они ради поиска: «покажи всё этого автора» — вопрос, который
+// возникает ровно так же часто, как поиск по названию.
+
+/** @type {Map<string, string>|null} id ролика → имя канала */
+let _channels = null;
+let _channelsLoading = null;
+
+function channelOf(coubId) {
+    return _channels?.get(coubId) || "";
+}
+
+function primeChannels() {
+    if (_channels || _channelsLoading) return;
+
+    _channelsLoading = getCoubChannels()
+        .then((byChannel) => {
+            _channels = new Map();
+            for (const [channel, ids] of Object.entries(byChannel)) {
+                for (const id of ids) _channels.set(id, channel);
+            }
+            // Пока список ехал, могли уже что-то искать — и искали без авторов
+            if (isGridMode() && search.value.trim()) applyFilter(search.value.trim());
+        })
+        // Не вышло — ищем как раньше, по названию и id. Это ухудшение,
+        // а не поломка, и сообщать о нём пользователю нечего
+        .catch(() => { _channels = new Map(); })
+        .finally(() => { _channelsLoading = null; });
+}
+
 // ─── Ленивая загрузка превью ──────────────────────────────────────────────
 
 const mediaObserver = new IntersectionObserver(
@@ -152,6 +404,11 @@ const mediaObserver = new IntersectionObserver(
 function attachMedia(video) {
     if (video.dataset.loaded === "1" || !video.dataset.src) return;
     video.dataset.loaded = "1";
+    // Отблеск крутится только пока плитка ждёт кадр. Оставить его на всех
+    // незагруженных нельзя: в плейлисте на восемь тысяч это тысячи вечных
+    // анимаций, и список начинает тормозить сам по себе.
+    // Там, где кадр уже показан картинкой, ждать нечего — и отблеска не надо
+    if (video.dataset.still !== "1") video.parentNode?.classList.add("is-loading");
     // Фрагмент #t=0.1 заставляет браузер отрисовать первый кадр,
     // не дожидаясь play() — это и есть наша "превьюшка".
     video.src = video.dataset.src + "#t=0.1";
@@ -161,35 +418,255 @@ function detachMedia(video) {
     if (video.dataset.loaded !== "1") return;
     if (video === _previewVideo) stopPreview();
     video.dataset.loaded = "0";
+    video.parentNode?.classList.remove("is-loading");
     video.pause();
     video.classList.remove("is-ready");
     video.removeAttribute("src");
     video.load(); // освобождает буфер декодера
 }
 
+/** Отпускает плитку: снимает видео с наблюдения и убирает узел из дерева. */
+function releaseTile(tile) {
+    const video = tile.querySelector("video");
+    if (video) {
+        detachMedia(video);
+        mediaObserver.unobserve(video);
+    }
+    tile.remove();
+}
+
 /** Сносит все плитки и отпускает связанные с ними видео. */
 function clearTiles() {
     stopPreview();
-    list.querySelectorAll("video").forEach((v) => {
-        detachMedia(v);
-        mediaObserver.unobserve(v);
-    });
-    sentinelObserver.unobserve(sentinel);
-    list.innerHTML = "";
-    _renderedCount = 0;
+    // Плитку могли снести, пока курсор был на ней — mouseleave тогда не придёт
+    list.classList.remove("is-focusing");
+    for (const tile of _tiles) releaseTile(tile);
+    _tiles = [];
+    _first = 0;
+    list.innerHTML = ""; // распорки и заглушка «ничего не найдено»
 }
 
-// ─── Подгрузка следующей порции плиток ────────────────────────────────────
+// ─── Окно отрисовки ───────────────────────────────────────────────────────
+//
+// В дереве держим только плитки рядом с видимой областью, а место остальных
+// занимают две распорки — над окном и под ним. Полоса прокрутки при этом
+// честная: распорка ровно той высоты, которую заняли бы убранные ряды.
+//
+// Зачем так. Раньше плитки накапливались по мере прокрутки и не убирались
+// никогда: пролистав плейлист на восемь тысяч, столько же узлов, столько же
+// <video> и столько же целей IntersectionObserver и получаешь. Браузер тратил
+// на них время в каждом кадре, даже когда на экране ничего не менялось, —
+// отсюда и рывки на глубине списка. Теперь узлов всегда примерно поровну,
+// и прокрутка на восьмитысячном ролике стоит столько же, сколько на первом.
+//
+// Считать позиции можно, не отрисовывая ряды: все плитки одной высоты (кадр
+// квадратный, подпись лежит поверх него, а не под ним), поэтому ряд номер N
+// начинается на известном расстоянии от верха.
 
-const sentinel = document.createElement("div");
-sentinel.className = "coub-grid-sentinel";
+const OVERSCAN_ROWS = 3; // рядов сверх экрана в каждую сторону
+const FIRST_FILL = 24;   // плиток до первого замера: мерить нужно по живой
 
-const sentinelObserver = new IntersectionObserver(
-    (records) => {
-        if (records.some((r) => r.isIntersecting)) renderNextChunk();
-    },
-    { root: list, rootMargin: "400px 0px" }
-);
+const topSpacer = document.createElement("div");
+topSpacer.className = "coub-grid-spacer";
+const bottomSpacer = document.createElement("div");
+bottomSpacer.className = "coub-grid-spacer";
+
+let _tiles = [];        // отрисованные плитки по порядку
+let _first = 0;         // позиция _tiles[0] в _filtered
+let _cols = 1;
+let _rowH = 0;          // высота ряда вместе с зазором
+let _gap = 0;
+let _padTop = 0;
+let _entering = false;  // первая заливка — показываем волну появления
+let _growOnly = false;  // во время перетаскивания плитки только добавляем
+let _scrollPending = false;
+
+function rowsTotal() {
+    return Math.ceil(_filtered.length / _cols);
+}
+
+/** Снимает шаг сетки с живых плиток. Требует хотя бы одной отрисованной. */
+function measure() {
+    const style = getComputedStyle(list);
+    _cols = Math.max(1, style.gridTemplateColumns.split(" ").filter(Boolean).length);
+    _gap = parseFloat(style.rowGap) || 0;
+    _padTop = parseFloat(style.paddingTop) || 0;
+
+    // Именно offsetHeight: плитка бывает увеличена (:hover) или уменьшена
+    // (волна появления), а нам нужен её размер в раскладке — тот, по которому
+    // сетка считает ряды. getBoundingClientRect вернул бы размер вместе
+    // с этими преобразованиями и промахнулся бы на десятки процентов.
+    const h = _tiles[0] ? _tiles[0].offsetHeight : 0;
+    _rowH = h > 0 ? h + _gap : 0;
+}
+
+/** Какие плитки должны быть в дереве при текущей прокрутке. */
+function desiredWindow() {
+    const total = _filtered.length;
+    if (!_rowH || !total) return { first: _first, count: Math.min(total, FIRST_FILL) };
+
+    const viewTop = list.scrollTop - _padTop;
+    const firstRow = Math.max(0, Math.floor(viewTop / _rowH) - OVERSCAN_ROWS);
+    const lastRow = Math.min(
+        rowsTotal() - 1,
+        Math.floor((viewTop + list.clientHeight) / _rowH) + OVERSCAN_ROWS
+    );
+
+    const first = Math.min(firstRow * _cols, Math.max(0, total - 1));
+    const end = Math.min(total, (lastRow + 1) * _cols);
+    return { first, count: Math.max(1, end - first) };
+}
+
+function updateWindow() {
+    if (!_filtered.length) return;
+    if (!_rowH && _tiles.length) measure();
+    const { first, count } = desiredWindow();
+    setWindow(first, count);
+}
+
+/**
+ * Приводит дерево к окну [first, first + count).
+ *
+ * Окно всегда начинается с начала ряда: распорка занимает всю ширину сетки,
+ * и неполный ряд сразу после неё разъехался бы не по своим колонкам.
+ */
+function setWindow(first, count) {
+    const total = _filtered.length;
+    if (!total) return;
+
+    first = Math.max(0, Math.min(first, total - 1));
+    count = Math.max(1, Math.min(count, total - first));
+
+    // Перетаскиваемая плитка не должна исчезнуть из-под курсора вместе со
+    // своим drag-сеансом, поэтому пока тащат — только прибавляем
+    if (_growOnly && _tiles.length) {
+        const end = Math.max(_first + _tiles.length, first + count);
+        first = Math.min(_first, first);
+        count = end - first;
+    }
+
+    const oldFirst = _first;
+    const oldEnd = _first + _tiles.length;
+    const newEnd = first + count;
+    if (first === oldFirst && newEnd === oldEnd) return;
+
+    // Окна не пересеклись (прыжок к ролику, скачок полосой прокрутки) —
+    // дешевле собрать заново, чем сшивать по краям
+    if (!_tiles.length || first >= oldEnd || newEnd <= oldFirst) {
+        for (const tile of _tiles) releaseTile(tile);
+        _tiles = [];
+        _first = first;
+        appendTiles(first, count);
+    } else {
+        if (first > oldFirst) removeFront(first - oldFirst);
+        if (newEnd < oldEnd) removeBack(oldEnd - newEnd);
+        if (first < oldFirst) prependTiles(first, oldFirst - first);
+        if (newEnd > oldEnd) appendTiles(oldEnd, newEnd - oldEnd);
+    }
+
+    updateSpacers();
+}
+
+function buildRange(start, n) {
+    const frag = document.createDocumentFragment();
+    const fresh = [];
+    for (let i = 0; i < n; i++) {
+        const entry = _filtered[start + i];
+        if (!entry) break;
+        const tile = buildTile(entry, start + i);
+        fresh.push(tile);
+        frag.appendChild(tile);
+    }
+    return { frag, fresh };
+}
+
+function appendTiles(start, n) {
+    const { frag, fresh } = buildRange(start, n);
+    list.insertBefore(frag, bottomSpacer);
+    _tiles.push(...fresh);
+    if (_entering) playEntrance(fresh);
+}
+
+function prependTiles(start, n) {
+    const { frag, fresh } = buildRange(start, n);
+    list.insertBefore(frag, _tiles[0] || bottomSpacer);
+    _tiles.unshift(...fresh);
+    _first = start;
+}
+
+function removeFront(n) {
+    _tiles.splice(0, n).forEach(releaseTile);
+    _first += n;
+}
+
+function removeBack(n) {
+    _tiles.splice(Math.max(0, _tiles.length - n), n).forEach(releaseTile);
+}
+
+function updateSpacers() {
+    setSpacer(topSpacer, Math.floor(_first / _cols));
+    setSpacer(bottomSpacer, rowsTotal() - Math.ceil((_first + _tiles.length) / _cols));
+}
+
+function setSpacer(el, rows) {
+    // Ноль рядов — это не нулевая высота, а отсутствие: распорка остаётся
+    // элементом сетки и добавила бы лишний зазор
+    if (rows <= 0 || !_rowH) {
+        el.style.display = "none";
+        return;
+    }
+    el.style.display = "";
+    el.style.height = (rows * _rowH - _gap) + "px";
+}
+
+/**
+ * Волна появления: класс снимается с плиток по очереди, дальше их доводит
+ * переход в CSS. Через setTimeout, а не requestAnimationFrame — кадры идут
+ * не всегда (свёрнутое окно, фоновая вкладка), а плитка обязана стать видимой
+ * в любом случае.
+ *
+ * Задержка растёт только у первых полутора десятков: дальше они всё равно за
+ * краем экрана, а ждать своей очереди пришлось бы секунды.
+ */
+function playEntrance(tiles) {
+    for (let i = 0; i < tiles.length; i++) {
+        const tile = tiles[i];
+        tile.classList.add("coub-tile--enter");
+        setTimeout(() => tile.classList.remove("coub-tile--enter"), Math.min(i, 14) * 30);
+    }
+}
+
+/**
+ * Пересчитать шаг сетки и окно. Нужно после всего, что меняет размер плиток
+ * или ширину списка: окно панели, размер плитки S/M/L.
+ *
+ * Верх видимой области удерживаем на том же ролике: иначе смена размера
+ * уносила бы пользователя в случайное место списка.
+ */
+function relayout() {
+    if (!isGridMode() || !_tiles.length) return;
+
+    const anchorRow = _rowH ? Math.floor(Math.max(0, list.scrollTop - _padTop) / _rowH) : 0;
+    const anchorPos = anchorRow * _cols;
+
+    measure();
+
+    if (_rowH) {
+        updateSpacers();
+        list.scrollTop = _padTop + Math.floor(anchorPos / _cols) * _rowH;
+    }
+    updateWindow();
+}
+
+/** Прокрутить к позиции в _filtered, поставив её в середину экрана. */
+function scrollToPos(pos) {
+    if (!_rowH) measure();
+    if (!_rowH) return;
+    const row = Math.floor(pos / _cols);
+    const target = _padTop + row * _rowH - Math.max(0, (list.clientHeight - _rowH) / 2);
+    list.scrollTop = Math.max(0, target);
+    updateWindow();
+}
 
 // ─── Init ─────────────────────────────────────────────────────────────────
 
@@ -246,6 +723,20 @@ export function initGridView({
         applyFilter(q);
     });
 
+    // Enter не ждёт паузы: человек уже дописал и хочет результат сейчас
+    search.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter" || !_semantic) return;
+        e.preventDefault();
+        const q = search.value.trim();
+        clearTimeout(_semanticTimer);
+        if (q) runSemanticSearch(q);
+    });
+
+    semanticBtn?.addEventListener("click", () => {
+        setSemanticMode(!_semantic);
+        search.focus();
+    });
+
     searchClear.addEventListener("click", () => {
         search.value = "";
         searchClear.classList.add("hidden");
@@ -255,6 +746,26 @@ export function initGridView({
 
     initBulkActions();
     initDragAndDrop();
+
+    // Заранее: к моменту, когда сетку откроют, список готовых кадров
+    // должен быть на руках — иначе первая отрисовка возьмёт видео
+    primeThumbs();
+    primeChannels();
+
+    // Прокрутка двигает окно отрисовки. Не чаще кадра: событий приходит
+    // намного больше, а смысл пересчёта появляется только перед отрисовкой
+    list.addEventListener("scroll", () => {
+        if (_scrollPending) return;
+        _scrollPending = true;
+        requestAnimationFrame(() => {
+            _scrollPending = false;
+            updateWindow();
+        });
+    }, { passive: true });
+
+    // Ширина списка решает, сколько колонок в ряду, а от этого зависит всё
+    // остальное — и высота распорок, и то, какие плитки сейчас видны
+    new ResizeObserver(() => relayout()).observe(list);
 
     document.addEventListener("keydown", (e) => {
         if (e.target.matches("input, textarea")) {
@@ -349,6 +860,13 @@ export function setViewMode(mode, { silent = false } = {}) {
         // должна только плитка под курсором
         _onPlayerActive?.(false);
         rebuild();
+
+        // Список готовых кадров обычно уже загружен — его берёт и панель
+        // плейлистов. Если сетку открыли первой, пересобираем, когда он
+        // придёт: до этого плитки взяли видео, как было раньше
+        if (!thumbsReady()) {
+            primeThumbs().then(() => { if (isGridMode()) rebuild(); });
+        }
     } else {
         closeBulkPopover();
         clearSelection();
@@ -401,20 +919,43 @@ function setTileSize(size) {
     [...sizeGroup.children].forEach((b) =>
         b.classList.toggle("active", b.dataset.size === _tileSize)
     );
+    // Размер плитки — это и шаг сетки, и число колонок, и поля списка.
+    // Ширина самого списка при этом не меняется, так что ResizeObserver
+    // молчит и пересчитать окно надо самим
+    relayout();
 }
 
 // ─── Рендер ───────────────────────────────────────────────────────────────
 
 function applyFilter(query) {
-    const q = query.toLowerCase();
+    const q = query.trim();
+
+    // Смысловой поиск уходит в модель и на сервер, то есть не мгновенен.
+    // Пока ответ не пришёл, на экране остаётся прежнее — это честнее, чем
+    // мигать пустым списком на каждую букву
+    if (_semantic && q) {
+        clearTimeout(_semanticTimer);
+        _semanticTimer = setTimeout(() => runSemanticSearch(q), SEMANTIC_DEBOUNCE_MS);
+        subtitle.textContent = _semanticBusy ? subtitle.textContent : "Ищу по смыслу…";
+        return;
+    }
+
+    _semanticGen++; // отменяем ответ на запрос, который уже не нужен
+
+    // Название, автор и id одной строкой: искать приходится по всем трём,
+    // а держать их врозь значило бы искать трижды
     _filtered = q
-        ? _entries.filter(({ item }) =>
-            (item.title || "").toLowerCase().includes(q) ||
-            (item.id || "").toLowerCase().includes(q))
+        ? filterByQuery(_entries, q, ({ item }) =>
+            `${item.title || ""} ${channelOf(coubIdFromKey(item.key))} ${item.id || ""}`)
         : _entries;
 
-    _anchorPos = null;
     updateCaption(!!q);
+    renderFiltered();
+}
+
+/** Рисует сетку по уже отобранному _filtered. */
+function renderFiltered() {
+    _anchorPos = null;
     clearTiles();
 
     if (!_filtered.length) {
@@ -427,9 +968,21 @@ function applyFilter(query) {
         return;
     }
 
-    list.appendChild(sentinel);
-    renderNextChunk();
-    sentinelObserver.observe(sentinel);
+    list.appendChild(topSpacer);
+    list.appendChild(bottomSpacer);
+    setSpacer(topSpacer, 0);
+    setSpacer(bottomSpacer, 0);
+    list.scrollTop = 0;
+
+    // Первую горсть рисуем вслепую: шаг сетки снимается с живой плитки,
+    // а до первой отрисовки мерить нечего. Дальше окно само дотянется
+    // до нужного размера — экран мог оказаться и выше этой горсти.
+    _rowH = 0;
+    _entering = true;
+    appendTiles(0, Math.min(_filtered.length, FIRST_FILL));
+    measure();
+    updateWindow();
+    _entering = false;
 }
 
 function updateCaption(isSearch) {
@@ -441,39 +994,6 @@ function updateCaption(isSearch) {
     const info = _getReorderInfo();
     subtitle.textContent = info.enabled || !info.hint ? base : `${base} · ${info.hint}`;
     subtitle.title = subtitle.textContent;
-}
-
-function renderNextChunk() {
-    if (_renderedCount >= _filtered.length) return;
-
-    const slice = _filtered.slice(_renderedCount, _renderedCount + CHUNK);
-    const frag = document.createDocumentFragment();
-    const fresh = [];
-
-    for (let i = 0; i < slice.length; i++) {
-        const tile = buildTile(slice[i], _renderedCount + i);
-        tile.classList.add("coub-tile--enter");
-        fresh.push(tile);
-        frag.appendChild(tile);
-    }
-
-    list.insertBefore(frag, sentinel);
-
-    // Волна появления: класс снимается с плиток по очереди, дальше их
-    // доводит переход в CSS. Через setTimeout, а не requestAnimationFrame —
-    // кадры идут не всегда (свёрнутое окно, фоновая вкладка), а плитка
-    // обязана стать видимой в любом случае.
-    //
-    // Задержка растёт только у первых полутора десятков: дальше они всё
-    // равно за краем экрана, а ждать своей очереди пришлось бы секунды.
-    for (let i = 0; i < fresh.length; i++) {
-        const tile = fresh[i];
-        setTimeout(() => tile.classList.remove("coub-tile--enter"), Math.min(i, 14) * 30);
-    }
-
-    _renderedCount += slice.length;
-
-    if (_renderedCount >= _filtered.length) sentinelObserver.unobserve(sentinel);
 }
 
 function buildTile({ item, index }, pos) {
@@ -489,6 +1009,18 @@ function buildTile({ item, index }, pos) {
     const media = document.createElement("div");
     media.className = "coub-tile-media";
 
+    // Кадр ключуется id самого ролика, а не записью плейлиста: у дубликата
+    // ключ свой ("4aqice#2"), а кадр тот же самый
+    const coubId = coubIdFromKey(item.key);
+    const still = hasThumb(coubId) ? document.createElement("img") : null;
+    if (still) {
+        still.className = "coub-tile-still";
+        still.src = thumbUrl(coubId);
+        still.alt = "";
+        still.draggable = false;
+        still.decoding = "async";
+    }
+
     const video = document.createElement("video");
     video.muted = true; // звук идёт отдельной дорожкой через previewAudio
     video.loop = true;
@@ -498,7 +1030,14 @@ function buildTile({ item, index }, pos) {
     // останется пустой до наведения курсора
     video.preload = "metadata";
     video.dataset.src = item.video || "";
-    video.addEventListener("loadeddata", () => video.classList.add("is-ready"));
+    if (still) video.dataset.still = "1";
+    video.addEventListener("loadeddata", () => {
+        video.classList.add("is-ready");
+        media.classList.remove("is-loading");
+        // Кадра для этого ролика ещё нет — снимаем, раз уж видео всё равно
+        // загружено. В следующий раз плитка обойдётся картинкой
+        if (!still) captureThumb(video, coubId);
+    });
 
     // Персональная постобработка ролика видна и в превью. Случайные настройки
     // «Безумия» сюда не тянем — это перемешивание для просмотра списком.
@@ -506,6 +1045,12 @@ function buildTile({ item, index }, pos) {
         const fx = composeSettings(item.fx);
         if (fx.filter) video.style.filter = fx.filter;
         if (fx.transform) video.style.transform = fx.transform;
+        // Картинка в покое должна выглядеть как видео под курсором, иначе
+        // обработанный ролик «перекрашивался» бы при наведении
+        if (still) {
+            if (fx.filter) still.style.filter = fx.filter;
+            if (fx.transform) still.style.transform = fx.transform;
+        }
         // defaultPlaybackRate — чтобы скорость пережила ленивую загрузку src
         video.defaultPlaybackRate = fx.speed;
         video.playbackRate = fx.speed;
@@ -515,6 +1060,18 @@ function buildTile({ item, index }, pos) {
     check.className = "coub-tile-check";
     check.title = "Выделить";
 
+    // «Похожие на этот» — вектор кадра уже лежит в базе, считать нечего,
+    // поэтому кнопка работает и без скачанной текстовой башни
+    const similar = document.createElement("button");
+    similar.type = "button";
+    similar.className = "coub-tile-similar";
+    similar.title = "Показать похожие на этот";
+    similar.innerHTML = `
+        <svg viewBox="0 0 16 16" aria-hidden="true" width="11" height="11">
+            <circle cx="6" cy="6" r="3.2" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <circle cx="10.4" cy="10.4" r="3.2" fill="none" stroke="currentColor" stroke-width="1.5"/>
+        </svg>`;
+
     const indexBadge = document.createElement("span");
     indexBadge.className = "coub-tile-index";
     indexBadge.textContent = index + 1;
@@ -523,8 +1080,12 @@ function buildTile({ item, index }, pos) {
     nowBadge.className = "coub-tile-now";
     nowBadge.textContent = "Сейчас";
 
+    // Картинка под видео: пока видео не готово (а в покое его и нет вовсе),
+    // видно её, а появившееся видео проявляется поверх
+    if (still) media.appendChild(still);
     media.appendChild(video);
     media.appendChild(check);
+    media.appendChild(similar);
     media.appendChild(indexBadge);
     media.appendChild(nowBadge);
 
@@ -536,14 +1097,34 @@ function buildTile({ item, index }, pos) {
     tile.appendChild(media);
     tile.appendChild(title);
 
-    tile.addEventListener("mouseenter", () => startPreview(video, item));
+    tile.addEventListener("mouseenter", () => {
+        // У плитки с картинкой видео до сих пор не грузилось — заводим его
+        // здесь. Порядок важен: startPreview зовёт play() только у того,
+        // что уже подключено.
+        //
+        // Зовём и для плиток без картинки: обычно их видео уже подключил
+        // наблюдатель, но если оно ещё не дошло, наведение не должно
+        // упираться в пустой прямоугольник. Повторный вызов ничего не делает
+        attachMedia(video);
+        startPreview(video, item);
+        setFocusing(true);
+    });
     tile.addEventListener("mouseleave", () => {
         if (_previewVideo === video) stopPreview();
+        // Живым остаётся только видео под курсором: у остальных плиток кадр
+        // показывает картинка, декодер им не нужен
+        if (still) detachMedia(video);
+        setFocusing(false);
     });
 
     check.addEventListener("click", (e) => {
         e.stopPropagation();
         toggleSelection(item.key, Number(tile.dataset.pos), tile);
+    });
+
+    similar.addEventListener("click", (e) => {
+        e.stopPropagation();
+        showSimilar(coubId, item.title || item.id);
     });
 
     tile.addEventListener("click", (e) => {
@@ -568,7 +1149,10 @@ function buildTile({ item, index }, pos) {
         jumpTo(Number(tile.dataset.index));
     });
 
-    mediaObserver.observe(video);
+    // Наблюдаем только за плитками без картинки: им видео нужно, чтобы
+    // вообще что-то показать (и чтобы снять с него кадр на будущее).
+    // Остальные заводят видео при наведении и сразу отпускают
+    if (!still) mediaObserver.observe(video);
     return tile;
 }
 
@@ -581,13 +1165,11 @@ function scrollActiveIntoView() {
     const current = _getCurrentIndex();
     if (current < 0) return;
 
-    // Текущий ролик может быть ещё не отрисован — дорисовываем порции до него.
+    // Плитки текущего ролика может не быть в дереве — прокручиваем не к ней,
+    // а к её месту: ряд считается по номеру позиции, окно подтянется следом
     const pos = _filtered.findIndex((e) => e.index === current);
     if (pos === -1) return;
-    while (_renderedCount <= pos && _renderedCount < _filtered.length) renderNextChunk();
-
-    list.querySelector(`.coub-tile[data-index="${current}"]`)
-        ?.scrollIntoView({ block: "center" });
+    scrollToPos(pos);
 }
 
 // ─── Перетаскивание (изменение порядка) ───────────────────────────────────
@@ -598,6 +1180,9 @@ function initDragAndDrop() {
         if (!tile || !_reorderEnabled) return;
 
         _dragTile = tile;
+        // Пока тащат, окно только прибавляет плитки: убрать перетаскиваемую
+        // из дерева — значит оборвать сам drag-сеанс
+        _growOnly = true;
         stopPreview();
         e.dataTransfer.effectAllowed = "move";
         // Без setData Firefox не начинает перетаскивание вовсе
@@ -633,6 +1218,8 @@ function initDragAndDrop() {
         list.classList.remove("coub-grid--dragging");
         _dragTile = null;
         commitReorder();
+        _growOnly = false;
+        updateWindow(); // отпускаем всё, что наросло за время перетаскивания
     });
 }
 
@@ -645,9 +1232,10 @@ function autoScroll(clientY) {
 /**
  * Считывает новый порядок из DOM и раскладывает его обратно в модель.
  *
- * Отрисованы всегда первые _renderedCount элементов _filtered, а _filtered
- * может быть подмножеством _entries (включён поиск). Поэтому:
- *   • новый _filtered = порядок плиток в DOM + неотрисованный хвост как был;
+ * Отрисован кусок _filtered от _first длиной в окно, а сам _filtered может
+ * быть подмножеством _entries (включён поиск). Поэтому:
+ *   • новый _filtered = хвосты по обе стороны окна как были + порядок плиток
+ *     в DOM между ними;
  *   • в _entries переставленные ролики раскладываются по тем же позициям,
  *     которые занимали до этого — ровно так же, как это делает сервер
  *     (см. Reorder в PlaylistsController).
@@ -658,9 +1246,16 @@ function commitReorder() {
         .map((t) => _entryById.get(t.dataset.id))
         .filter(Boolean);
 
-    if (renderedEntries.length !== _renderedCount) return; // рассинхрон — не рискуем
+    if (renderedEntries.length !== _tiles.length) return; // рассинхрон — не рискуем
 
-    const newFiltered = [...renderedEntries, ..._filtered.slice(_renderedCount)];
+    // Перетаскивание переставило узлы мимо нас — приводим окно к дереву
+    _tiles = domTiles;
+
+    const newFiltered = [
+        ..._filtered.slice(0, _first),
+        ...renderedEntries,
+        ..._filtered.slice(_first + renderedEntries.length),
+    ];
     const unchanged = newFiltered.every((e, i) => e === _filtered[i]);
     if (unchanged) return;
 
@@ -680,7 +1275,7 @@ function commitReorder() {
         const entry = _entryById.get(tile.dataset.id);
         if (!entry) return;
         tile.dataset.index = entry.index;
-        tile.dataset.pos = pos;
+        tile.dataset.pos = _first + pos; // позиция в списке, а не в окне
         tile.querySelector(".coub-tile-index").textContent = entry.index + 1;
         tile.classList.toggle("coub-tile--active", entry.index === _getCurrentIndex());
     });
@@ -823,17 +1418,15 @@ function closeBulkPopover() {
 }
 
 function renderPopoverList(query) {
-    const q = query.toLowerCase();
+    const q = query.trim();
     popoverList.innerHTML = "";
 
     let rows;
     if (_bulkMode === "tag") {
-        rows = _getAllTags()
-            .filter(({ tag }) => !q || tag.toLowerCase().includes(q))
+        rows = filterByQuery(_getAllTags(), q, ({ tag }) => tag)
             .map(({ tag, count }) => ({ name: tag, note: `${count} видео` }));
     } else if (_bulkMode === "preset") {
-        rows = (_getPresets() || [])
-            .filter((p) => !q || p.name.toLowerCase().includes(q))
+        rows = filterByQuery(_getPresets() || [], q, (p) => p.name)
             .map((p) => ({
                 name: p.name,
                 note: p.bgSeparate
@@ -842,9 +1435,9 @@ function renderPopoverList(query) {
                 preset: p,
             }));
     } else {
-        rows = Object.entries(_getPlaylists())
-            .filter(([name]) => !BULK_EXCLUDED_PLAYLISTS.includes(name))
-            .filter(([name]) => !q || name.toLowerCase().includes(q))
+        const all = Object.entries(_getPlaylists())
+            .filter(([name]) => !BULK_EXCLUDED_PLAYLISTS.includes(name));
+        rows = filterByQuery(all, q, ([name]) => name)
             .map(([name, data]) => ({
                 name,
                 note: `${Object.keys(data.videos || {}).length} видео`,

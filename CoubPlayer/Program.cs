@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using CoubPlayer.Services;
 using CoubPlayer.Storage;
+using Microsoft.AspNetCore.StaticFiles;
 namespace CoubPlayer
 {
     public class Program
@@ -43,6 +44,7 @@ namespace CoubPlayer
             builder.Services.AddSingleton<CoubTimelineService>();
             builder.Services.AddSingleton<RestoreService>();
             builder.Services.AddSingleton<MetadataService>();
+            builder.Services.AddSingleton<ModelService>();
 
             // Хранилище: база и репозитории поверх неё. Контроллеры работают
             // только через них и о том, где лежит файл базы, не знают
@@ -53,6 +55,7 @@ namespace CoubPlayer
             builder.Services.AddSingleton<FxPresetRepository>();
             builder.Services.AddSingleton<GroupOrderRepository>();
             builder.Services.AddSingleton<SuggestionRepository>();
+            builder.Services.AddSingleton<EmbeddingRepository>();
             builder.Services.AddHttpClient("Coub")
     .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
     {
@@ -106,8 +109,18 @@ namespace CoubPlayer
             //
             // Файлов роликов, кадров и баннеров это не касается: они тяжёлые
             // и под своим именем не меняются — пусть кэшируются как прежде.
+            // Файлы модели смыслового поиска лежат в статике, но их расширения
+            // серверу незнакомы, а незнакомое он по умолчанию не отдаёт вовсе:
+            // запрос к весам молча превращался бы в 404, и браузер сообщал бы,
+            // что файла нет, — хотя он есть
+            var contentTypes = new FileExtensionContentTypeProvider();
+            contentTypes.Mappings[".onnx"] = "application/octet-stream";
+            contentTypes.Mappings[".wasm"] = "application/wasm";
+            contentTypes.Mappings[".mjs"] = "text/javascript";
+
             app.UseStaticFiles(new StaticFileOptions
             {
+                ContentTypeProvider = contentTypes,
                 OnPrepareResponse = context =>
                 {
                     var path = context.File.Name;

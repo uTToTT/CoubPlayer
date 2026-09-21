@@ -59,6 +59,41 @@ namespace CoubPlayer.Storage
             return result;
         }
 
+        /// <summary>
+        /// Каналы и ролики каждого из них — чтобы плеер мог искать по автору.
+        ///
+        /// Сгруппировано по каналу, а не выдано парами «ролик → автор»:
+        /// у канала обычно не один ролик, а десятки, и его название в ответе
+        /// встречается один раз вместо каждого раза. На восьми тысячах роликов
+        /// это разница в несколько раз по весу ответа.
+        ///
+        /// Ролики без сведений сюда не попадают: автор у них не «пустой»,
+        /// а неизвестный, и искать по нему нечего.
+        /// </summary>
+        public Dictionary<string, List<string>> ReadChannels()
+        {
+            lock (_lock)
+            {
+                using var connection = _db.Open();
+                using var command = connection.CreateCommand();
+                command.CommandText = @"
+SELECT channel_title, id FROM coubs
+WHERE channel_title IS NOT NULL AND TRIM(channel_title) <> ''
+ORDER BY rowid;";
+
+                var result = new Dictionary<string, List<string>>();
+                using var reader = command.ExecuteReader();
+                while (reader.Read())
+                {
+                    var channel = reader.GetString(0);
+                    if (!result.TryGetValue(channel, out var ids))
+                        result[channel] = ids = new List<string>();
+                    ids.Add(reader.GetString(1));
+                }
+                return result;
+            }
+        }
+
         public List<string> ReadIds()
         {
             lock (_lock)

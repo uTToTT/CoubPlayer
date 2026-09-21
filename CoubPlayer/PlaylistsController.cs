@@ -327,6 +327,52 @@ namespace CoubPlayer
             return Respond(outcome);
         }
 
+        public class AlignToFeedRequest
+        {
+            /// <summary>Лента как есть, от новых к старым. Собирает её расширение.</summary>
+            public List<string>? Feed { get; set; }
+        }
+
+        /// <summary>
+        /// Приводит порядок плейлиста к порядку ленты на сайте.
+        ///
+        /// Нужно потому, что ролик, скачанный кнопкой на странице, ложится
+        /// в начало: ленты в этот момент нет, и место ролика взять неоткуда.
+        /// Десяток таких — и порядок разошёлся с сайтом.
+        ///
+        /// Перед перестановкой делаем копию: меняется раскладка нескольких
+        /// тысяч записей разом, а раскладка — единственное, что не
+        /// восстанавливается перекачиванием.
+        /// </summary>
+        [HttpPost("{playlist}/align")]
+        public IActionResult AlignToFeed(
+            [FromRoute] string playlist,
+            [FromBody] AlignToFeedRequest req,
+            [FromServices] BackupService backups)
+        {
+            if (req?.Feed == null || req.Feed.Count == 0)
+                return BadRequest("Пустая лента — нечем выравнивать");
+
+            try
+            {
+                backups.Create();
+            }
+            catch (Exception ex)
+            {
+                // Без копии за такое не беремся: это не та операция, которую
+                // стоит делать «на авось»
+                return StatusCode(500, $"Не удалось сделать копию перед перестановкой: {ex.Message}");
+            }
+
+            var (outcome, matched, extra) = _playlists.AlignToFeed(playlist, req.Feed);
+            if (outcome == PlaylistOutcome.NotFound) return NotFound("Playlist not found");
+
+            ConsoleLog.Info(
+                $"[{playlist}] порядок выровнен по ленте: по ленте {matched}, вне ленты {extra}");
+
+            return Ok(new { matched, extra });
+        }
+
         /// <summary>
         /// Раскладывает плейлисты в заданном порядке. Приходит полный список,
         /// поэтому просто нумеруем по позиции; не названные оставляем как были.

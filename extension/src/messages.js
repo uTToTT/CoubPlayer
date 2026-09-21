@@ -27,8 +27,17 @@ export const MSG = {
     /** content → sw: завести новый плейлист прямо из меню */
     CREATE_PLAYLIST: "createPlaylist",
 
+    /** content → sw: какие из этих роликов уже в библиотеке */
+    LIBRARY: "library",
+
+    /** content → sw: куда этот ролик просится (подсказки по тегам) */
+    SUGGEST: "suggest",
+
     /** popup → sw: собрать ленту, вычесть скачанное, отдать остаток серверу */
     SYNC: "sync",
+
+    /** popup → sw: пройти ленту и расставить плейлист в её порядке */
+    ALIGN: "align",
 
     /** popup → sw: прервать текущую загрузку */
     STOP: "stop",

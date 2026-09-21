@@ -163,6 +163,17 @@ namespace CoubPlayer.Storage
             // не перепишут — сбрасываем, следующий показ снимет их заново
             if (from < new Version(1, 1, 1)) DropThumbs(dataDir);
 
+            // До 1.2.2 часть записей делила порядковый номер с соседом —
+            // наследство старой синхронизации. Одинаковые номера означают,
+            // что порядок двух роликов решает случай, и список тасуется сам
+            // собой между запусками
+            if (from < new Version(1, 2, 2))
+            {
+                var fixedRows = new PlaylistRepository(db).CompactOrders();
+                if (fixedRows > 0)
+                    ConsoleLog.Muted($"[Версия] порядок записей выправлен: {fixedRows}");
+            }
+
             if (stored != null)
                 ConsoleLog.Info($"[Версия] Данные обновлены с {stored} до {AppVersion.Current}");
 

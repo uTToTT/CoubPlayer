@@ -4,8 +4,15 @@
     {
       "name": "coubplayer",
       "runtimeExecutable": "dotnet",
-      "runtimeArgs": ["run", "--launch-profile", "http", "--no-build"],
-      "port": 5000
+      "runtimeArgs": [
+        "run",
+        "--launch-profile",
+        "http",
+        "--no-build",
+        "--urls",
+        "http://localhost:5050"
+      ],
+      "port": 5050
     }
   ]
 }

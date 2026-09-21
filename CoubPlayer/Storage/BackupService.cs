@@ -31,10 +31,14 @@ namespace CoubPlayer.Storage
     /// • JSON — то же самое в читаемом виде, на случай если с базой или самим
     ///   приложением что-то не так. Формат знает не все колонки (метаданные
     ///   Coub, эмбеддинги), поэтому он дополнение к снимку, а не замена.
+    ///
+    /// Чего в копии нет намеренно: файлов роликов (их перекачивают) и векторов
+    /// смыслового поиска (их пересчитывают из тех же роликов за минуты).
+    /// Копия хранит то, что не восстанавливается ничем, — раскладку.
     /// </summary>
     public class BackupService
     {
-        /// <summary>Сколько копий держим. Каждая — около 5 МБ.</summary>
+        /// <summary>Сколько копий держим. Каждая — единицы мегабайт.</summary>
         private const int KeepCount = 10;
 
         /// <summary>Не чаще одной автоматической копии в сутки.</summary>
@@ -167,16 +171,68 @@ namespace CoubPlayer.Storage
         /// лежат в отдельном журнале, и копия самого файла оказалась бы
         /// обрезанной по последней контрольной точке. Заодно снимок выходит
         /// уплотнённым.
+        ///
+        /// Из снимка выбрасываются векторы смыслового поиска. На восьми тысячах
+        /// роликов это 26 МБ в каждой копии из десяти — треть гигабайта за то,
+        /// что и копировать незачем: векторы считаются из самих роликов за
+        /// несколько минут, а ролики в копию всё равно не входят. Восстановив
+        /// библиотеку, индекс надо будет построить заново — это единственное,
+        /// что теряется, и оно возвращается одной кнопкой.
         /// </summary>
         private void SnapshotDatabase(string targetPath)
         {
-            using var connection = _db.Open();
-            using var command = connection.CreateCommand();
+            using (var connection = _db.Open())
+            using (var command = connection.CreateCommand())
+            {
+                // Путь подставляем параметром: в нём бывают апострофы
+                command.CommandText = "VACUUM INTO $path;";
+                command.Parameters.AddWithValue("$path", targetPath);
+                command.ExecuteNonQuery();
+            }
 
-            // Путь подставляем параметром: в нём бывают апострофы
-            command.CommandText = "VACUUM INTO $path;";
-            command.Parameters.AddWithValue("$path", targetPath);
-            command.ExecuteNonQuery();
+            DropEmbeddings(targetPath);
+        }
+
+        /// <summary>
+        /// Убирает векторы из готового снимка и ужимает его.
+        ///
+        /// Чистим копию, а не исходник: в рабочей базе векторы нужны, и трогать
+        /// её ради размера копии было бы худшим из возможных решений. Неудача
+        /// здесь не повод терять копию целиком — она просто останется тяжёлой.
+        /// </summary>
+        private static void DropEmbeddings(string snapshotPath)
+        {
+            try
+            {
+                // Pooling=false обязателен. Соединение закрывается, но с пулом
+                // файл остаётся открытым, и папку со снимком потом не
+                // переименовать — «доступ запрещён» на ровном месте
+                using var connection = new SqliteConnection(
+                    new SqliteConnectionStringBuilder
+                    {
+                        DataSource = snapshotPath,
+                        Pooling = false,
+                    }.ToString());
+                connection.Open();
+
+                using (var clear = connection.CreateCommand())
+                {
+                    clear.CommandText =
+                        "UPDATE coubs SET embedding = NULL WHERE embedding IS NOT NULL;" +
+                        "DELETE FROM meta WHERE key IN ('embedding_model', 'embedding_dim');";
+                    clear.ExecuteNonQuery();
+                }
+
+                // Без этого освободившиеся страницы остаются в файле, и копия
+                // весит столько же, сколько весила бы с векторами
+                using var vacuum = connection.CreateCommand();
+                vacuum.CommandText = "VACUUM;";
+                vacuum.ExecuteNonQuery();
+            }
+            catch (SqliteException ex)
+            {
+                ConsoleLog.Muted($"[Копия] векторы убрать не вышло: {ex.Message}");
+            }
         }
 
         /// <summary>Оставляет последние KeepCount копий, остальные убирает.</summary>

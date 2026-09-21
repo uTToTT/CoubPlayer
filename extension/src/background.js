@@ -6,6 +6,7 @@
 import { MSG } from "./messages.js";
 import {
     collectPermalinks,
+    fetchCoubMeta,
     inspectCookies,
     pageRequests,
     permalinkFromUrl,
@@ -56,21 +57,84 @@ async function downloadOne({ permalink, playlist }) {
 
     if (result && !result.success) throw new Error(result.error || "Не удалось скачать куб");
 
+    // В библиотеке прибавилось — метки «уже скачан» на страницах устарели
+    forgetLibrary();
+
     // Выбор запоминаем: в следующий раз он будет первым кандидатом
     if (playlist) await chrome.storage.local.set({ defaultPlaylist: playlist });
 
     return { id, alreadyExisted: !!result?.alreadyExisted, playlist: target };
 }
 
+// ─── Что уже скачано ────────────────────────────────────────────────────────
+// Библиотека на восемь тысяч роликов — это сотня килобайт id, и спрашивать её
+// на каждую карточку ленты незачем: список меняется только когда что-то
+// скачали. Держим здесь, отдаём страницам ответ на их вопрос «а эти — есть?».
+
+const LIBRARY_TTL_MS = 60_000;
+
+let _library = { ids: null, at: 0 };
+
+function forgetLibrary() {
+    _library = { ids: null, at: 0 };
+}
+
+async function libraryIds() {
+    const fresh = _library.ids && Date.now() - _library.at < LIBRARY_TTL_MS;
+    if (!fresh) {
+        _library = { ids: await local.getLibrary(), at: Date.now() };
+    }
+    return _library.ids;
+}
+
+/**
+ * Какие из присланных роликов уже в библиотеке.
+ *
+ * Страница спрашивает про то, что у неё на экране, и получает короткий ответ:
+ * гонять весь список id туда-обратно ради десятка карточек — впустую.
+ */
+async function libraryHas({ ids } = {}) {
+    if (!Array.isArray(ids) || !ids.length) return { have: [] };
+    const library = await libraryIds();
+    return { have: ids.filter((id) => library.has(id)) };
+}
+
+// ─── Куда просится ролик ────────────────────────────────────────────────────
+
+/**
+ * Подсказки для ролика, открытого на coub.com.
+ *
+ * Сервер считает их по коубовским тегам. У скачанного ролика теги уже есть,
+ * у остального — нет, и тогда сервер просит метаданные: их мы забираем
+ * со страницы и спрашиваем второй раз. Лишний поход в сеть только там,
+ * где без него никак.
+ */
+async function suggestFor({ permalink } = {}) {
+    const id = permalinkFromUrl(permalink);
+    if (!id) throw new Error("Не разобрал ссылку на куб");
+
+    const first = await local.suggest(id);
+    if (!first.needsMeta) return first;
+
+    const meta = await fetchCoubMeta(id);
+    return local.suggest(id, meta);
+}
+
 /** Плейлисты для меню кнопки — со списком групп и последним выбором. */
 async function playlistsFor({ permalink } = {}) {
     const id = permalink ? permalinkFromUrl(permalink) : null;
-    const [data, { defaultPlaylist }] = await Promise.all([
+    const [data, { defaultPlaylist }, base] = await Promise.all([
         local.getPlaylists(id),
         chrome.storage.local.get("defaultPlaylist"),
+        local.getBaseUrl(),
     ]);
     return {
-        playlists: data.playlists || [],
+        // Сервер отдаёт путь от своего корня, а картинку будет грузить
+        // страница coub.com — ей нужен полный адрес
+        playlists: (data.playlists || []).map((pl) => ({
+            ...pl,
+            banner: pl.banner ? base + pl.banner : null,
+        })),
         groupOrder: data.groupOrder || [],
         recent: defaultPlaylist || null,
     };
@@ -208,7 +272,62 @@ async function sync({ category, mode = "new", limit = -1 }) {
     }
 }
 
+/**
+ * Выравнивает порядок плейлиста по ленте.
+ *
+ * Ничего не качает: проходит ленту целиком, чтобы узнать настоящий порядок,
+ * и отдаёт его серверу. Поэтому идёт заметно быстрее догрузки — работа тут
+ * только в обходе страниц.
+ *
+ * @param {object} params
+ * @param {"liked"|"bookmarks"} params.category
+ */
+async function align({ category }) {
+    if (_job && !_job.finished) throw new Error("Загрузка уже идёт");
+
+    _stop = { requested: false, controller: new AbortController() };
+
+    setJob({
+        category,
+        phase: "collect",
+        page: 0,
+        totalPages: null,
+        collected: 0,
+        queued: 0,
+        done: 0,
+        failed: 0,
+        downloadStartedAt: null,
+        finished: false,
+        stoppedByUser: false,
+        error: null,
+    });
+
+    try {
+        const { permalinks } = await collectPermalinks(category, {
+            limit: -1,
+            onPage: ({ page, totalPages, collected }) => setJob({ page, totalPages, collected }),
+            shouldStop: () => _stop.requested,
+        });
+
+        if (_stop.requested) return finishJob({ stoppedByUser: true });
+
+        // Половина ленты — это половина порядка, и перестановка по ней
+        // перемешала бы плейлист сильнее, чем он был. Лучше ничего
+        if (!permalinks.length) throw new Error("Лента пустая — выравнивать не по чему");
+
+        setJob({ phase: "align", queued: permalinks.length });
+        const { matched, extra } = await local.alignToFeed(category, permalinks);
+
+        return finishJob({ done: matched, aligned: true, extra });
+    } catch (err) {
+        setJob({ phase: "error", finished: true, error: String(err.message || err) });
+        throw err;
+    }
+}
+
 function finishJob(patch = {}) {
+    // Догрузка ленты пополнила библиотеку — прежний список id больше не верен
+    forgetLibrary();
     setJob({ phase: "done", finished: true, ...patch });
     return { ..._job };
 }
@@ -238,7 +357,10 @@ const HANDLERS = {
     [MSG.DOWNLOAD_ONE]: (payload) => downloadOne(payload),
     [MSG.PLAYLISTS]: (payload) => playlistsFor(payload),
     [MSG.CREATE_PLAYLIST]: ({ name }) => createPlaylist(name),
+    [MSG.LIBRARY]: (payload) => libraryHas(payload),
+    [MSG.SUGGEST]: (payload) => suggestFor(payload),
     [MSG.SYNC]: (payload) => sync(payload),
+    [MSG.ALIGN]: (payload) => align(payload),
     [MSG.STOP]: () => stopJob(),
     [MSG.JOB]: () => _job,
 };

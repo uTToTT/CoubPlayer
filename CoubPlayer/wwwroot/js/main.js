@@ -18,6 +18,7 @@ import {
 import { revealSimple, revealChars } from "./text-reveal.js";
 import { initRestore } from "./restore.js";
 import { initMetadata } from "./metadata.js";
+import { initSemanticIndex } from "./indexer.js";
 import { initAbout } from "./about.js";
 import {
     initSortingPanel,
@@ -1044,6 +1045,9 @@ async function init() {
     // Сбор сведений о роликах. Ни файлов, ни плейлистов не касается — меняет
     // только то, чего в интерфейсе пока не видно, поэтому перечитывать нечего
     initMetadata();
+
+    // Разбор кадров для смыслового поиска — тоже в стороне от файлов
+    initSemanticIndex();
 
     // Загрузка видео по ссылке (одной или нескольким)
     downloadCoubsBtn.addEventListener("click", async (e) => {

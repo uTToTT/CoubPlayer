@@ -15,6 +15,8 @@
     const MSG_PAGE_REQUESTS = "pageRequests"; // см. messages.js
     const MSG_PLAYLISTS = "playlists";        // см. messages.js
     const MSG_CREATE_PLAYLIST = "createPlaylist"; // см. messages.js
+    const MSG_LIBRARY = "library";            // см. messages.js
+    const MSG_SUGGEST = "suggest";            // см. messages.js
 
     const DEFAULT_LABEL = "В CoubPlayer";
     const DEFAULT_TITLE = "Скачать в CoubPlayer";
@@ -85,6 +87,88 @@
         return true; // ответ придёт асинхронно
     });
 
+    // ─── Что уже скачано ────────────────────────────────────────────────────
+    // Отметка на кнопке отвечает на вопрос, ради которого иначе пришлось бы
+    // открывать меню или лезть в плеер: это у меня уже есть?
+    //
+    // Спрашиваем не про всю библиотеку, а только про то, что сейчас на экране,
+    // и не чаще, чем появляются новые карточки: лента подгружается кусками,
+    // и запрос на каждую был бы десятком запросов в секунду.
+
+    const ASK_DELAY_MS = 250;
+
+    /** permalink → true/false. Ответ на сеанс: скачанное обратно не исчезает. */
+    const _known = new Map();
+
+    /** Кнопки, про чьи ролики ещё не спросили. */
+    const _pending = new Set();
+    let _askTimer = null;
+
+    function markDownloaded(btn) {
+        const known = _known.get(btn.dataset.cpdPermalink) === true;
+        btn.classList.toggle("is-known", known);
+
+        // На карточке ленты кнопка проявляется только под курсором — а отметка
+        // должна быть видна сразу, иначе в ней нет смысла. Поэтому у скачанных
+        // гнездо остаётся на виду
+        btn.closest(".cpd-card-slot")?.classList.toggle("is-known", known);
+
+        if (known && !btn.classList.contains("is-done")) {
+            btn.title = "Уже в CoubPlayer — можно добавить ещё в один плейлист";
+        }
+    }
+
+    /** Ставит кнопку в очередь на проверку — ответ придёт одним запросом. */
+    function askIsDownloaded(btn) {
+        const permalink = btn.dataset.cpdPermalink;
+        if (!permalink) return;
+
+        if (_known.has(permalink)) {
+            // Кнопку в этот момент ещё не вставили в страницу, а отметка ищет
+            // гнездо карточки — ставим её, когда вставка уже случилась
+            queueMicrotask(() => markDownloaded(btn));
+            return;
+        }
+
+        _pending.add(btn);
+        clearTimeout(_askTimer);
+        _askTimer = setTimeout(flushLibraryAsk, ASK_DELAY_MS);
+    }
+
+    async function flushLibraryAsk() {
+        const batch = [..._pending];
+        _pending.clear();
+        if (!batch.length) return;
+
+        const ids = [...new Set(batch.map((b) => b.dataset.cpdPermalink).filter(Boolean))];
+
+        try {
+            const res = await chrome.runtime.sendMessage({
+                type: MSG_LIBRARY,
+                payload: { ids },
+            });
+            if (!res?.ok) return; // плеер не запущен — молчим, это не ошибка страницы
+
+            const have = new Set(res.data.have || []);
+            for (const id of ids) _known.set(id, have.has(id));
+        } catch {
+            // Расширение могло перезагрузиться — отметок просто не будет
+            return;
+        }
+
+        for (const btn of batch) {
+            if (btn.isConnected) markDownloaded(btn);
+        }
+    }
+
+    /** Ролик скачали прямо сейчас — отметку ставим, не дожидаясь опроса. */
+    function rememberDownloaded(permalink) {
+        _known.set(permalink, true);
+        for (const btn of document.querySelectorAll(`.${BUTTON_CLASS}`)) {
+            if (btn.dataset.cpdPermalink === permalink) markDownloaded(btn);
+        }
+    }
+
     // ─── Кнопка загрузки ────────────────────────────────────────────────────
 
     function permalinkFromHref(href) {
@@ -123,6 +207,7 @@
             openPlaylistMenu(btn);
         });
 
+        askIsDownloaded(btn);
         return btn;
     }
 
@@ -141,7 +226,12 @@
 
     /** Возвращает кнопку в исходный вид, сохраняя подсказку о результате. */
     function scheduleReset(btn) {
-        btn._cpdReset = setTimeout(() => setState(btn, null, DEFAULT_LABEL), RESET_AFTER_MS);
+        btn._cpdReset = setTimeout(() => {
+            setState(btn, null, DEFAULT_LABEL);
+            // «Готово» ушло — и на его место возвращается отметка о том,
+            // что ролик теперь в библиотеке
+            markDownloaded(btn);
+        }, RESET_AFTER_MS);
     }
 
     async function download(btn, playlist) {
@@ -158,6 +248,7 @@
 
             setState(btn, "is-done", res.data.alreadyExisted ? "Уже есть" : "Готово");
             btn.title = `Плейлист: ${res.data.playlist}`;
+            rememberDownloaded(btn.dataset.cpdPermalink);
         } catch (err) {
             setState(btn, "is-error", "Ошибка");
             btn.title = String(err.message || err);
@@ -213,7 +304,10 @@
         menu.className = "cpd-menu";
         menu.dataset.for = btn.dataset.cpdPermalink;
         menu.innerHTML = `
-            <div class="cpd-menu-title">Куда загрузить</div>
+            <div class="cpd-menu-tabs" role="tablist">
+                <button type="button" class="cpd-menu-tab is-active" data-tab="all">Куда загрузить</button>
+                <button type="button" class="cpd-menu-tab" data-tab="similar">Похоже на</button>
+            </div>
             <input class="cpd-menu-search" type="text" placeholder="Найти плейлист…"
                    spellcheck="false" autocomplete="off" hidden />
             <div class="cpd-menu-body cpd-menu-loading">Загружаю список…</div>
@@ -294,14 +388,17 @@
 
     function setupMenu(menu, btn, data) {
         const search = menu.querySelector(".cpd-menu-search");
-        search.hidden = data.playlists.length < SEARCH_FROM;
+        // Подсказки приходят одними именами, а картинки — здесь: вкладке
+        // «Похоже на» они нужны те же самые
+        menu._cpdPlaylists = new Map(data.playlists.map((pl) => [pl.name, pl]));
 
-        const render = () => {
+        // Поиск относится к полному списку: на вкладке подсказок поле скрыто,
+        // и сюда оттуда не приходят
+        search.addEventListener("input", () => {
             const query = search.value.trim();
             renderMenuItems(menu, btn, data, query);
             renderFooter(menu, btn, query);
-        };
-        search.addEventListener("input", render);
+        });
 
         // Enter забирает первый совпавший — искать и целиться мышью не нужно.
         // Если не совпало ничего, тем же Enter заводится плейлист с этим именем
@@ -312,8 +409,145 @@
             else menu.querySelector(".cpd-menu-create")?.click();
         });
 
-        render();
+        menu.querySelector(".cpd-menu-tabs").addEventListener("click", (e) => {
+            const tab = e.target.closest(".cpd-menu-tab");
+            if (!tab || tab.dataset.tab === menu.dataset.tab) return;
+            selectTab(menu, btn, tab.dataset.tab, data);
+        });
+
+        selectTab(menu, btn, "all", data);
+    }
+
+    /**
+     * Переключение вкладки. Поиск и строка «Новый плейлист» относятся к полному
+     * списку — на вкладке подсказок им делать нечего.
+     */
+    function selectTab(menu, btn, tab, data) {
+        menu.dataset.tab = tab;
+        for (const el of menu.querySelectorAll(".cpd-menu-tab")) {
+            el.classList.toggle("is-active", el.dataset.tab === tab);
+        }
+
+        const search = menu.querySelector(".cpd-menu-search");
+        const footer = menu.querySelector(".cpd-menu-footer");
+
+        if (tab === "similar") {
+            search.hidden = true;
+            footer.hidden = true;
+            renderSimilar(menu, btn);
+            return;
+        }
+
+        search.hidden = data.playlists.length < SEARCH_FROM;
+        const query = search.value.trim();
+        renderMenuItems(menu, btn, data, query);
+        renderFooter(menu, btn, query);
         if (!search.hidden) search.focus();
+    }
+
+    // ─── Вкладка «Похоже на» ────────────────────────────────────────────────
+    // Те же подсказки, что плеер показывает в панели плейлистов: куда ролик
+    // просится по своим тегам. Считает их сервер — здесь только показ.
+    //
+    // Ответ кэшируем на меню: вкладки переключают туда-сюда, а подсказка для
+    // ролика за это время не меняется, и второй поход на coub.com ни к чему.
+
+    async function renderSimilar(menu, btn) {
+        const body = menu.querySelector(".cpd-menu-body");
+
+        if (menu._cpdSimilar) {
+            paintSimilar(menu, btn, menu._cpdSimilar);
+            return;
+        }
+
+        body.classList.add("cpd-menu-loading");
+        body.textContent = "Смотрю, на что похоже…";
+
+        try {
+            const res = await chrome.runtime.sendMessage({
+                type: MSG_SUGGEST,
+                payload: { permalink: btn.dataset.cpdPermalink },
+            });
+            if (!res?.ok) throw new Error(res?.error || "Расширение не ответило");
+            if (!openMenu || openMenu !== menu) return; // меню успели закрыть
+
+            menu._cpdSimilar = res.data;
+            paintSimilar(menu, btn, res.data);
+        } catch (err) {
+            if (openMenu !== menu) return;
+            body.classList.remove("cpd-menu-loading");
+            body.textContent = String(err.message || err);
+        }
+
+        placeMenu(menu, btn);
+    }
+
+    function paintSimilar(menu, btn, data) {
+        const body = menu.querySelector(".cpd-menu-body");
+        body.classList.remove("cpd-menu-loading");
+        body.textContent = "";
+
+        if (!data.playlists?.length) {
+            const empty = document.createElement("div");
+            empty.className = "cpd-menu-empty";
+            // Причины две и они разные: то ли не на что опереться, то ли
+            // опереться было на что, но ничего похожего не нашлось
+            empty.textContent = data.needsMeta
+                ? "Про этот ролик ничего не известно — coub.com не отдал теги"
+                : "Ничего похожего в библиотеке не нашлось";
+            body.appendChild(empty);
+            return;
+        }
+
+        for (const item of data.playlists) {
+            body.appendChild(buildSuggestionItem(menu, btn, item));
+        }
+
+        if (data.tags?.length) {
+            const label = document.createElement("div");
+            label.className = "cpd-menu-group";
+            label.textContent = "Ваши теги, которые подошли бы";
+            body.appendChild(label);
+
+            const tags = document.createElement("div");
+            tags.className = "cpd-menu-tags";
+            for (const t of data.tags) {
+                const chip = document.createElement("span");
+                chip.className = "cpd-menu-tag";
+                chip.textContent = t.tag;
+                tags.appendChild(chip);
+            }
+            body.appendChild(tags);
+        }
+    }
+
+    function buildSuggestionItem(menu, btn, item) {
+        const row = document.createElement("button");
+        row.type = "button";
+        row.className = "cpd-menu-item cpd-menu-item--suggest";
+
+        const name = document.createElement("span");
+        name.className = "cpd-menu-name";
+        name.textContent = item.name;
+
+        // Из-за каких тегов плейлист и предложен: без этого подсказка
+        // выглядит гаданием, а так видно, на чём она стоит
+        const why = document.createElement("span");
+        why.className = "cpd-menu-why";
+        why.textContent = (item.matched || []).join(" · ");
+
+        const text = document.createElement("span");
+        text.className = "cpd-menu-text";
+        text.append(name, why);
+
+        // Тот же плейлист — та же картинка, что и на соседней вкладке
+        row.append(buildBanner(menu._cpdPlaylists?.get(item.name) || { name: item.name }), text);
+        row.addEventListener("click", () => {
+            closePlaylistMenu();
+            download(btn, item.name);
+        });
+
+        return row;
     }
 
     // ─── Создание плейлиста ─────────────────────────────────────────────────
@@ -428,9 +662,11 @@
             return;
         }
 
-        const q = query.toLowerCase();
+        // Умный поиск — тот же, что в плеере: раскладка, транслитерация,
+        // опечатки. См. search.js, он подключается перед этим файлом
+        const q = query.trim();
         const matched = q
-            ? playlists.filter((pl) => pl.name.toLowerCase().includes(q))
+            ? CPD_SEARCH.filterByQuery(playlists, q, (pl) => pl.name)
             : playlists;
 
         if (!matched.length) {
@@ -456,6 +692,39 @@
         }
     }
 
+    /**
+     * Картинка плейлиста — та же, что в плеере: своя, старый значок или кадр
+     * первого ролика; ссылку собирает сервер. Нет ничего — рисуем первую
+     * букву, как делает плеер, а не пустой прямоугольник.
+     *
+     * Картинка идёт с localhost, а страница — с coub.com. Само по себе это
+     * не смешанное содержимое (localhost браузер считает доверенным), но
+     * сервер может быть и не запущен: тогда onerror оставит букву, и список
+     * от этого не пострадает.
+     */
+    function buildBanner(pl) {
+        const box = document.createElement("span");
+        box.className = "cpd-menu-banner";
+
+        const letter = document.createElement("span");
+        letter.className = "cpd-menu-letter";
+        letter.textContent = (pl.name || "?").trim().charAt(0).toUpperCase();
+        box.appendChild(letter);
+
+        if (!pl.banner) return box;
+
+        const img = document.createElement("img");
+        img.className = "cpd-menu-banner-img";
+        img.alt = "";
+        img.loading = "lazy";
+        img.decoding = "async";
+        img.addEventListener("load", () => box.classList.add("has-image"));
+        img.src = pl.banner;
+        box.appendChild(img);
+
+        return box;
+    }
+
     function buildMenuItem(btn, pl, recent) {
         const row = document.createElement("button");
         row.type = "button";
@@ -471,7 +740,7 @@
         note.className = "cpd-menu-note";
         note.textContent = pl.hasCoub ? "уже здесь" : String(pl.count);
 
-        row.append(name, note);
+        row.append(buildBanner(pl), name, note);
         row.addEventListener("click", () => {
             closePlaylistMenu();
             download(btn, pl.name);
@@ -539,6 +808,8 @@
                 btn.dataset.cpdPermalink = permalink;
                 setState(btn, null, DEFAULT_LABEL);
                 btn.title = DEFAULT_TITLE;
+                btn.classList.remove("is-known");
+                askIsDownloaded(btn);
             }
             return;
         }

@@ -9,9 +9,10 @@ import {
     initBannerCropper,
     forgetLegacyIcon,
     primeLegacyIcons,
-    primeThumbs,
     releaseBanners,
 } from "./banner.js";
+import { primeThumbs } from "./thumbs.js";
+import { filterByQuery } from "./search.js";
 import {
     setPlaylistBanner,
     setPlaylistBannerVideo,
@@ -882,10 +883,8 @@ async function renderEditorRows(query) {
 
     releaseBanners(editorList);
     editorList.innerHTML = "";
-    const q = query.toLowerCase();
-    let entries = Object.entries(_playlists).filter(
-        ([name]) => !q || name.toLowerCase().includes(q)
-    );
+    const q = query.trim();
+    let entries = filterByQuery(Object.entries(_playlists), q, ([name]) => name);
 
     if (!entries.length) {
         if (gen !== _editorRenderGen) return;
@@ -2189,12 +2188,12 @@ async function renderSelectorRows(query) {
 
     releaseBanners(plSelectorList);
     plSelectorList.innerHTML = "";
-    const q = query.toLowerCase();
-    let entries = Object.entries(_selectorPlaylists).filter(
-        ([name]) => !q || name.toLowerCase().includes(q)
-    );
+    const q = query.trim();
+    let entries = filterByQuery(Object.entries(_selectorPlaylists), q, ([name]) => name);
 
-    entries = sortPlaylistEntries(entries);
+    // Привычный порядок — когда не ищут. Во время поиска сверху должно быть
+    // самое подходящее, иначе точное совпадение уезжает вниз списка
+    if (!q) entries = sortPlaylistEntries(entries);
 
     if (!entries.length) {
         if (gen !== _selectorRenderGen) return; // NEW
@@ -2649,8 +2648,7 @@ export function setPlaylistTriggerLabel(name) {
 
 function renderTagFilterRows(query) {
     tagFilterListEl.innerHTML = "";
-    const q = query.toLowerCase();
-    const filtered = _allTagsCache.filter(({ tag }) => !q || tag.toLowerCase().includes(q));
+    const filtered = filterByQuery(_allTagsCache, query.trim(), ({ tag }) => tag);
 
     if (!filtered.length) {
         const empty = document.createElement("div");

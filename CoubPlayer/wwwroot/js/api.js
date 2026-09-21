@@ -333,6 +333,33 @@ export async function getRestoreReport() {
 // равно грузит видео для баннера — и присылает сюда. Со второго раза список
 // плейлистов обходится картинками вместо видео.
 
+/**
+ * Вся библиотека: id, пути к файлам, свои теги. Тот же список, что плеер
+ * читает при запуске (см. loader.js) — индексатору он нужен ради путей
+ * к видео, очередь-то приходит одними id.
+ *
+ * @returns {Promise<Array<{id: string, video: string, audio: string, tags: string[]}>>}
+ */
+export async function getCoubList() {
+    const res = await fetch("/api/coubs/list");
+    if (!res.ok) throw new Error("Failed to load coub list");
+    return res.json();
+}
+
+/**
+ * Авторы роликов: канал → id его роликов. Сгруппировано на сервере —
+ * имя канала повторяется на десятках роликов, и разворачивать его в каждую
+ * пару значило бы возить лишнее.
+ *
+ * @returns {Promise<Record<string, string[]>>}
+ */
+export async function getCoubChannels() {
+    const res = await fetch("/api/coubs/channels");
+    if (!res.ok) throw new Error("Failed to load channels");
+    const { channels } = await res.json();
+    return channels || {};
+}
+
 /** @returns {Promise<string[]>} id роликов, для которых кадр уже есть */
 export async function getCoubThumbs() {
     const res = await fetch("/api/coubs/thumbs");

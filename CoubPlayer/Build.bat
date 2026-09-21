@@ -37,9 +37,33 @@ if errorlevel 1 (
     exit /b 1
 )
 
+rem Native libraries are NOT bundled into the single file - they must sit
+rem next to the exe. If the app was running from %OUT%, it holds them open,
+rem the publish cannot replace them, and they can end up missing altogether.
+rem That failure is silent: the exe builds, the folder looks fine, and the
+rem app dies on another machine. So we check.
+
+set "MISSING="
+if not exist "%OUT%\e_sqlite3.dll"   set "MISSING=%MISSING% e_sqlite3.dll"
+if not exist "%OUT%\libSkiaSharp.dll" set "MISSING=%MISSING% libSkiaSharp.dll"
+
+if defined MISSING (
+    echo.
+    echo [!] Build incomplete - missing native libraries:%MISSING%
+    echo.
+    echo     Without e_sqlite3.dll the app cannot open its database at all.
+    echo     Without libSkiaSharp.dll icons and banners fail.
+    echo.
+    echo     Most likely the app was running from "%OUT%" and held the files.
+    echo     Close it, delete the folder, and run this again.
+    echo.
+    pause
+    exit /b 1
+)
+
 echo.
-echo Done. Copy the whole "%OUT%" folder -
-echo libSkiaSharp.dll and wwwroot must stay next to the exe.
+echo Done. Copy the whole "%OUT%" folder - wwwroot and the native
+echo libraries (libSkiaSharp.dll, e_sqlite3.dll) must stay next to the exe.
 echo.
 
 explorer "%OUT%"

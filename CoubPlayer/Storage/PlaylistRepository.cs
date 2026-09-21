@@ -142,8 +142,17 @@ FROM playlist_items ORDER BY id;";
             }
         }
 
-        /// <summary>Строка меню кнопки на coub.com — без содержимого плейлиста.</summary>
-        public record Summary(string Name, int Count, int? Order, string? Group, bool HasCoub);
+        /// <summary>
+        /// Строка меню кнопки на coub.com — без содержимого плейлиста.
+        ///
+        /// BannerImage и CoverCoubId нужны, чтобы собрать ссылку на картинку:
+        /// сперва своя загруженная, иначе кадр ролика, который в плейлисте
+        /// по умолчанию. Какой файл где лежит, репозиторий не знает — это
+        /// забота вызывающего.
+        /// </summary>
+        public record Summary(
+            string Name, int Count, int? Order, string? Group, bool HasCoub,
+            string? BannerImage, string? CoverCoubId);
 
         /// <summary>
         /// Плейлисты со счётчиками. Содержимое не читаем: меню показывает
@@ -155,13 +164,20 @@ FROM playlist_items ORDER BY id;";
             {
                 using var connection = _db.Open();
                 using var command = connection.CreateCommand();
+                // Ролик для обложки — с наибольшим sort_order, то есть добавленный
+                // в плейлист первым. Так же его выбирает плеер (defaultCoubOf
+                // в banner.js), и картинка в расширении совпадает с привычной
                 command.CommandText = @"
 SELECT p.name,
        (SELECT COUNT(*) FROM playlist_items i WHERE i.playlist_id = p.id),
        p.sort_order,
        p.group_name,
        (SELECT EXISTS(SELECT 1 FROM playlist_items i
-                      WHERE i.playlist_id = p.id AND i.coub_id = $coub))
+                      WHERE i.playlist_id = p.id AND i.coub_id = $coub)),
+       p.banner_image,
+       (SELECT i.coub_id FROM playlist_items i
+        WHERE i.playlist_id = p.id
+        ORDER BY i.sort_order DESC LIMIT 1)
 FROM playlists p
 ORDER BY p.id;";
                 command.Parameters.AddWithValue("$coub", (object?)coubId ?? DBNull.Value);
@@ -175,9 +191,119 @@ ORDER BY p.id;";
                         reader.GetInt32(1),
                         reader.IsDBNull(2) ? null : reader.GetInt32(2),
                         reader.IsDBNull(3) ? null : reader.GetString(3),
-                        !string.IsNullOrEmpty(coubId) && reader.GetInt32(4) != 0));
+                        !string.IsNullOrEmpty(coubId) && reader.GetInt32(4) != 0,
+                        reader.IsDBNull(5) ? null : reader.GetString(5),
+                        reader.IsDBNull(6) ? null : reader.GetString(6)));
                 }
                 return result;
+            }
+        }
+
+        /// <summary>
+        /// Перенумеровывает записи каждого плейлиста подряд, от нуля.
+        ///
+        /// Зачем. У части записей порядковые номера совпадают — наследство
+        /// старой синхронизации, которая клала ролик, не сверяясь с соседями.
+        /// Два ролика с одним номером сортируются как повезёт: список
+        /// перетасовывается сам собой между запусками, а перетаскивание
+        /// одного из них двигает оба.
+        ///
+        /// Взаимный порядок сохраняется: при равных номерах старшинство
+        /// решает rowid, то есть очерёдность добавления. Видимый порядок
+        /// от этого не меняется — он просто перестаёт быть двусмысленным.
+        /// </summary>
+        public int CompactOrders()
+        {
+            lock (_lock)
+            {
+                using var connection = _db.Open();
+                using var command = connection.CreateCommand();
+                command.CommandText = @"
+WITH ranked AS (
+    SELECT id,
+           ROW_NUMBER() OVER (PARTITION BY playlist_id ORDER BY sort_order, id) - 1 AS n
+    FROM playlist_items
+)
+UPDATE playlist_items
+SET sort_order = (SELECT n FROM ranked WHERE ranked.id = playlist_items.id)
+WHERE sort_order <> (SELECT n FROM ranked WHERE ranked.id = playlist_items.id);";
+                return command.ExecuteNonQuery();
+            }
+        }
+
+        /// <summary>
+        /// Расставляет записи плейлиста в том же порядке, что и лента на сайте.
+        ///
+        /// Зачем. Ролик, скачанный кнопкой на странице, попадает в начало
+        /// плейлиста: ленты у сервера в этот момент нет, и где настоящее место
+        /// ролика, знать неоткуда. Десяток таких — и порядок уже не тот, что
+        /// на сайте. Выравнивание приводит его к ленте разом, как если бы всё
+        /// скачалось за один проход.
+        ///
+        /// Записи, которых в ленте нет, уходят в конец, сохраняя взаимный
+        /// порядок. Это либо то, что сняли с закладок на сайте, но оставили
+        /// себе, либо добавленное в плейлист руками — и там, и там место
+        /// в ленте отсутствует не по ошибке, а по смыслу.
+        ///
+        /// Копии одного ролика остаются рядом и в порядке номеров.
+        /// </summary>
+        public (PlaylistOutcome outcome, int matched, int extra) AlignToFeed(
+            string playlist, List<string> feed)
+        {
+            lock (_lock)
+            {
+                using var connection = _db.Open();
+                using var transaction = connection.BeginTransaction();
+
+                var playlistId = FindId(connection, transaction, playlist);
+                if (playlistId == null) return (PlaylistOutcome.NotFound, 0, 0);
+
+                var rank = new Dictionary<string, int>();
+                for (var i = 0; i < feed.Count; i++) rank.TryAdd(feed[i], i);
+
+                var items = new List<(long Id, string CoubId, int Instance, int Order)>();
+                using (var command = connection.CreateCommand())
+                {
+                    command.Transaction = transaction;
+                    command.CommandText =
+                        "SELECT id, coub_id, instance, sort_order FROM playlist_items " +
+                        "WHERE playlist_id = $p ORDER BY sort_order, id;";
+                    command.Parameters.AddWithValue("$p", playlistId);
+
+                    using var reader = command.ExecuteReader();
+                    while (reader.Read())
+                    {
+                        items.Add((reader.GetInt64(0), reader.GetString(1),
+                                   reader.GetInt32(2), reader.GetInt32(3)));
+                    }
+                }
+
+                // Порядок внутри каждой группы сохраняем текущий: список уже
+                // прочитан по sort_order, а сортировка в .NET устойчивая
+                var inFeed = items.Where(i => rank.ContainsKey(i.CoubId))
+                    .OrderBy(i => rank[i.CoubId])
+                    .ThenBy(i => i.Instance)
+                    .ToList();
+                var extra = items.Where(i => !rank.ContainsKey(i.CoubId)).ToList();
+
+                var position = 0;
+                using (var command = connection.CreateCommand())
+                {
+                    command.Transaction = transaction;
+                    command.CommandText = "UPDATE playlist_items SET sort_order = $o WHERE id = $id;";
+                    var orderParam = command.Parameters.Add("$o", SqliteType.Integer);
+                    var idParam = command.Parameters.Add("$id", SqliteType.Integer);
+
+                    foreach (var item in inFeed.Concat(extra))
+                    {
+                        orderParam.Value = position++;
+                        idParam.Value = item.Id;
+                        command.ExecuteNonQuery();
+                    }
+                }
+
+                transaction.Commit();
+                return (PlaylistOutcome.Ok, inFeed.Count, extra.Count);
             }
         }
 

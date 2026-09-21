@@ -120,7 +120,50 @@ body.view-grid #seekBarWrapper {
 }
 
 .grid-view-search .pl-search-clear {
-  right: 8px;
+  right: 34px;
+}
+
+/* ─── Переключатель смыслового поиска ─────────────────────────────────────
+   Два разных вопроса к одному полю: «как называется» и «что на кадре».
+   Кнопка, а не отдельное поле: место в строке дорого, а переключаются
+   между ними редко. */
+
+.grid-semantic-toggle {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.34);
+  cursor: pointer;
+  transition:
+    color var(--dur-fast, 140ms) var(--ease-out, ease),
+    background var(--dur-fast, 140ms) var(--ease-out, ease);
+}
+
+.grid-semantic-toggle:hover {
+  color: rgba(255, 255, 255, 0.75);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+/* Включённый режим виден акцентом: иначе непонятно, почему поле ищет
+   совсем не то, что вчера */
+.grid-semantic-toggle.is-active {
+  color: #fff;
+  background: var(--accent);
+}
+
+.grid-semantic-toggle .ico {
+  width: 14px;
+  height: 14px;
 }
 
 .coub-grid {
@@ -144,6 +187,12 @@ body.view-grid #seekBarWrapper {
     calc(var(--coub-tile-min, 220px) * 0.24)
     calc(var(--coub-tile-min, 220px) * 0.28);
   align-content: start;
+
+  /* Плитки за краем экрана подменяются распорками той же высоты, и браузеру
+     не надо ничего «придерживать»: он видит, как узлы исчезают и появляются,
+     и сам подправлял бы прокрутку, добавляя дёрганье там, где содержимое
+     на самом деле стоит на месте. */
+  overflow-anchor: none;
 }
 
 .coub-grid .pl-empty {
@@ -151,10 +200,13 @@ body.view-grid #seekBarWrapper {
   padding: 60px 0;
 }
 
-/* Маячок подгрузки следующей порции плиток при скролле */
-.coub-grid-sentinel {
+/* Распорки на месте убранных рядов — см. «Окно отрисовки» в grid.js.
+   Занимают всю ширину сетки и ровно ту высоту, которую заняли бы сами ряды,
+   поэтому полоса прокрутки показывает длину всего списка, а не отрисованного
+   куска. Высоту ставит код, здесь только форма. */
+.coub-grid-spacer {
   grid-column: 1 / -1;
-  height: 1px;
+  pointer-events: none;
 }
 
 /* ─── Плитка ──────────────────────────────────────────────── */
@@ -197,10 +249,22 @@ body.view-grid #seekBarWrapper {
 /* Гасим соседей, только когда курсор на самой плитке.
    Раньше условием было наведение на сетку целиком — и в промежутке между
    плитками гасли разом все: наведённой-то нет ни одной. */
-.coub-grid:has(.coub-tile:hover) .coub-tile:not(:hover) {
+/* filter здесь намеренно нет: он заставляет перерисовывать каждую плитку,
+   а меняется это сразу на всём списке. Прозрачности достаточно, и она
+   ложится на композитор */
+/* Класс ставится из кода при наведении на плитку — см. setFocusing.
+   Через :has() на сетке было нагляднее, но браузер при каждом движении
+   курсора пересчитывал всё поддерево контейнера, а плиток бывает тысячи */
+.coub-grid.is-focusing .coub-tile:not(:hover) {
   opacity: 0.16;
-  filter: saturate(0.55);
 }
+
+/* Здесь был режим длинного списка: плитки не удалялись по мере прокрутки,
+   и приходилось просить браузер не тратиться на разметку уехавшего
+   (content-visibility) и отключать часть переходов. Теперь плитки за краем
+   экрана не остаются в дереве вовсе — см. «Окно отрисовки» в grid.js, — и
+   обходные приёмы больше не нужны: восьмитысячный плейлист выглядит и
+   работает так же, как список из полусотни. */
 
 .coub-tile:active {
   transform: scale(1.24);
@@ -219,7 +283,29 @@ body.view-grid #seekBarWrapper {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
 }
 
+/* Снятый кадр — то, что видно в покое. Видео лежит поверх и проявляется,
+   когда его заводят под курсором; пока оно не готово, видна картинка.
+   Оба абсолютные и одного размера, так что подмена незаметна. */
+.coub-tile-still {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  /* Тот же лёгкий наезд, что и у видео: иначе при наведении кадр дёргался бы
+     в момент подмены картинки на ролик */
+  transform: scale(1.001);
+  transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.coub-tile:hover .coub-tile-still {
+  transform: scale(1.07);
+}
+
 .coub-tile-media video {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -240,8 +326,13 @@ body.view-grid #seekBarWrapper {
   transform: scale(1.07);
 }
 
-/* Пока кадр не пришёл, вместо мёртвого прямоугольника — бегущий отблеск */
-.coub-tile-media::before {
+/* Пока кадр грузится, вместо мёртвого прямоугольника — бегущий отблеск.
+
+   Только пока грузится: класс ставится при подключении видео и снимается,
+   когда кадр пришёл или плитка уехала за экран. Иначе отблеск бесконечно
+   крутился бы на каждой незагруженной плитке, а в плейлисте на восемь тысяч
+   это тысячи вечных анимаций — и список начинал тормозить сам по себе. */
+.coub-tile-media.is-loading::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -258,10 +349,6 @@ body.view-grid #seekBarWrapper {
   pointer-events: none;
 }
 
-.coub-tile-media:has(video.is-ready)::before {
-  opacity: 0;
-  animation: none;
-}
 
 @keyframes coub-tile-shimmer {
   from { background-position: 120% 0; }
@@ -499,6 +586,62 @@ body.view-grid #seekBarWrapper {
 .coub-tile:hover .coub-tile-check,
 .coub-grid--selecting .coub-tile-check {
   opacity: 1;
+}
+
+/* ─── «Похожие на этот» ───────────────────────────────────── */
+/* Правый нижний угол — единственный свободный: слева вверху чекбокс,
+   справа вверху номер, внизу слева начинается подпись. Появляется по
+   наведению, как и чекбокс: в покое плитка должна быть кадром, а не
+   панелью кнопок. */
+
+.coub-tile-similar {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.45);
+  background: rgba(6, 3, 5, 0.6);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.14s ease,
+    background 0.14s ease,
+    border-color 0.14s ease,
+    transform 0.16s cubic-bezier(0.34, 1.4, 0.64, 1);
+  z-index: 4;
+}
+
+/* Промах здесь стоит дорого так же, как на чекбоксе: клик мимо уводит
+   к ролику и закрывает сетку */
+.coub-tile-similar::before {
+  content: "";
+  position: absolute;
+  inset: -10px;
+  border-radius: 50%;
+}
+
+.coub-tile:hover .coub-tile-similar {
+  opacity: 1;
+}
+
+.coub-tile-similar:hover {
+  transform: scale(1.18);
+  border-color: #fff;
+  background: rgba(6, 3, 5, 0.85);
+  color: #fff;
+}
+
+.coub-tile-similar:active {
+  transform: scale(1.02);
 }
 
 .coub-tile--selected .coub-tile-check {

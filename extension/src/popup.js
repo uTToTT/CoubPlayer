@@ -15,6 +15,7 @@ const el = {
     browserTransfer: document.getElementById("browserTransfer"),
     mode: document.getElementsByName("mode"),
     syncButtons: [...document.querySelectorAll("[data-category]")],
+    alignButtons: [...document.querySelectorAll("[data-align]")],
     progress: document.getElementById("progress"),
     progressPhase: document.getElementById("progressPhase"),
     progressCounts: document.getElementById("progressCounts"),
@@ -76,6 +77,7 @@ async function checkServer() {
 
 function setButtonsEnabled(enabled) {
     for (const btn of el.syncButtons) btn.disabled = !enabled;
+    for (const btn of el.alignButtons) btn.disabled = !enabled;
 }
 
 // ─── Прогресс ───────────────────────────────────────────────────────────────
@@ -83,6 +85,7 @@ function setButtonsEnabled(enabled) {
 const PHASE_LABEL = {
     collect: "Собираю ленту",
     download: "Скачиваю",
+    align: "Расставляю по ленте",
     done: "Готово",
     error: "Ошибка",
 };
@@ -173,12 +176,22 @@ function renderJob(job) {
             : `осталось ${formatEta(eta)}`;
     }
 
+    if (job.phase === "align") {
+        el.progressBar.classList.remove("is-indeterminate");
+        el.progressBar.style.width = "100%";
+        el.progressCounts.textContent = `по ленте из ${job.queued}`;
+        el.progressEta.textContent = "";
+    }
+
     if (job.phase === "done") {
         el.progressBar.style.width = job.stoppedByUser ? el.progressBar.style.width : "100%";
         el.progressPhase.textContent = job.stoppedByUser ? "Остановлено" : "Готово";
-        el.progressCounts.textContent = job.queued
-            ? `добавлено ${job.done}${job.failed ? `, не вышло ${job.failed}` : ""}`
-            : "новых роликов нет";
+        el.progressCounts.textContent = job.aligned
+            // Выравнивание ничего не добавляет — считать «добавлено» тут нечего
+            ? `по ленте ${job.done}${job.extra ? `, вне ленты ${job.extra}` : ""}`
+            : job.queued
+                ? `добавлено ${job.done}${job.failed ? `, не вышло ${job.failed}` : ""}`
+                : "новых роликов нет";
         el.progressEta.textContent = "";
         setButtonsEnabled(true);
     }
@@ -342,6 +355,28 @@ for (const btn of el.syncButtons) {
         setButtonsEnabled(false);
         try {
             await send(MSG.SYNC, { category: btn.dataset.category, mode });
+        } catch {
+            // Ошибку покажет renderJob — worker положил её в состояние задачи
+        }
+    });
+}
+
+for (const btn of el.alignButtons) {
+    btn.addEventListener("click", async () => {
+        const category = btn.dataset.align;
+        const название = category === "liked" ? "лайков" : "закладок";
+
+        const согласен = confirm(
+            `Расставить ${название} в том же порядке, что на сайте?\n\n` +
+            `Ничего не качается: расширение пройдёт ленту и отдаст порядок плееру. ` +
+            `Записи, которых в ленте нет, уйдут в конец.\n\n` +
+            `Перед перестановкой плеер сделает копию библиотеки.`
+        );
+        if (!согласен) return;
+
+        setButtonsEnabled(false);
+        try {
+            await send(MSG.ALIGN, { category });
         } catch {
             // Ошибку покажет renderJob — worker положил её в состояние задачи
         }

@@ -850,6 +850,18 @@
                 Собрать сведения
               </button>
               <button
+                id="buildIndexBtn"
+                class="dl-dropdown-item"
+                title="Разобрать кадры роликов, чтобы искать по смыслу: «небо и облака», «взрыв»"
+              >
+                <svg class="ico ico-sm" viewBox="0 0 20 20" aria-hidden="true">
+                  <path d="M3.5 4.5h13v11h-13z" />
+                  <path d="M3.5 12l3.5-3 3 2.5 3-3.5 3.5 4" />
+                  <circle cx="7.5" cy="7.5" r="1.2" />
+                </svg>
+                Смысловой индекс
+              </button>
+              <button
                 id="importPlaylistBtn"
                 class="dl-dropdown-item"
                 title="Загрузить сторонний плейлист"
@@ -904,10 +916,25 @@
             id="gridSearch"
             class="pl-search-input"
             type="text"
-            placeholder="Найти видео…"
+            placeholder="Название, автор или id…"
             autocomplete="off"
           />
           <button class="pl-search-clear hidden" id="gridSearchClear">✕</button>
+          <!-- Переключатель смыслового поиска: по словам из названия или
+               по тому, что видно на кадре -->
+          <button
+            id="gridSemanticBtn"
+            class="grid-semantic-toggle"
+            type="button"
+            title="Искать по тому, что на кадре, а не по названию"
+            aria-pressed="false"
+          >
+            <svg class="ico ico-sm" viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M3.5 4.5h13v11h-13z" />
+              <path d="M3.5 12l3.5-3 3 2.5 3-3.5 3.5 4" />
+              <circle cx="7.5" cy="7.5" r="1.2" />
+            </svg>
+          </button>
         </div>
 
         <!--

@@ -48,6 +48,21 @@
             <button id="syncBookmarks" class="btn btn--accent" data-category="bookmarks">Закладки</button>
         </div>
 
+        <!-- Ролики, скачанные кнопкой на странице, ложатся в начало плейлиста:
+             ленты у сервера в тот момент нет. Здесь порядок приводится к ленте
+             разом, ничего не скачивая.
+
+             Подпись стоит над кнопками, а не под ними: иначе два одинаковых
+             ряда «Лайки / Закладки» не отличить друг от друга. -->
+        <p class="muted hint hint--lead">
+            Выровнять порядок по ленте — станет как на сайте. Ничего не
+            качается, перед перестановкой плеер делает копию.
+        </p>
+        <div class="row">
+            <button id="alignLiked" class="btn" data-align="liked">Лайки</button>
+            <button id="alignBookmarks" class="btn" data-align="bookmarks">Закладки</button>
+        </div>
+
         <div id="progress" class="progress" hidden>
             <div class="progress-line">
                 <span id="progressPhase">…</span>

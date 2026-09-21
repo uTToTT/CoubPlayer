@@ -136,5 +136,15 @@ CREATE TABLE IF NOT EXISTS meta (
 
         /// <summary>Когда JSON-файлы перенесли в базу, ISO-8601.</summary>
         public const string ImportedAt = "imported_at";
+
+        /// <summary>
+        /// Чем посчитаны векторы в coubs.embedding. Векторы разных моделей
+        /// несравнимы между собой — сменилась модель, значит прежние числа
+        /// уже ничего не значат, и индекс надо строить заново.
+        /// </summary>
+        public const string EmbeddingModel = "embedding_model";
+
+        /// <summary>Длина вектора. Хранится отдельно: по ней читается BLOB.</summary>
+        public const string EmbeddingDim = "embedding_dim";
     }
 }

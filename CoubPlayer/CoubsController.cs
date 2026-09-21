@@ -38,6 +38,19 @@ public class CoubsController : ControllerBase
     [HttpGet("list")]
     public IActionResult List() => Ok(_coubs.ReadAll());
 
+    /// <summary>
+    /// Авторы роликов: канал → id его роликов. Плеер ищет по ним в режиме
+    /// плитки.
+    ///
+    /// Отдельно от /list намеренно. Тот список выгружается в coub_list.json
+    /// при резервном копировании и сверяется с исходником при переходе с JSON;
+    /// новое поле в нём изменило бы форму файла, который проверяется на
+    /// точное совпадение. Сведения о ролике в JSON и так не попадают — они
+    /// целиком в снимке базы.
+    /// </summary>
+    [HttpGet("channels")]
+    public IActionResult Channels() => Ok(new { channels = _coubs.ReadChannels() });
+
     #region Thumbs
 
     // Кадр-превью ролика. Берётся не с сервера: декодировать mp4 ему нечем,
