@@ -36,7 +36,13 @@ namespace CoubPlayer
             public class Item
             {
                 public string? Id { get; set; }
-                public float[]? Vector { get; set; }
+
+                /// <summary>
+                /// Векторы кадров этого ролика. Несколько, а не один: за
+                /// десять секунд успевает смениться сцена, и по первому кадру
+                /// ролик описан наполовину.
+                /// </summary>
+                public float[][]? Vectors { get; set; }
             }
         }
 
@@ -57,26 +63,37 @@ namespace CoubPlayer
             public List<string>? Ids { get; set; }
         }
 
-        /// <summary>Сколько роликов уже разобрано и чем.</summary>
+        /// <summary>
+        /// Сколько роликов уже разобрано и чем.
+        ///
+        /// <paramref name="frames"/> — сколько кадров на ролик считать полным
+        /// набором. Спрашивает браузер, потому что кадры снимает он и знает
+        /// это число раньше сервера. Отсюда и два разных счётчика: indexed —
+        /// у кого есть хоть что-то, full — у кого кадров столько, сколько
+        /// берём сейчас. После увеличения числа кадров они расходятся, и
+        /// разница — это ровно то, что осталось доснять.
+        /// </summary>
         [HttpGet("status")]
-        public IActionResult Status()
+        public IActionResult Status([FromQuery] int frames = 1)
         {
-            var s = _embeddings.ReadStatus();
+            var s = _embeddings.ReadStatus(frames);
             return Ok(new
             {
                 model = s.Model,
                 dim = s.Dim,
+                frames = s.Frames,
                 total = s.Total,
                 indexed = s.Indexed,
-                pending = s.Total - s.Indexed,
+                full = s.Full,
+                pending = s.Total - s.Full,
             });
         }
 
-        /// <summary>Ролики без вектора — очередь для индексации.</summary>
+        /// <summary>Ролики, которым кадров не хватает, — очередь для индексации.</summary>
         [HttpGet("pending")]
-        public IActionResult Pending([FromQuery] int limit = 200)
+        public IActionResult Pending([FromQuery] int limit = 200, [FromQuery] int frames = 1)
         {
-            return Ok(new { ids = _embeddings.ReadPending(limit) });
+            return Ok(new { ids = _embeddings.ReadPending(limit, frames) });
         }
 
         [HttpPost]
@@ -85,12 +102,12 @@ namespace CoubPlayer
             if (req == null || string.IsNullOrWhiteSpace(req.Model) || req.Dim <= 0)
                 return BadRequest("Не указана модель или длина вектора");
 
-            var items = new List<(string, float[])>();
+            var items = new List<(string, IReadOnlyList<float[]>)>();
             foreach (var item in req.Items)
             {
-                if (string.IsNullOrEmpty(item.Id) || item.Vector == null)
-                    return BadRequest("В пачке есть запись без id или без вектора");
-                items.Add((item.Id, item.Vector));
+                if (string.IsNullOrEmpty(item.Id) || item.Vectors is not { Length: > 0 })
+                    return BadRequest("В пачке есть запись без id или без векторов");
+                items.Add((item.Id, item.Vectors));
             }
 
             var (outcome, saved, expected) = _embeddings.Save(req.Model!, req.Dim, items);
@@ -133,22 +150,27 @@ namespace CoubPlayer
         /// <summary>
         /// Ролики, похожие на этот.
         ///
-        /// То же сравнение векторов, что и при поиске фразой, только вектор
-        /// берётся не у запроса, а у самого ролика — считать заново ничего
-        /// не надо, он уже лежит в базе. Поэтому и модель для этого не нужна:
+        /// То же сравнение векторов, что и при поиске фразой, только векторы
+        /// берутся не у запроса, а у самого ролика — считать заново ничего
+        /// не надо, они уже лежат в базе. Поэтому и модель для этого не нужна:
         /// работает даже там, где текстовую башню не скачивали.
+        ///
+        /// Сравниваются все кадры со всеми: ролик подходит, если хоть один его
+        /// кадр похож хоть на один кадр исходного. Для коуба, который за
+        /// десять секунд успевает сменить сцену, это единственный честный
+        /// ответ на «покажи похожее».
         /// </summary>
         [HttpPost("similar")]
         public IActionResult Similar([FromBody] SimilarRequest req)
         {
             if (string.IsNullOrEmpty(req?.Id)) return BadRequest("Не указан ролик");
 
-            var vector = _embeddings.ReadVector(req.Id!);
-            if (vector == null)
+            var vectors = _embeddings.ReadVectors(req.Id!);
+            if (vectors.Count == 0)
                 return Ok(new { results = Array.Empty<object>(), indexed = false });
 
             IReadOnlySet<string>? within = req.Ids is { Count: > 0 } ? req.Ids.ToHashSet() : null;
-            var results = _embeddings.Search(vector, req.Limit, within, exclude: req.Id);
+            var results = _embeddings.Search(vectors, req.Limit, within, exclude: req.Id);
 
             return Ok(new
             {

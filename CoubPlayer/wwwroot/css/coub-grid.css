@@ -664,6 +664,138 @@ body.view-grid #seekBarWrapper {
   box-shadow: 0 0 0 2px var(--accent) inset;
 }
 
+/* ═══════════════════════════════════════════════════════════
+   ВЫБОР РОЛИКА ДЛЯ БАННЕРА
+   Отдельное окно, а не выпадающее меню: выбирают глазами по кадру,
+   а в меню с одними названиями пришлось бы вспоминать, что как
+   называлось.
+   ═══════════════════════════════════════════════════════════ */
+
+.coub-picker-overlay {
+  position: fixed;
+  inset: 0;
+  /* Выше панели плейлистов, из которой окно и открывают */
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 3, 5, 0.6);
+  backdrop-filter: blur(6px);
+  animation: coub-picker-in var(--dur-fast, 140ms) var(--ease-out, ease);
+}
+
+@keyframes coub-picker-in {
+  from { opacity: 0; }
+}
+
+.coub-picker {
+  display: flex;
+  flex-direction: column;
+  width: min(420px, calc(100vw - 40px));
+  max-height: min(560px, 82vh);
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  background: var(--glass-strong);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(24px) saturate(160%);
+}
+
+.coub-picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.coub-picker-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.coub-picker-close {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 13px;
+  cursor: pointer;
+  transition: color 0.14s ease, background 0.14s ease;
+}
+
+.coub-picker-close:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.coub-picker-search {
+  margin-bottom: 8px;
+  flex: none;
+}
+
+.coub-picker-list {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  min-height: 0;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.coub-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.14s ease;
+}
+
+.coub-picker-item:hover {
+  background: var(--accent);
+}
+
+/* Кадр — то, по чему и выбирают, поэтому он крупнее строки меню */
+.coub-picker-thumb {
+  position: relative;
+  flex: none;
+  width: 64px;
+  height: 36px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.coub-picker-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.coub-picker-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ─── Панель массовых действий ─────────────────────────────── */
 
 .grid-bulk-bar {

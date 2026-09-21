@@ -202,6 +202,38 @@ namespace CoubPlayer
             return Ok(new { url = $"/Data/banners/{fileName}" });
         }
 
+        public class SetBannerCoubRequest
+        {
+            public string? Id { get; set; }
+        }
+
+        /// <summary>
+        /// Делает баннером ролик из библиотеки.
+        ///
+        /// В отличие от своего файла, копировать здесь нечего: ролик уже лежит
+        /// на диске, и баннер просто на него ссылается. Кадр для покоя тоже
+        /// берётся его — тот самый, что снят для режима плитки.
+        /// </summary>
+        [HttpPost("{playlist}/banner-coub")]
+        public IActionResult SetBannerCoub(
+            [FromRoute] string playlist, [FromBody] SetBannerCoubRequest req)
+        {
+            if (!CoubDownloadService.IsSafeId(req?.Id))
+                return BadRequest("Некорректный id ролика");
+
+            // Ролика может не быть в библиотеке — тогда баннер ссылался бы
+            // в пустоту, и на плитке осталась бы дыра
+            if (!_coubs.ReadIds().Contains(req!.Id!))
+                return BadRequest("Такого ролика нет в библиотеке");
+
+            var outcome = _playlists.SetBannerCoub(playlist, req.Id!, out var replaced);
+            if (outcome != PlaylistOutcome.Ok) return Respond(outcome);
+
+            // Свой файл заменён выбранным роликом — держать его больше некому
+            DeleteBannerFile(replaced);
+            return Ok(new { id = req.Id });
+        }
+
         /// <summary>
         /// Сбрасывает баннер к значению по умолчанию (превью первого ролика).
         /// kind: "image" | "video" | "all".

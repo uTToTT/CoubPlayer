@@ -68,7 +68,15 @@ export function initControls(player, setVolumeSlider, onToggleEditor) {
         }
     });
 
-    const SCROLL_SELECTORS = [".pl-editor-list", ".pl-editor-overlay", ".grid-view"];
+    // Места, где колесо — это прокрутка списка, а не переключение ролика.
+    // Список ведётся вручную: всплывающие окна лежат в body, а не внутри
+    // плеера, и по дереву их родство не определить
+    const SCROLL_SELECTORS = [
+        ".pl-editor-list",
+        ".pl-editor-overlay",
+        ".grid-view",
+        ".coub-picker-overlay",
+    ];
     const isOverScrollable = (target) =>
         SCROLL_SELECTORS.some((sel) => target.closest(sel));
 

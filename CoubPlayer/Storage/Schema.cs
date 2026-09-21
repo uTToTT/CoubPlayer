@@ -14,8 +14,10 @@ namespace CoubPlayer.Storage
     ///   но различаются полем source. Смешать их легко, разделить потом больно:
     ///   своих тегов десятки, коубовских будут десятки тысяч.
     ///
-    /// • coubs.embedding зарезервирована под вектор CLIP. Сейчас пустая —
-    ///   но добавить колонку сразу дешевле, чем мигрировать схему потом.
+    /// • coubs.embedding — векторы кадров для смыслового поиска. Не один
+    ///   вектор, а несколько подряд: ролик за десять секунд успевает сменить
+    ///   сцену, и по одному кадру он описан наполовину. Сколько их в блобе,
+    ///   видно по его длине, поэтому добавление кадров схему не меняет.
     ///
     /// • Названия у ролика два: coubs.title приходит из метаданных Coub,
     ///   playlist_items.title — то, что видно в конкретном плейлисте. Они могут
@@ -30,7 +32,7 @@ namespace CoubPlayer.Storage
         /// приложение и хранится в таблице meta. Оси разные — схема может
         /// не меняться годами, пока версия плеера растёт, и наоборот.
         /// </summary>
-        public const int Version = 2;
+        public const int Version = 3;
 
         // PRAGMA journal_mode и foreign_keys здесь намеренно нет: первый нельзя
         // выполнить внутри транзакции, второй действует на соединение, а не на
@@ -51,7 +53,8 @@ CREATE TABLE IF NOT EXISTS coubs (
     nsfw            INTEGER,
     meta_fetched_at TEXT,
 
-    -- Под вектор CLIP: заполнится, когда дойдут руки до предсказаний по кадру
+    -- Векторы кадров подряд, float32 little-endian. Сколько кадров — видно
+    -- по длине блоба, отдельной колонки под это не нужно
     embedding       BLOB
 );
 
@@ -77,7 +80,12 @@ CREATE TABLE IF NOT EXISTS playlists (
     group_name   TEXT,
     sort_order   INTEGER,          -- NULL = порядок не задавали перетаскиванием
     banner_image TEXT,
-    banner_video TEXT
+    banner_video TEXT,
+
+    -- Ролик библиотеки, выбранный баннером. Альтернатива banner_video:
+    -- там свой загруженный файл, здесь — id уже скачанного ролика, и
+    -- копировать ради баннера нечего
+    banner_coub  TEXT
 );
 
 CREATE TABLE IF NOT EXISTS playlist_items (
@@ -126,6 +134,15 @@ CREATE TABLE IF NOT EXISTS meta (
     value TEXT NOT NULL
 );
 ";
+
+        /// <summary>
+        /// Шаг 2 → 3: баннером можно выбрать ролик библиотеки, а не только
+        /// загруженный файл. Колонка добавляется пустой — у всех прежних
+        /// плейлистов баннер остаётся таким, каким был.
+        /// </summary>
+        public const string MigrateTo3Sql = @"
+ALTER TABLE playlists ADD COLUMN banner_coub TEXT;
+";
     }
 
     /// <summary>Ключи таблицы meta — строками их легко перепутать.</summary>
@@ -146,5 +163,13 @@ CREATE TABLE IF NOT EXISTS meta (
 
         /// <summary>Длина вектора. Хранится отдельно: по ней читается BLOB.</summary>
         public const string EmbeddingDim = "embedding_dim";
+
+        /// <summary>
+        /// Сколько кадров с ролика берётся сейчас. Запись справочная: сколько
+        /// векторов у конкретного ролика, всегда видно по длине его блоба.
+        /// Нужна затем, чтобы «разобрано 8716» не выглядело готовым индексом,
+        /// когда у всех разобрано по одному кадру, а берём мы пять.
+        /// </summary>
+        public const string EmbeddingFrames = "embedding_frames";
     }
 }

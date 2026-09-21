@@ -140,7 +140,12 @@ export function buildBannerEl(name, data, { coubMap, animate = true, cacheBust }
     wrap.className = "pl-banner";
 
     const bust = cacheBust ? `?t=${cacheBust}` : "";
-    const coub = defaultCoubOf(data, coubMap);
+
+    // Ролик баннера: выбранный вручную, иначе тот, что в плейлисте по
+    // умолчанию. Выбранный хранится одним id — копировать файл ради баннера
+    // незачем, он и так лежит в библиотеке
+    const picked = data?.banner?.coub ? coubMap?.[data.banner.coub] : null;
+    const coub = picked || defaultCoubOf(data, coubMap);
     const coubId = coub?.id || null;
 
     // Порядок важен: своя картинка, затем старый значок, и только потом

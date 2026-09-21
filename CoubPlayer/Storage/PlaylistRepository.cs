@@ -65,7 +65,7 @@ namespace CoubPlayer.Storage
             using (var command = cn.CreateCommand())
             {
                 command.CommandText = @"
-SELECT id, name, title, group_name, sort_order, banner_image, banner_video
+SELECT id, name, title, group_name, sort_order, banner_image, banner_video, banner_coub
 FROM playlists ORDER BY id;";
                 using var reader = command.ExecuteReader();
 
@@ -75,6 +75,7 @@ FROM playlists ORDER BY id;";
                     {
                         image = reader.IsDBNull(5) ? null : reader.GetString(5),
                         video = reader.IsDBNull(6) ? null : reader.GetString(6),
+                        coub = reader.IsDBNull(7) ? null : reader.GetString(7),
                     };
 
                     var playlist = new Playlist
@@ -486,6 +487,44 @@ WHERE p.name = $name;";
         }
 
         /// <summary>
+        /// Делает баннером ролик библиотеки.
+        ///
+        /// Загруженный видеофайл при этом сбрасывается: и он, и выбранный
+        /// ролик отвечают за одно и то же — за движущуюся часть баннера, —
+        /// и держать оба значило бы гадать, какой из них главнее. Файл,
+        /// оставшийся без хозяина, возвращается вызывающему на удаление.
+        /// </summary>
+        public PlaylistOutcome SetBannerCoub(string name, string coubId, out string? replaced)
+        {
+            replaced = null;
+
+            lock (_lock)
+            {
+                using var connection = _db.Open();
+                using var transaction = connection.BeginTransaction();
+
+                var id = FindId(connection, transaction, name);
+                if (id == null) return PlaylistOutcome.NotFound;
+
+                using (var select = connection.CreateCommand())
+                {
+                    select.Transaction = transaction;
+                    select.CommandText = "SELECT banner_video FROM playlists WHERE id = $id;";
+                    select.Parameters.AddWithValue("$id", id);
+                    var current = select.ExecuteScalar();
+                    replaced = current == null || current == DBNull.Value ? null : Convert.ToString(current);
+                }
+
+                Execute(connection, transaction,
+                    "UPDATE playlists SET banner_coub = $coub, banner_video = NULL WHERE id = $id;",
+                    ("$coub", coubId), ("$id", id));
+
+                transaction.Commit();
+                return PlaylistOutcome.Ok;
+            }
+        }
+
+        /// <summary>
         /// Сбрасывает баннер. kind: "image" | "video" | "all".
         /// Возвращает имена файлов, которые теперь некому держать.
         /// </summary>
@@ -521,11 +560,19 @@ WHERE p.name = $name;";
                     Execute(connection, transaction,
                         "UPDATE playlists SET banner_image = NULL WHERE id = $id;", ("$id", id));
                 }
-                if (kind is "video" or "all" && video != null)
+                // Выбранный ролик — та же движущаяся часть баннера, что и свой
+                // файл, поэтому «сбросить анимацию» снимает и его. Удалять при
+                // этом нечего: ролик лежит в библиотеке и баннеру не принадлежит
+                if (kind is "video" or "all")
                 {
-                    orphaned.Add(video);
+                    if (video != null)
+                    {
+                        orphaned.Add(video);
+                        Execute(connection, transaction,
+                            "UPDATE playlists SET banner_video = NULL WHERE id = $id;", ("$id", id));
+                    }
                     Execute(connection, transaction,
-                        "UPDATE playlists SET banner_video = NULL WHERE id = $id;", ("$id", id));
+                        "UPDATE playlists SET banner_coub = NULL WHERE id = $id;", ("$id", id));
                 }
 
                 transaction.Commit();

@@ -155,8 +155,8 @@ namespace CoubPlayer.Storage
                 using var insert = cn.CreateCommand();
                 insert.Transaction = tx;
                 insert.CommandText = @"
-INSERT INTO playlists (name, title, group_name, sort_order, banner_image, banner_video)
-VALUES ($name, $title, $group, $order, $image, $video);
+INSERT INTO playlists (name, title, group_name, sort_order, banner_image, banner_video, banner_coub)
+VALUES ($name, $title, $group, $order, $image, $video, $coub);
 SELECT last_insert_rowid();";
                 insert.Parameters.AddWithValue("$name", name);
                 insert.Parameters.AddWithValue("$title", playlist.title ?? name);
@@ -164,6 +164,7 @@ SELECT last_insert_rowid();";
                 insert.Parameters.AddWithValue("$order", (object?)playlist.order ?? DBNull.Value);
                 insert.Parameters.AddWithValue("$image", (object?)playlist.banner?.image ?? DBNull.Value);
                 insert.Parameters.AddWithValue("$video", (object?)playlist.banner?.video ?? DBNull.Value);
+                insert.Parameters.AddWithValue("$coub", (object?)playlist.banner?.coub ?? DBNull.Value);
 
                 var playlistId = Convert.ToInt64(insert.ExecuteScalar());
                 report.Playlists++;

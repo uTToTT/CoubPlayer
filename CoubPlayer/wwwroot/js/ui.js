@@ -11,11 +11,13 @@ import {
     primeLegacyIcons,
     releaseBanners,
 } from "./banner.js";
-import { primeThumbs } from "./thumbs.js";
+import { primeThumbs, hasThumb, thumbUrl } from "./thumbs.js";
 import { filterByQuery } from "./search.js";
+import { coubIdFromKey } from "./playlist.js";
 import {
     setPlaylistBanner,
     setPlaylistBannerVideo,
+    setPlaylistBannerCoub,
     deletePlaylistBanner,
     deletePlaylistIcon,
     getSuggestions,
@@ -1460,6 +1462,7 @@ function openBannerMenu(anchor, name) {
     openMenu(anchor, [
         { label: "Своя картинка…", onClick: () => pickBannerImage(name) },
         { label: "Свой ролик…", onClick: () => pickBannerVideo(name) },
+        { label: "Ролик из плеера…", onClick: () => pickBannerCoub(name) },
         { separator: true },
         {
             label: "Сбросить картинку",
@@ -1468,7 +1471,9 @@ function openBannerMenu(anchor, name) {
         },
         {
             label: "Сбросить анимацию",
-            disabled: !data?.banner?.video,
+            // Выбранный ролик — та же движущаяся часть баннера, что и свой
+            // файл, и сбрасывается тем же пунктом
+            disabled: !data?.banner?.video && !data?.banner?.coub,
             onClick: () => resetBanner(name, "video"),
         },
     ]);
@@ -1505,6 +1510,158 @@ async function pickBannerVideo(name) {
         console.error("Banner video upload error:", err);
         showToast("⚠ " + err.message);
     }
+}
+
+/**
+ * Выбор ролика из библиотеки на роль баннера.
+ *
+ * Показываем ролики самого плейлиста: баннер для «Аниме» почти наверняка
+ * берётся из «Аниме», а вываливать на выбор всю библиотеку в восемь тысяч —
+ * значит заставить искать там, где искать не нужно. Поиск в окне всё равно
+ * есть, и он тот же самый, что в сетке: понимает раскладку и опечатки.
+ *
+ * Копировать ничего не надо: сервер запоминает один id, а кадр для покоя
+ * берётся тот, что уже снят для плитки.
+ */
+async function pickBannerCoub(name) {
+    const data = playlistDataFor(name);
+    const coubMap = _getCoubMap();
+
+    const items = Object.entries(data?.videos || {})
+        .map(([key, meta]) => {
+            const id = coubIdFromKey(key);
+            const coub = coubMap[id];
+            return coub ? { id, title: meta.title || id, order: meta.order ?? 0 } : null;
+        })
+        .filter(Boolean)
+        // Тот же порядок, что в плейлисте: искать глазами привычнее там,
+        // где вещи лежат как обычно
+        .sort((a, b) => a.order - b.order);
+
+    if (!items.length) {
+        showToast("⚠ В плейлисте нет роликов");
+        return;
+    }
+
+    const chosen = await openCoubPicker(name, items);
+    if (!chosen) return;
+
+    _suppressNextOverlayClose = true;
+    try {
+        await setPlaylistBannerCoub(name, chosen);
+        await afterBannerChange();
+        showToast(`<span class="pl-toast-accent">✦</span> Баннер «${name}» — выбранный ролик`);
+    } catch (err) {
+        console.error("Banner coub error:", err);
+        showToast("⚠ " + err.message);
+    }
+}
+
+/**
+ * Окно выбора ролика: кадры, названия, поиск.
+ *
+ * Отдельное окно, а не выпадающее меню: выбирают глазами по кадру, а в меню
+ * с одними названиями пришлось бы вспоминать, что как называлось.
+ *
+ * @param {string} name плейлист — только для заголовка
+ * @param {Array<{id: string, title: string}>} items
+ * @returns {Promise<string|null>} id выбранного ролика
+ */
+function openCoubPicker(name, items) {
+    return new Promise((resolve) => {
+        const overlay = document.createElement("div");
+        overlay.className = "coub-picker-overlay";
+        overlay.innerHTML = `
+            <div class="coub-picker" role="dialog" aria-label="Выбор ролика для баннера">
+                <div class="coub-picker-head">
+                    <span class="coub-picker-title"></span>
+                    <button class="coub-picker-close" type="button" title="Отмена">✕</button>
+                </div>
+                <input class="coub-picker-search pl-search-input" type="text"
+                       placeholder="Название или id…" spellcheck="false" autocomplete="off" />
+                <div class="coub-picker-list"></div>
+            </div>`;
+
+        const list = overlay.querySelector(".coub-picker-list");
+        const search = overlay.querySelector(".coub-picker-search");
+
+        // Название плейлиста — текстом, а не в разметку: в нём бывает что
+        // угодно, вплоть до угловых скобок
+        overlay.querySelector(".coub-picker-title").textContent =
+            `Ролик для баннера «${name}»`;
+
+        const close = (value) => {
+            document.removeEventListener("keydown", onKey, true);
+            overlay.remove();
+            resolve(value);
+        };
+
+        const onKey = (e) => {
+            if (e.key !== "Escape") return;
+            // Окно поверх списка плейлистов: Escape должен закрывать его,
+            // а не панель под ним
+            e.stopPropagation();
+            e.preventDefault();
+            close(null);
+        };
+
+        const render = () => {
+            const found = filterByQuery(items, search.value.trim(), (i) => `${i.title} ${i.id}`);
+            list.textContent = "";
+
+            if (!found.length) {
+                const empty = document.createElement("div");
+                empty.className = "pl-empty";
+                empty.textContent = "Ничего не найдено";
+                list.appendChild(empty);
+                return;
+            }
+
+            // Рисуем не больше сотни: окно прокручиваемое, а на четырёх
+            // тысячах кадров разом оно бы просто повисло
+            for (const item of found.slice(0, 100)) {
+                const row = document.createElement("button");
+                row.type = "button";
+                row.className = "coub-picker-item";
+                row.innerHTML = `
+                    <span class="coub-picker-thumb"></span>
+                    <span class="coub-picker-name"></span>`;
+
+                const thumb = row.querySelector(".coub-picker-thumb");
+                if (hasThumb(item.id)) {
+                    const img = document.createElement("img");
+                    img.src = thumbUrl(item.id);
+                    img.alt = "";
+                    img.loading = "lazy";
+                    img.decoding = "async";
+                    thumb.appendChild(img);
+                }
+
+                row.querySelector(".coub-picker-name").textContent = item.title;
+                row.addEventListener("click", () => close(item.id));
+                list.appendChild(row);
+            }
+        };
+
+        overlay.querySelector(".coub-picker-close").addEventListener("click", () => close(null));
+
+        // Нажатие по затемнению вокруг окна — отмена. Панель плейлистов под
+        // ним при этом не закрывается: она считает окно своим продолжением,
+        // см. исключение .coub-picker-overlay в её обработчике
+        overlay.addEventListener("pointerdown", (e) => {
+            if (e.target === overlay) close(null);
+        });
+        search.addEventListener("input", render);
+        search.addEventListener("keydown", (e) => {
+            if (e.key !== "Enter") return;
+            overlay.querySelector(".coub-picker-item")?.click();
+        });
+
+        document.addEventListener("keydown", onKey, true);
+        document.body.appendChild(overlay);
+        render();
+        search.focus();
+    });
 }
 
 async function resetBanner(name, kind) {
@@ -2102,6 +2259,9 @@ export function initSortingPanel({
             !sortingPanel.contains(e.target) &&
             // всплывающие меню лежат в body, но принадлежат этой панели
             !e.target.closest(".pl-banner-menu") &&
+            // выбор ролика для баннера — тоже её продолжение: панель должна
+            // остаться открытой, иначе выбранный кадр не увидеть
+            !e.target.closest(".coub-picker-overlay") &&
             !e.target.closest("#playlistTriggerBtn")
         ) {
             closeSortingPanel();

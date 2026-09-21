@@ -18,7 +18,16 @@ namespace CoubPlayer.Meta
         [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
         public string? video { get; set; }
 
+        /// <summary>
+        /// Ролик библиотеки, выбранный баннером. Альтернатива video: там свой
+        /// загруженный файл, здесь — id уже скачанного ролика. Копировать
+        /// ради баннера нечего, и кадр для покоя тоже берётся его.
+        /// </summary>
+        [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+        public string? coub { get; set; }
+
         [JsonIgnore]
-        public bool IsEmpty => string.IsNullOrEmpty(image) && string.IsNullOrEmpty(video);
+        public bool IsEmpty =>
+            string.IsNullOrEmpty(image) && string.IsNullOrEmpty(video) && string.IsNullOrEmpty(coub);
     }
 }

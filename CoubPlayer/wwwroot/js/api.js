@@ -334,6 +334,27 @@ export async function getRestoreReport() {
 // плейлистов обходится картинками вместо видео.
 
 /**
+ * Делает баннером плейлиста ролик из библиотеки.
+ *
+ * В отличие от своего файла, здесь ничего не загружается: ролик уже на диске,
+ * баннер лишь ссылается на него по id. Свой загруженный ролик, если он был,
+ * сервер при этом сбрасывает — за движущуюся часть баннера отвечает что-то
+ * одно.
+ *
+ * @param {string} playlist
+ * @param {string} coubId
+ */
+export async function setPlaylistBannerCoub(playlist, coubId) {
+    const res = await fetch(`/api/playlists/${encodeURIComponent(playlist)}/banner-coub`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: coubId }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+}
+
+/**
  * Вся библиотека: id, пути к файлам, свои теги. Тот же список, что плеер
  * читает при запуске (см. loader.js) — индексатору он нужен ради путей
  * к видео, очередь-то приходит одними id.

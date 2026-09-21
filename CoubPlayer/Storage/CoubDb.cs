@@ -74,6 +74,12 @@ namespace CoubPlayer.Storage
                 current = 2;
             }
 
+            if (current < 3)
+            {
+                Execute(connection, transaction, Schema.MigrateTo3Sql);
+                current = 3;
+            }
+
             if (current > Schema.Version)
             {
                 // База новее приложения: её писала более свежая сборка, и что

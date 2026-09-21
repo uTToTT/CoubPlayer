@@ -1,4 +1,4 @@
-// grid.js — режим просмотра плейлиста плиткой.
+﻿// grid.js — режим просмотра плейлиста плиткой.
 //
 // Это не модалка, а второй основной вид: тело получает класс view-grid,
 // плеерная обвязка (само видео, стрелки, таймлайн, счётчик) прячется,
@@ -218,11 +218,37 @@ function setFocusing(on) {
 const SEMANTIC_DEBOUNCE_MS = 700;
 const SEMANTIC_LIMIT = 200;
 
+// Отсечки для поиска фразой. Взяты с замеров на живой библиотеке, а не из
+// головы. Последний замер — уже на пяти кадрах с ролика: у восьми запросов,
+// которым в библиотеке есть что показать, лучшая оценка выходила 0.021…0.078,
+// у пятнадцати заведомо отсутствующих — от -0.028 до 0.031.
+//
+// Чистой границы между ними нет и быть не может: оценки SigLIP не
+// откалиброваны, и сравнивать их с постоянным числом можно только грубо.
+// Диапазоны заметно перекрываются, и 0.03 — не граница, а место, где ошибок
+// меньше всего: выше него оказались шесть присутствующих запросов из восьми
+// и один отсутствующий из пятнадцати. Поэтому отсечка ничего не прячет
+// молча, а лишь решает, показывать ли оговорку.
+//
+// Ноль — единственная осмысленная граница: ниже неё кадр и фраза смотрят
+// в разные стороны, и такие ролики в выдаче только мешают.
+const RELEVANT = 0;
+const CONFIDENT = 0.03;
+
+/** Сколько показать, когда верить нечему: пусто выглядело бы поломкой. */
+const FALLBACK_SHOWN = 12;
+
 let _semantic = false;
 let _semanticBusy = false;
 let _semanticTimer = null;
 /** Номер запроса: ответы приходят не по порядку, старые надо отбрасывать. */
 let _semanticGen = 0;
+
+/** Пишет подпись и туда же подсказку — она длиннее, чем влезает в строку. */
+function setCaption(text) {
+    subtitle.textContent = text;
+    subtitle.title = text;
+}
 
 function setSemanticMode(on) {
     _semantic = !!on;
@@ -233,7 +259,35 @@ function setSemanticMode(on) {
         : "Название, автор или id…";
 
     clearTimeout(_semanticTimer);
+    if (_semantic) warmUpModel();
     applyFilter(search.value.trim());
+}
+
+/**
+ * Готовит модель заранее — как только включили режим, а не когда нажали Enter.
+ *
+ * Текстовая башня весит 270 МБ, и её загрузка занимает секунды. Ждать их
+ * после набранного запроса обиднее всего: человек уже сформулировал и ждёт
+ * ответа. Пока поле пустое, ждать нечего, и это время уходит впустую —
+ * туда его и переносим.
+ */
+async function warmUpModel() {
+    try {
+        const { loadText, isTextReady } = await import("./semantic.js");
+        if (isTextReady()) return;
+
+        await loadText((p) => {
+            // Только пока не начали печатать: иначе сообщение о загрузке
+            // затёрло бы результаты уже идущего поиска
+            if (_semantic && !search.value.trim()) {
+                setCaption(`Готовлю модель: ${Math.round(p.progress)}%`);
+            }
+        });
+
+        if (_semantic && !search.value.trim()) updateCaption(false);
+    } catch {
+        // Модель не скачана — скажем об этом, когда её и правда попросят
+    }
 }
 
 /**
@@ -251,10 +305,10 @@ async function runSemanticSearch(query) {
         const { loadText, embedText, isTextReady } = await import("./semantic.js");
 
         if (!isTextReady()) {
-            subtitle.textContent = "Загружаю модель — это только в первый раз…";
+            setCaption("Загружаю модель — это только в первый раз…");
             await loadText((p) => {
                 if (gen !== _semanticGen) return;
-                subtitle.textContent = `Загружаю модель: ${Math.round(p.progress)}%`;
+                setCaption(`Загружаю модель: ${Math.round(p.progress)}%`);
             });
         }
         if (gen !== _semanticGen) return;
@@ -275,8 +329,28 @@ async function runSemanticSearch(query) {
         if (gen !== _semanticGen) return;
 
         const { results } = await res.json();
-        const rank = new Map(results.map((r, i) => [r.id, i]));
+        const name = _getPlaylistName() || "—";
 
+        if (!results.length) {
+            _filtered = [];
+            renderFiltered();
+            setCaption(`${name} · кадры ещё не разобраны — нечего сравнивать`);
+            return;
+        }
+
+        // Отбрасываем то, что смотрит в другую сторону. Раньше показывалось
+        // всё подряд, просто в порядке близости, и выдача выглядела увереннее,
+        // чем была: на «кошку» в библиотеке без кошек честный ответ — «нет»,
+        // а не сто плиток наименее непохожего
+        const top = results[0].score;
+        const уверенно = top >= CONFIDENT;
+        const отобранные = results.filter((r) => r.score > RELEVANT);
+
+        const показать = отобранные.length >= 3
+            ? отобранные
+            : results.slice(0, FALLBACK_SHOWN);
+
+        const rank = new Map(показать.map((r, i) => [r.id, i]));
         _filtered = _entries
             .filter((e) => rank.has(coubIdFromKey(e.item.key)))
             .sort((a, b) =>
@@ -284,18 +358,19 @@ async function runSemanticSearch(query) {
 
         renderFiltered();
 
-        // Не «найдено N из M»: смысловой поиск ничего не отсеивает, он
-        // расставляет по близости. Ролик без единого совпадения всё равно
-        // окажется в списке — просто последним. Писать про «найдено»
-        // значило бы обещать отбор, которого нет
-        const name = _getPlaylistName() || "—";
-        subtitle.textContent = _filtered.length
-            ? `${name} · по смыслу: «${query}», сверху ближайшие`
-            : `${name} · кадры ещё не разобраны — нечего сравнивать`;
-        subtitle.title = subtitle.textContent;
+        // Не «найдено N из M»: смысловой поиск не отбирает по признаку,
+        // а расставляет по близости, и обещать отбор было бы неправдой
+        if (уверенно) {
+            setCaption(`${name} · по смыслу: «${query}», сверху ближайшие`);
+        } else {
+            // Подсказать про «Все» имеет смысл только если мы не в нём:
+            // может, похожее в библиотеке есть, просто не в этом плейлисте
+            const совет = name === "Все" ? "" : " — попробуйте плейлист «Все»";
+            setCaption(`${name} · «${query}»: уверенных совпадений нет${совет}`);
+        }
     } catch (err) {
         if (gen !== _semanticGen) return;
-        subtitle.textContent = String(err?.message || err);
+        setCaption(String(err?.message || err));
         console.warn("[Смысловой поиск]", err);
     } finally {
         if (gen === _semanticGen) _semanticBusy = false;
@@ -315,7 +390,7 @@ async function runSemanticSearch(query) {
  */
 async function showSimilar(coubId, title) {
     const gen = ++_semanticGen;
-    subtitle.textContent = "Ищу похожие…";
+    setCaption("Ищу похожие…");
 
     try {
         const res = await fetch("/api/embeddings/similar", {
@@ -334,10 +409,14 @@ async function showSimilar(coubId, title) {
         const name = _getPlaylistName() || "—";
 
         if (!indexed) {
-            subtitle.textContent = `${name} · кадр этого ролика ещё не разобран`;
+            setCaption(`${name} · кадр этого ролика ещё не разобран`);
             return;
         }
 
+        // Отсечек, как у поиска фразой, здесь нет намеренно: там сравниваются
+        // кадр с текстом и оценки жмутся к нулю, а тут кадр с кадром — и они
+        // держатся в районе 0.4…0.9 просто потому, что это всё кадры.
+        // Постоянное число на этой шкале не значит ничего, а порядок значит всё
         const rank = new Map(results.map((r, i) => [r.id, i]));
         _filtered = _entries
             .filter((e) => rank.has(coubIdFromKey(e.item.key)))
@@ -345,13 +424,12 @@ async function showSimilar(coubId, title) {
                 rank.get(coubIdFromKey(a.item.key)) - rank.get(coubIdFromKey(b.item.key)));
 
         renderFiltered();
-        subtitle.textContent = _filtered.length
+        setCaption(_filtered.length
             ? `${name} · похоже на «${title}», сверху ближайшие`
-            : `${name} · похожих не нашлось`;
-        subtitle.title = subtitle.textContent;
+            : `${name} · похожих не нашлось`);
     } catch (err) {
         if (gen !== _semanticGen) return;
-        subtitle.textContent = String(err?.message || err);
+        setCaption(String(err?.message || err));
     }
 }
 
@@ -936,7 +1014,7 @@ function applyFilter(query) {
     if (_semantic && q) {
         clearTimeout(_semanticTimer);
         _semanticTimer = setTimeout(() => runSemanticSearch(q), SEMANTIC_DEBOUNCE_MS);
-        subtitle.textContent = _semanticBusy ? subtitle.textContent : "Ищу по смыслу…";
+        if (!_semanticBusy) setCaption("Ищу по смыслу…");
         return;
     }
 
@@ -1092,7 +1170,16 @@ function buildTile({ item, index }, pos) {
     const title = document.createElement("div");
     title.className = "coub-tile-title";
     title.textContent = item.title || item.id;
-    title.title = item.title || item.id;
+
+    // Подсказка висит на плитке, а не на подписи: у подписи отключены
+    // события мыши, и её собственный title не показался бы никогда.
+    //
+    // Автор здесь потому, что по нему ищут, а увидеть его было негде:
+    // найдя десяток роликов по каналу, оставалось верить на слово
+    const автор = channelOf(coubId);
+    tile.title = автор
+        ? `${item.title || item.id}\n${автор}`
+        : (item.title || item.id);
 
     tile.appendChild(media);
     tile.appendChild(title);
